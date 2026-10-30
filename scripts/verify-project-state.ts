@@ -135,10 +135,13 @@ function verifyProjectState() {
   }
 
   // Đánh giá kết quả cuối cùng
+  const versionMatch = content.match(/Phiên bản:\*\* `([^`]+)`/);
+  const currentVersion = versionMatch ? versionMatch[1] : 'v1.1.0-pwa';
+
   console.log('\n========================================================');
   if (errorCount === 0) {
     console.log('🎉 XÁC THỰC THÀNH CÔNG: Tệp PROJECT_STATE.md đồng bộ 100% với mã nguồn!');
-    console.log('   Phiên bản: v1.0.0-foundation (Core Invariants Guaranteed)');
+    console.log(`   Phiên bản: ${currentVersion} (Core Invariants Guaranteed)`);
     console.log('========================================================\n');
     process.exit(0);
   } else {

@@ -28,15 +28,19 @@ import { TransactionFormModal } from "@/components/transactions/TransactionFormM
 import { MobileNumpadSheet } from "@/components/mobile/sheets/MobileNumpadSheet";
 import { ExportImportModal } from "@/components/common/ExportImportModal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { PWAInstallBanner } from "@/components/common/PWAInstallBanner";
+import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
+import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
-  const { isLoaded, activeTab, resetToMockData } = useFinance();
+  const { isLoaded, activeTab, resetToMockData, addTransaction, accounts } = useFinance();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isMobileNumpadOpen, setIsMobileNumpadOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
 
   // Responsive layout detection to prevent mounting hidden DOM tree with 0x0 Recharts containers
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -133,8 +137,28 @@ export default function HomePage() {
     }
   };
 
+  const handleApplyGlobalReceipt = (receipt: ParsedReceiptResult) => {
+    try {
+      addTransaction({
+        amount: receipt.amount,
+        date: receipt.date || new Date().toISOString().slice(0, 10),
+        type: "EXPENSE",
+        categoryId: receipt.suggestedCategoryId || "cat_expense_food",
+        accountId: accounts[0]?.id || "acc_husband_vietinbank",
+        memberId: "HUSBAND",
+        scope: "FAMILY",
+        note: `${receipt.merchantName}${receipt.notes ? " - " + receipt.notes : ""}`,
+      });
+    } catch {
+      console.warn("Lỗi thêm giao dịch từ hóa đơn");
+    }
+  };
+
   return (
     <>
+      {/* Banner Cài Đặt PWA Thông Minh (Toàn Màn Hình Không Viền) */}
+      <PWAInstallBanner />
+
       {/* =========================================================================
           1. DESKTOP VIEW SHELL (>= 768px)
           Bố cục rộng rãi 1440px: Sidebar, TopBar desktop, Bảng 8 cột, Recharts
@@ -148,6 +172,7 @@ export default function HomePage() {
               onOpenBackupModal={() => setIsBackupModalOpen(true)}
               onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
               onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
+              onOpenScanner={() => setIsGlobalScannerOpen(true)}
             />
             <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
               {renderActiveDesktopView()}
@@ -163,7 +188,10 @@ export default function HomePage() {
       {isMobile && (
         <div className="min-h-screen bg-[#F6F8FB] text-slate-900 font-sans antialiased pb-24">
           {/* Mobile Header Bar */}
-          <MobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
+          <MobileHeader
+            onOpenDrawer={() => setIsMobileMenuOpen(true)}
+            onOpenScanner={() => setIsGlobalScannerOpen(true)}
+          />
 
           {/* Thân Màn Hình Mobile Cô Đọng Khớp 100% Figma */}
           <main className="p-3.5 space-y-3.5">
@@ -178,6 +206,12 @@ export default function HomePage() {
       {/* =========================================================================
           3. GLOBAL MODALS & BOTTOM SHEETS
          ========================================================================= */}
+      {/* Modal Quét Hóa Đơn Thông Minh Bằng Gemini Vision */}
+      <ReceiptScannerModal
+        isOpen={isGlobalScannerOpen}
+        onClose={() => setIsGlobalScannerOpen(false)}
+        onApplyReceipt={handleApplyGlobalReceipt}
+      />
       {/* Drawer Menu cho Di Động */}
       <MobileDrawer
         isOpen={isMobileMenuOpen}

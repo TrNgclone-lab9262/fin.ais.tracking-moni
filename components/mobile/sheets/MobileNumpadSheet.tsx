@@ -4,9 +4,12 @@ import React, { useState, useEffect } from "react";
 import {
   Delete,
   AlertCircle,
+  Camera,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { FamilyMember, ExpenseScope, TransactionType } from "@/types/finance";
+import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
+import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 interface MobileNumpadSheetProps {
   isOpen: boolean;
@@ -27,8 +30,22 @@ export function MobileNumpadSheet({
   const [accountId, setAccountId] = useState<string>("");
   const [memberId, setMemberId] = useState<FamilyMember>("HUSBAND");
   const [scope, setScope] = useState<ExpenseScope>("FAMILY");
-  const [note] = useState<string>("");
+  const [note, setNote] = useState<string>("");
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+
+  // Xử lý áp dụng kết quả từ Gemini OCR
+  const handleApplyReceipt = (receipt: ParsedReceiptResult) => {
+    setNumericAmount(receipt.amount);
+    if (receipt.date) setDate(receipt.date);
+    setType("EXPENSE");
+    if (receipt.suggestedCategoryId) {
+      setCategoryId(receipt.suggestedCategoryId);
+    }
+    const combinedNote = receipt.merchantName + (receipt.notes ? ` - ${receipt.notes}` : "");
+    setNote(combinedNote);
+  };
 
   // Khởi tạo giá trị mặc định theo góc nhìn hiện tại
   useEffect(() => {
@@ -111,7 +128,7 @@ export function MobileNumpadSheet({
     try {
       addTransaction({
         amount: numericAmount,
-        date: new Date().toISOString().split("T")[0],
+        date: date || new Date().toISOString().split("T")[0],
         type,
         categoryId: categoryId || "cat_expense_food",
         accountId: accountId || accounts[0]?.id || "acc_husband_vietinbank",
@@ -158,10 +175,21 @@ export function MobileNumpadSheet({
           >
             Hủy
           </button>
-          <h3 className="text-sm sm:text-base font-bold text-[#0F172A] flex items-center gap-1.5">
-            <span>⚡</span>
-            <span>Ghi Chép Nhanh 3 Giây</span>
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm sm:text-base font-bold text-[#0F172A] flex items-center gap-1">
+              <span>⚡</span>
+              <span>Ghi Chép 3 Giây</span>
+            </h3>
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 active:scale-95 text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer ml-1"
+              title="Quét hóa đơn bằng Gemini AI"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Quét 📷</span>
+            </button>
+          </div>
           <button
             onClick={handleSave}
             className="text-xs font-bold bg-[#2563EB] text-white px-3 py-1.5 rounded-lg shadow-xs hover:bg-blue-700 cursor-pointer"
@@ -381,6 +409,13 @@ export function MobileNumpadSheet({
         {/* Home Indicator */}
         <div className="w-32 h-1 rounded-full bg-slate-800 mx-auto mt-1" />
       </div>
+
+      {/* Modal Quét Hóa Đơn Bằng Gemini AI */}
+      <ReceiptScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onApplyReceipt={handleApplyReceipt}
+      />
     </div>
   );
 }
