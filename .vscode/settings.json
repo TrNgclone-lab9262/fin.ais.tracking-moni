@@ -1,3 +1,5 @@
 {
-  "workbench.startupEditor": "readme"
+  "workbench.startupEditor": "readme",
+  "terminal.integrated.cwd": "D:\\NTT-2026\\dev.app\\fin.ais.tracking-moni",
+  "terminal.integrated.defaultProfile.windows": "PowerShell"
 }
