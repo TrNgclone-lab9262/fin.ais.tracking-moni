@@ -1,12 +1,12 @@
 ---
 name: home-moni-ais-git-release
 description: >-
-  Chuẩn quy trình phát hành mã nguồn quốc tế (GitHub Flow + CI Verification + Conventional Commits + Semantic Versioning Tag + CI/CD Trigger) cho dự án HOME MONI phát triển song song trên Google AI Studio (https://app-home-moni.ai.studio) và Google Antigravity. Kích hoạt khi người dùng yêu cầu: "hãy chạy release code", "hãy đẩy lên github", "hãy commit đẩy lên github", "hãy commit và đẩy nhánh lên GitHub", "release code" hoặc "git release".
+  Chuẩn quy trình phát hành mã nguồn quốc tế (GitHub Flow + Pre-flight CI + GitHub Actions CI Verification + Conventional Commits + Semantic Versioning Tag) cho dự án HOME MONI phát triển song song trên Google AI Studio (https://app-home-moni.ai.studio) và Google Antigravity. Kích hoạt khi người dùng yêu cầu: "hãy chạy release code", "hãy đẩy lên github", "hãy commit đẩy lên github", "hãy commit và đẩy nhánh lên GitHub", "release code" hoặc "git release".
 ---
 
 # HOME MONI — AIS GIT RELEASE SKILL (QUY TRÌNH PHÁT HÀNH QUỐC TẾ)
 
-Skill này thực hiện quy trình phát hành mã nguồn chuẩn hóa 3 giai đoạn cho dự án **HOME MONI**, đồng bộ giữa **Google AI Studio** (`https://app-home-moni.ai.studio`) và **Google Antigravity**, kết nối kho lưu trữ GitHub chính thức:
+Skill này thực hiện quy trình phát hành mã nguồn chuẩn hóa 3 giai đoạn tinh gọn, thực dụng và an toàn tuyệt đối cho dự án **HOME MONI**, đồng bộ giữa **Google AI Studio** (`https://app-home-moni.ai.studio`) và **Google Antigravity**, kết nối kho lưu trữ GitHub chính thức:
 👉 **Repository:** `https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni`
 
 ---
@@ -21,6 +21,23 @@ Agent tự động kích hoạt skill này khi người dùng đưa ra các yêu
 
 ---
 
+## 🛑 QUY TẮC TIÊN QUYẾT: PRE-FLIGHT CI (AGENT CHẠY NGẦM)
+
+Trước khi hiển thị bất kỳ khối lệnh nào cho người dùng, Agent **BẮT BUỘC** phải tự chạy ngầm bộ 3 lệnh kiểm thử chất lượng tại thư mục gốc dự án:
+
+1. `npm run state:verify` (Đảm bảo `PROJECT_STATE.md` đồng bộ 100% với cấu trúc mã nguồn).
+2. `npm run lint` (`tsc --noEmit` — Type-check TypeScript đạt 0 lỗi).
+3. `npm run build` (`vite build` — Biên dịch Production đạt 0 lỗi).
+
+* **Nếu có bất kỳ lỗi nào xảy ra:**
+  * Agent dừng ngay lập tức, báo cáo chính xác thông điệp lỗi (stderr) và đề xuất phương án sửa chữa.
+  * Tuyệt đối không xuất lệnh commit/push khi mã nguồn chưa sạch.
+* **Khi cả 3 bài kiểm tra đều vượt qua xuất sắc:**
+  * Mở đầu Giai đoạn 1 bằng báo cáo kiểm thử trực quan:
+    > `Mã nguồn đã được kiểm thử biên dịch ngầm npm run build xuất sắc: 🟢 PASSING (0 errors, build production hoàn tất).`
+
+---
+
 ## QUY TRÌNH 3 GIAI ĐOẠN CHI TIẾT
 
 ```
@@ -28,138 +45,107 @@ Agent tự động kích hoạt skill này khi người dùng đưa ra các yêu
 │                   QUY TRÌNH PHÁT HÀNH CHUẨN 3 GIAI ĐOẠN                │
 ├─────────────────────┬─────────────────────┬────────────────────────────┤
 │ GIAI ĐOẠN 1         │ GIAI ĐOẠN 2         │ GIAI ĐOẠN 3                │
-│ Commit & Push       │ PR & CI Check       │ Local Sync & SemVer Tag    │
+│ Commit & Đẩy Nhánh  │ Mở PR & CI Check    │ Đồng Bộ Main & Gắn Tag     │
 ├─────────────────────┼─────────────────────┼────────────────────────────┤
-│ • Pre-flight check  │ • URL 1-click mở PR │ • Checkout & pull main     │
-│ • Trích dẫn song ngữ│ • PR Template chuẩn │ • Tạo Tag vX.Y.Z-<codename>│
-│ • 2-5 Điểm đặc trưng│ • User merge GitHub │ • Push Tag kích hoạt CI    │
-│ • Khối lệnh terminal│ • Xác nhận hoàn tất │ • Báo cáo Release hoàn tất │
+│ • Pre-flight ngầm   │ • URL 1-click tạo PR│ • Checkout & pull main     │
+│ • Báo cáo 🟢 PASSING │ • Tự điền PR Body   │ • Annotated Tag vX.Y.Z-... │
+│ • Conventional Msg  │ • Theo dõi CI xanh  │ • Push Tag lên GitHub      │
+│ • Khối lệnh copy    │ • Bấm Merge trên UI │ • Dọn dẹp nhánh tính năng  │
 └─────────────────────┴─────────────────────┴────────────────────────────┘
 ```
 
 ---
 
-### GIAI ĐOẠN 1: COMMIT & ĐẨY NHÁNH LÊN GITHUB (LOCAL PRE-FLIGHT & PUSH)
+### GIAI ĐOẠN 1: TẠO NHÁNH TÍNH NĂNG, COMMIT & ĐẨY LÊN GITHUB
 
-#### Bước 1.1: Agent tự động kiểm tra trạng thái
-Khi kích hoạt, Agent thực thi:
-1. Chạy `npm run state:verify` để đảm bảo `PROJECT_STATE.md` đồng bộ $100\%$ với mã nguồn.
-2. Kiểm tra trạng thái Git (`git status --short`, `git branch --show-current`).
-   * *Lưu ý:* Nếu kho mã nguồn chưa có `.git`, Agent hướng dẫn kèm lệnh `git init` và kết nối remote.
+#### 1. Báo cáo Pre-flight & Trích dẫn thay đổi song ngữ
+Agent xuất phần mở đầu trực quan gồm:
+* Trạng thái kiểm thử ngầm (`🟢 PASSING`).
+* Tóm tắt 2 - 5 điểm đặc trưng nổi bật của phiên phát hành.
+* Đề xuất tên nhánh tính năng (VD: `feat/<tên-tính-năng>` hoặc `fix/<tên-lỗi>`).
+* Đề xuất thông điệp commit theo chuẩn Conventional Commits (kèm nội dung mô tả chi tiết bằng Tiếng Việt).
 
-#### Bước 1.2: Trích dẫn Song ngữ & 2 - 5 Điểm Đặc Trưng Nổi Bật
-Agent tự động xuất thông tin tóm tắt có cấu trúc:
-```text
-📋 [BẢN TRÍCH DẪN THAY ĐỔI MÃ NGUỒN / CHANGES SUMMARY]
-─────────────────────────────────────────────────────────────────────────────
-• Kho lưu trữ GitHub: https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni
-• Môi trường phát triển: Google AI Studio (https://app-home-moni.ai.studio) & Antigravity
-• Số lượng tệp thay đổi: <X> files
-
-• Đề xuất Conventional Commit Message:
-  [EN] <type>(<scope>): <thông điệp tiếng Anh chuẩn quốc tế>
-  [VI] <Bản dịch tiếng Việt tinh gọn, súc tích>
-
-⭐ 2 - 5 ĐIỂM ĐẶC TRƯNG NỔI BẬT CỦA BẢN PHÁT HÀNH:
-  1. <Điểm đặc trưng 1>
-  2. <Điểm đặc trưng 2>
-  3. <Điểm đặc trưng 3>
-─────────────────────────────────────────────────────────────────────────────
-❓ Bạn muốn đẩy code lên nhánh nào?
-   [1] Sử dụng nhánh hiện tại: "<tên-nhánh-hiện-tại>"
-   [2] Tạo và chuyển sang nhánh mới (VD: "feat/<tên-tính-năng>" hoặc "fix/<lỗi>")
-```
-
-#### Bước 1.3: Cung cấp khối lệnh Terminal Copy-Paste Linh Hoạt
-Agent tạo sẵn khối mã lệnh để người dùng copy chạy hoặc duyệt cho Agent thực thi:
+#### 2. Khối lệnh Copy-Paste Giai đoạn 1 (PowerShell)
+Agent cung cấp khối lệnh duy nhất để người dùng copy và dán vào terminal PowerShell:
 
 ```powershell
 # =========================================================================
-# GIAI ĐOẠN 1: KHỞI TẠO (NẾU CHƯA CÓ) VÀ ĐẨY NHÁNH LÊN GITHUB
+# GIAI ĐOẠN 1: TẠO NHÁNH, COMMIT & ĐẨY LÊN GITHUB
 # =========================================================================
 
-# (Tùy chọn: Chỉ chạy lần đầu tiên nếu máy chưa khởi tạo Git)
-# git init
-# git remote add origin https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni.git
+# 1. Tạo và chuyển sang nhánh tính năng mới
+git checkout -b <tên-nhánh>
 
-# 1. Chuyển sang nhánh làm việc
-git checkout -b <tên-nhánh> 2>$null || git checkout <tên-nhánh>
+# 2. Kiểm tra trạng thái các file thay đổi
+git status -s
 
-# 2. Thêm toàn bộ thay đổi và commit theo chuẩn quốc tế
+# 3. Stage toàn bộ các file cập nhật và cấu hình mới
 git add .
-git commit -m "<Conventional-Commit-Message>"
 
-# 3. Đẩy nhánh lên GitHub
+# 4. Tạo commit chuẩn Conventional Commits với mô tả Tiếng Việt tinh gọn
+git commit -m "<type>(<scope>): <tiêu đề commit ngắn gọn>" -m "- <Điểm đặc trưng nổi bật 1>
+- <Điểm đặc trưng nổi bật 2>
+- <Điểm đặc trưng nổi bật 3>
+- Đã kiểm thử biên dịch ngầm hoàn tất (0 errors, build production pass)"
+
+# 5. Đẩy nhánh mới lên GitHub
 git push -u origin <tên-nhánh>
 ```
 
 ---
 
-### GIAI ĐOẠN 2: MỞ PULL REQUEST & KIỂM TRA CI TỰ ĐỘNG (GITHUB PR & CI)
+### GIAI ĐOẠN 2: MỞ PULL REQUEST & KIỂM TRA CI TỰ ĐỘNG TRÊN GITHUB UI
 
-#### Bước 2.1: Cung cấp Đường dẫn 1-Click mở PR
-Sau khi code được đẩy lên nhánh ở Giai đoạn 1, Agent xuất ngay liên kết trực tiếp:
+Sau khi người dùng chạy xong khối lệnh Giai đoạn 1, Agent cung cấp hướng dẫn rõ ràng:
 
+#### 1. Đường dẫn 1-Click mở Pull Request trực tiếp
 ```text
-🔗 NHẤN VÀO LINK DƯỚI ĐÂY ĐỂ MỞ PULL REQUEST TRÊN GITHUB:
+🌐 MỞ LINK TẠO PULL REQUEST TRỰC TIẾP TRÊN TRÌNH DUYỆT:
 👉 https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni/compare/main...<tên-nhánh>?expand=1
 ```
 
-#### Bước 2.2: Cung cấp Mẫu Nội dung PR (PR Template)
-```markdown
-## 📌 Tóm Tắt Bản Phát Hành (Release Summary)
-- Phiên bản hệ thống: <vX.Y.Z-codename>
-- Môi trường song song: Google AI Studio (https://app-home-moni.ai.studio) & Antigravity
-- Loại cập nhật: [Feature / Fix / Chore / Refactor]
+#### 2. Các bước thao tác chuẩn trên GitHub UI
+1. **Tạo PR:** Nhấn nút xanh **Create pull request** (Tiêu đề và nội dung checklist đã được hệ thống tự động điền sẵn theo `.github/pull_request_template.md`).
+2. **Theo dõi CI:** GitHub Actions (`CI — Lint & Build`) sẽ tự động kích hoạt máy ảo Node.js 20 kiểm thử `npm run state:verify`, `npm run lint` và `npm run build`.
+3. **Merge Pull Request:** Khi xuất hiện dấu tick xanh **🟢 All checks have passed**, nhấn nút **Merge pull request** ➔ **Confirm merge** (Khuyến khích chọn *Squash and merge* để giữ lịch sử git gọn gàng).
+4. **Xóa nhánh trên GitHub:** Bấm nút **Delete branch** trên trang PR vừa merge.
 
-### ⭐ Điểm Đặc Trưng Nổi Bật:
-1. <Điểm 1>
-2. <Điểm 2>
-3. <Điểm 3>
-
-## ✅ Checklist Kiểm Tra Chất Lượng (CI Verification)
-- [x] npm run state:verify (Pass 100% SSOT Integrity)
-- [x] npm run lint (Pass 0 errors)
-- [x] npm run build (Pass 0 errors)
-- [x] Tuân thủ 6 Non-Negotiable Invariants trong PROJECT_STATE.md
-```
-
-#### Bước 2.3: Chờ Xác Nhận Từ Người Dùng
-Người dùng thực hiện review và merge Pull Request trên GitHub. Sau khi merge xong, người dùng xác nhận lại với Agent:
+#### 3. Chờ người dùng xác nhận
+> ⏸️ **Agent dừng lại tại đây** và chờ người dùng phản hồi:  
 > *"Tôi đã merge PR vào main thành công, hãy tiếp tục Giai đoạn 3."*
 
 ---
 
-### GIAI ĐOẠN 3: CẬP NHẬT MAIN LOCAL & ĐÁNH DẤU TAG PHIÊN BẢN (SEMVER RELEASE)
+### GIAI ĐOẠN 3: ĐỒNG BỘ MAIN LOCAL, GẮN TAG SEMVER & DỌN DẸP
 
-#### Bước 3.1: Quy Chuẩn Đặt Tên Tag Phiên Bản (SemVer Standard)
-Tuân thủ nghiêm ngặt định dạng chuẩn hiện tại của dự án HOME MONI:
-$$\text{Tag Format: } \mathbf{v\langle MAJOR\rangle.\langle MINOR\rangle.\langle PATCH\rangle-\langle CODENAME\rangle}$$
-* Ví dụ danh mục chuẩn hóa:
-  * `v1.0.0-foundation` (Nền tảng cốt lõi hoàn chỉnh)
-  * `v1.1.0-pwa` (Cài đặt PWA trên iPhone/Android)
-  * `v1.2.0-gemini-ocr` (Quét hóa đơn AI Vision)
-  * `v1.3.0-supabase-realtime` (Đám mây thời gian thực 2 vợ chồng)
-  * `v2.0.0-openbanking` (Tự động hóa Ngân hàng mở 2027)
+Khi nhận được xác nhận merge từ người dùng, Agent chúc mừng và xuất khối lệnh Giai đoạn 3.
 
-#### Bước 3.2: Cung cấp khối lệnh Terminal Copy-Paste Giai đoạn 3
-Agent xuất khối lệnh:
+#### 1. Quy chuẩn Tag phiên bản (SemVer)
+Tuân thủ định dạng chuẩn của dự án HOME MONI:
+$$\mathbf{v\langle MAJOR\rangle.\langle MINOR\rangle.\langle PATCH\rangle-\langle CODENAME\rangle}$$
+*(Ví dụ: `v1.0.0-foundation`, `v1.1.0-pwa`, `v1.2.0-gemini-ocr`, `v1.3.0-supabase-realtime`,...)*
 
+#### 2. Khối lệnh Copy-Paste Giai đoạn 3 (PowerShell)
 ```powershell
 # =========================================================================
-# GIAI ĐOẠN 3: ĐỒNG BỘ MAIN TẠI LOCAL VÀ TẠO TAG PHIÊN BẢN QUỐC TẾ
+# GIAI ĐOẠN 3: ĐỒNG BỘ MAIN LOCAL & GẮN TAG PHIÊN BẢN CHÍNH THỨC
 # =========================================================================
 
-# 1. Chuyển về nhánh main và kéo mã nguồn mới nhất sau khi merge PR
+# 1. Chuyển sang nhánh main
 git checkout main
+
+# 2. Kéo toàn bộ mã nguồn sạch đã merge từ GitHub về máy
 git pull origin main
 
-# 2. Đánh dấu Git Tag có chú thích (Annotated SemVer Tag)
-git tag -a <vX.Y.Z-codename> -m "release: <thông điệp phiên bản>"
+# 3. Tạo Annotated Tag chính thức kèm thông điệp phát hành
+git tag -a <vX.Y.Z-codename> -m "HOME MONI <vX.Y.Z-codename>: <tóm tắt ngắn gọn tính năng>"
 
-# 3. Đẩy Tag lên GitHub để kích hoạt CI/CD Release
+# 4. Đẩy Tag lên GitHub để tạo mốc phát hành (Release milestone)
 git push origin <vX.Y.Z-codename>
+
+# 5. Dọn dẹp nhánh tính năng local đã merge xong
+git branch -d <tên-nhánh>
 ```
 
-#### Bước 3.3: Báo Cáo Hoàn Tất
-Agent thông báo hoàn tất chu trình phát hành quốc tế, cập nhật lại trạng thái trong `PROJECT_STATE.md`.
+#### 3. Báo cáo hoàn tất
+Agent gửi lời chúc mừng phát hành thành công và cập nhật lại `PROJECT_STATE.md` (nếu cần thiết).

@@ -1,0 +1,44 @@
+# HOME MONI — CI Pipeline (Chuẩn GitHub Actions Quốc Tế)
+# Tự động kích hoạt khi push lên các nhánh tính năng hoặc tạo Pull Request vào main
+name: CI — Lint & Build
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'chore/**'
+      - 'refactor/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: TypeScript Check & Production Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout mã nguồn
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Thiết lập Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Cài đặt dependencies
+        run: npm ci
+
+      - name: 🔍 Kiểm tra tính toàn vẹn trạng thái dự án (PROJECT_STATE.md)
+        run: npm run state:verify
+
+      - name: 🛡️ TypeScript Type-Check (npm run lint)
+        run: npm run lint
+
+      - name: 🏗️ Production Build (npm run build)
+        run: npm run build
+
+      - name: 🟢 Báo cáo kết quả
+        run: echo "🎉 CI Pipeline hoàn tất xuất sắc: 0 errors, sẵn sàng Merge vào main!"
