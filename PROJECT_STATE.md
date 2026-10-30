@@ -1,6 +1,6 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.0.0-foundation` | **Ngày phát hành:** 2026-10-29 | **Môi trường:** Production Ready (PWA / SPA)  
+> **Phiên bản:** `v1.1.0-pwa` | **Ngày phát hành:** 2026-10-30 | **Môi trường:** Production Ready (PWA / SPA)  
 > **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
 
 ---
@@ -120,6 +120,7 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `lib/supabaseClient.ts` | Khởi tạo Supabase client an toàn với fallback khi chưa có biến môi trường | **STABLE** |
 | `lib/supabaseMappers.ts` | Bộ chuyển đổi qua lại giữa camelCase (Client) và snake_case (PostgreSQL DB) | **STABLE** |
 | `lib/supabaseService.ts` | Dịch vụ CRUD và đồng bộ hóa ngầm với Supabase Cloud | **STABLE** |
+| `lib/geminiReceiptService.ts` | Dịch vụ bóc tách hóa đơn thông minh bằng Google Gemini 2.5 Flash Vision AI | **STABLE** |
 
 ### 4.2. State Management & App Routing
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -129,7 +130,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `app/layout.tsx` | Root Layout thiết lập font sans, metadata và cấu trúc khung bao bọc | **STABLE** |
 | `app/globals.css` | Import Tailwind CSS và khai báo các tiện ích toàn cục | **STABLE** |
 | `src/App.tsx` | Cầu nối tương thích khởi chạy ứng dụng từ `HomePage` | **STABLE** |
-| `src/main.tsx` | Điểm vào khởi tạo ReactDOM Client `createRoot` | **STABLE** |
+| `src/main.tsx` | Điểm vào khởi tạo ReactDOM Client `createRoot` & đăng ký PWA Service Worker | **STABLE** |
+| `src/hooks/usePWAInstall.ts` | Hook quản trị trạng thái cài đặt PWA đa nền tảng (Android/Chromium & iOS Safari) | **STABLE** |
 
 ### 4.3. Shared & Common Components (`components/common/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -141,6 +143,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/common/CategoryIcon.tsx` | Icon biểu trưng màu sắc tương ứng theo từng mã danh mục | **STABLE** |
 | `components/common/ConfirmDialog.tsx` | Modal xác nhận hành động nguy hiểm (Xóa giao dịch, Khôi phục cài đặt gốc) | **STABLE** |
 | `components/common/ExportImportModal.tsx`| Hộp thoại xuất file sao lưu JSON hoặc nhập file khôi phục dữ liệu | **STABLE** |
+| `components/common/PWAInstallBanner.tsx` | Banner gợi ý cài đặt HOME MONI lên màn hình chính cho 2 vợ chồng | **STABLE** |
+| `components/common/IOSInstallModal.tsx` | Modal hướng dẫn chi tiết cách cài đặt lên màn hình chính cho iPhone/iPad Safari | **STABLE** |
 
 ### 4.4. Desktop Dashboard Widgets (`components/dashboard/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -174,6 +178,7 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | :--- | :--- | :--- |
 | `components/transactions/TransactionFormModal.tsx` | Modal nhập liệu giao dịch đầy đủ tính năng cho Desktop | **STABLE** |
 | `components/transactions/TransactionList.tsx` | Bảng hiển thị danh sách giao dịch 8 cột và bộ thẻ phân trang | **STABLE** |
+| `components/transactions/ReceiptScannerModal.tsx` | Modal quét và bóc tách hóa đơn tự động bằng Google Gemini Vision AI | **STABLE** |
 
 ### 4.7. Main Feature Views (`components/views/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -193,6 +198,13 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `scripts/generate-release-meta.mjs` | Script sinh metadata phát hành, Conventional Commits song ngữ EN/VI và 2-5 điểm đặc trưng | **STABLE** |
 | `.agents/skills/home-moni-ais-git-release/SKILL.md` | Skill phát hành mã nguồn chuẩn quốc tế kết nối GitHub repo fin.ais.tracking-moni | **STABLE** |
 | `.gemini/rules/00-project-state-rule.md` | Quy tắc cưỡng chế AI Agent đọc và cập nhật PROJECT_STATE.md theo vòng đời | **STABLE** |
+| `public/manifest.webmanifest` | Web App Manifest định danh PWA cài đặt toàn màn hình | **STABLE** |
+| `public/sw.js` | Service Worker quản lý bộ nhớ đệm ngoại tuyến Stale-While-Revalidate 0ms | **STABLE** |
+| `public/icons/icon.svg` | Icon nhận diện thương hiệu tổ ấm chuẩn Calm Slate Fintech đa kích cỡ | **STABLE** |
+| `public/apple-touch-icon.png` | Icon chuẩn Apple 180x180 px cho iPhone 14 Pro Max Super Retina XDR WebClip | **STABLE** |
+| `public/icons/icon-192.png` | Icon chuẩn PWA 192x192 px sắc nét cho Android & Web App Launcher | **STABLE** |
+| `public/icons/icon-512.png` | Icon chuẩn PWA 512x512 px độ phân giải cao cho màn hình Splash PWA | **STABLE** |
+| `public/icons/icon-maskable-512.png` | Icon thích ứng PWA Maskable 512x512 px (vùng an toàn Safe Zone 80%) | **STABLE** |
 
 ---
 
@@ -251,15 +263,17 @@ $$\text{SafeDailyLimit} = \frac{\text{RemainingBudget}}{D_{\text{remaining}}}$$
 └─────────────────────┴─────────────────────┴─────────────────────┴──────────────────────┘
 ```
 
-* **v1.0.0 — Foundation Core (Hiện tại - Hoàn tất $100\%$):**
+* **v1.0.0 — Foundation Core (2026-10-29 - Hoàn tất 100%):**
   * Xây dựng trọn vẹn kiến trúc Dual-Member, Event Sourcing accounting, Calm Slate Fintech UI, 8 widget Recharts và 3-Second Quick Numpad mobile sheet.
   * Thiết lập tệp chủ `PROJECT_STATE.md`, script đối soát `verify-project-state.ts`, và skill `home-moni-ais-git-release`.
   * Liên kết kho lưu trữ GitHub chính thức: `https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni`.
   * Đồng bộ môi trường publish Google AI Studio: `https://app-home-moni.ai.studio`.
-* **v1.1.0 — Progressive Web App (PWA):**
-  * Thêm `manifest.webmanifest`, bộ icon đa độ phân giải, và `sw.js` (Service Worker) để cài đặt trực tiếp lên màn hình chính iPhone / Android.
-* **v1.2.0 — Gemini AI Vision & Smart Advisor:**
-  * Kích hoạt `@google/genai`: Quét hóa đơn siêu thị tự động bóc tách ngày, tiền, danh mục; Chatbot cố vấn tài chính tổ ấm.
+* **v1.1.0 — Progressive Web App (PWA) & Gemini Vision OCR (Hiện tại - Hoàn tất 100%):**
+  * Thêm `public/manifest.webmanifest`, bộ icon đa kích cỡ (`public/icons/icon.svg`), và `public/sw.js` (Service Worker) hỗ trợ cài đặt toàn màn hình và offline caching 0ms.
+  * Tích hợp hook `usePWAInstall.ts`, banner cài đặt `PWAInstallBanner.tsx` và modal hướng dẫn cho iPhone/iPad `IOSInstallModal.tsx`.
+  * Kích hoạt sẵn tính năng Quét Hóa Đơn bằng Google Gemini Vision AI (`lib/geminiReceiptService.ts`, `components/transactions/ReceiptScannerModal.tsx`) với nút camera 📷 trên thanh ghi chép nhanh di động và TopBar.
+* **v1.2.0 — Advanced Receipt Automation & Category Auto-Tuning:**
+  * Huấn luyện mẫu hóa đơn thực tế Việt Nam, tự động bóc tách hóa đơn nhiều món hàng (itemized receipt extraction) và đề xuất cảnh báo vượt trần ngân sách tức thì.
 * **v1.3.0 — Supabase Realtime Multi-Device Sync:**
   * Kích hoạt PostgreSQL RLS, đăng nhập tài khoản riêng cho Chồng & Vợ, đồng bộ tức thời qua WebSockets.
 * **v2.0.0 — Open Banking & Automation (2027 - 2028):**
@@ -281,6 +295,14 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.1.0-pwa (2026-10-30):**
+  * Chuyển đổi HOME MONI thành Progressive Web App (PWA) cài đặt trực tiếp lên iPhone/Android, chạy độc lập toàn màn hình.
+  * Tích hợp Service Worker (`public/sw.js`) lưu bộ nhớ đệm ngoại tuyến Stale-While-Revalidate mở app tức thì 0ms.
+  * Xuất trọn bộ icon PNG chất lượng cao từ ảnh cưới "Anh Chuột & Bé Mèo" (`public/apple-touch-icon.png` 180x180 px cho iPhone 14 Pro Max, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`).
+  * Tạo bộ icon nhận diện thương hiệu tổ ấm chuẩn Calm Slate Fintech (`public/icons/icon.svg`).
+  * Xây dựng hook `usePWAInstall.ts`, banner `PWAInstallBanner.tsx` và modal hướng dẫn Safari iOS `IOSInstallModal.tsx`.
+  * Tích hợp dịch vụ bóc tách hóa đơn `lib/geminiReceiptService.ts` và modal `ReceiptScannerModal.tsx`.
+  * Kích hoạt nút chụp ảnh hóa đơn (icon 📷) trên thanh ghi chép nhanh di động (`MobileNumpadSheet.tsx`), thanh tiêu đề di động (`MobileHeader.tsx`) và Desktop TopBar (`TopBar.tsx`).
 * **v1.0.0-foundation (2026-10-29):**
   * Thiết lập hệ thống nền tảng hoàn chỉnh cho HOME MONI.
   * Phân tách Dual-Shell (Desktop & Mobile) giải quyết triệt để lỗi vòng lặp `Maximum update depth exceeded` và lỗi Recharts $0 \times 0$.

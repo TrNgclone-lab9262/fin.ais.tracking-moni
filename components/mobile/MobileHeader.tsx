@@ -1,14 +1,15 @@
 "use client";
 
 import React from "react";
-import { Menu, Home, RefreshCw } from "lucide-react";
+import { Menu, Home, RefreshCw, Camera } from "lucide-react";
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
 
 interface MobileHeaderProps {
   onOpenDrawer: () => void;
+  onOpenScanner?: () => void;
 }
 
-export function MobileHeader({ onOpenDrawer }: MobileHeaderProps) {
+export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps) {
   const { activePerspective, setActivePerspective, isCloudConnected, isSyncing } = useFinance();
 
   const perspectives: { id: PerspectiveMode; label: string; icon: string }[] = [
@@ -59,6 +60,18 @@ export function MobileHeader({ onOpenDrawer }: MobileHeaderProps) {
           );
         })}
       </div>
+
+      {/* Nút Quét Hóa Đơn AI Nhanh */}
+      {onOpenScanner && (
+        <button
+          onClick={onOpenScanner}
+          aria-label="Quét hóa đơn bằng AI"
+          className="w-8 h-8 rounded-lg bg-indigo-50 active:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-all cursor-pointer border border-indigo-200/80"
+          title="Quét hóa đơn thông minh 📷"
+        >
+          <Camera className="w-4 h-4" />
+        </button>
+      )}
 
       {/* Cloud Sync Status Mini Indicator */}
       <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">

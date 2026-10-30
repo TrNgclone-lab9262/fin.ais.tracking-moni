@@ -12,6 +12,7 @@ import {
   RotateCcw,
   CloudOff,
   RefreshCw,
+  Camera,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { getMonthDisplayLabel } from "@/lib/formatters";
@@ -21,6 +22,7 @@ interface TopBarProps {
   onOpenBackupModal: () => void;
   onOpenResetConfirm: () => void;
   onToggleMobileMenu: () => void;
+  onOpenScanner?: () => void;
 }
 
 export function TopBar({
@@ -28,6 +30,7 @@ export function TopBar({
   onOpenBackupModal,
   onOpenResetConfirm,
   onToggleMobileMenu,
+  onOpenScanner,
 }: TopBarProps) {
   const {
     selectedMonth,
@@ -245,6 +248,19 @@ export function TopBar({
               <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
               <span>Mẫu demo</span>
             </button>
+
+            {/* Nút Quét hóa đơn AI */}
+            {onOpenScanner && (
+              <button
+                onClick={onOpenScanner}
+                title="Quét hóa đơn thông minh bằng Gemini Vision AI"
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-all shadow-xs cursor-pointer active:scale-95"
+              >
+                <Camera className="w-4 h-4 text-indigo-600" />
+                <span className="hidden xl:inline">Quét hóa đơn AI</span>
+                <span className="xl:hidden">Quét 📷</span>
+              </button>
+            )}
 
             {/* Nút Thêm giao dịch */}
             <button

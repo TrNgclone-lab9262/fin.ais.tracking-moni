@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Inner Soft Glow Frame -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="3" />
+
+  <!-- Main House Icon Body -->
+  <g filter="url(#shadow)">
+    <!-- House Roof -->
+    <path d="M 256 100 L 110 220 C 104 225 108 236 116 236 L 146 236 L 146 380 C 146 392 156 402 168 402 L 344 402 C 356 402 366 392 366 380 L 366 236 L 396 236 C 404 236 408 225 402 220 Z" fill="url(#accentGrad)" />
+
+    <!-- Chimney -->
+    <path d="M 320 120 L 350 120 L 350 180 L 320 155 Z" fill="#1D4ED8" />
+
+    <!-- Center Coin / Money Vault Symbol -->
+    <circle cx="256" cy="296" r="64" fill="url(#goldGrad)" stroke="#FFFFFF" stroke-width="4" />
+    <path d="M 256 256 L 256 336 M 240 272 C 240 262 272 262 272 278 C 272 296 240 294 240 312 C 240 328 272 328 272 318" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" />
+  </g>
+
+  <!-- Dual Stars / Duo Dots representing Husband (Chuột) & Wife (Mèo) -->
+  <circle cx="204" cy="180" r="14" fill="#93C5FD" opacity="0.95" />
+  <circle cx="308" cy="180" r="14" fill="#F472B6" opacity="0.95" />
+</svg>
