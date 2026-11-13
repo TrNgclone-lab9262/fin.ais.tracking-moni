@@ -111,6 +111,18 @@ export interface InvestmentItem {
   memberId?: FamilyMember;
 }
 
+export type AuthMemberId = 'HUSBAND' | 'WIFE';
+
+export interface MemberAuthConfig {
+  passcodeHash?: string;
+  passcodeSalt?: string;
+  webauthnCredentialId?: string;
+  webauthnDeviceLabel?: string;
+  wallpaperBlur?: number;  // 0 | 8 | 16 px
+  wallpaperDim?: number;   // 35 | 55 | 75 %
+  updatedAt?: string;
+}
+
 export interface AppSettings {
   themeColor: ThemeColor;
   currency: 'VND';
@@ -119,7 +131,13 @@ export interface AppSettings {
   wifeName: string;
   sharedSplitRatioHusband?: number; // % đóng góp quỹ chung của Chồng (mặc định 50)
   privacyMode?: boolean;            // Ẩn số tiền nhạy cảm
-  pinCode?: string;                 // Mã PIN 4 số tùy chọn
+  pinCode?: string;                 // Legacy PIN 4 số (tự động nâng cấp sang passcodeHash)
+  requireAuthOnOpen?: boolean;      // Yêu cầu xác thực /login mỗi khi mở ứng dụng
+  autoLockMinutes?: number;         // Tự động khóa sau X phút không thao tác (0 = tắt)
+  lockOnBackground?: boolean;       // Tự động khóa khi ẩn ứng dụng xuống nền
+  authActiveProfile?: AuthMemberId; // Hồ sơ đăng nhập gần nhất trên /login
+  husbandAuth?: MemberAuthConfig;   // Cấu hình Code, Face ID & nền khóa của Anh Chuột
+  wifeAuth?: MemberAuthConfig;      // Cấu hình Code, Face ID & nền khóa của Bé Mèo
 }
 
 export interface AppNotification {

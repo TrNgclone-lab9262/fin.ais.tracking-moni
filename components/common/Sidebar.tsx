@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
+  Lock,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -42,6 +43,7 @@ export function Sidebar() {
     budgetSummary,
     debts,
     settings,
+    lockApp,
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
@@ -254,26 +256,43 @@ export function Sidebar() {
 
       {/* 4. Footer */}
       {!isCollapsed ? (
-        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-200 bg-blue-950/30 shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-white flex items-center gap-1.5 truncate">
-              <span>👨 {settings.husbandName}</span>
-              <Heart className="w-3 h-3 text-rose-400 fill-rose-400 inline shrink-0" />
-              <span>{settings.wifeName} 👩</span>
-            </span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Local-First Sync" />
-          </div>
-          <div className="flex items-center justify-between text-[10px] text-blue-300/80 mt-1">
-            <span>HOME MONI v{APP_VERSION}</span>
-            <span className="text-emerald-300 font-medium">Bảo mật cục bộ</span>
+        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-200 bg-blue-950/30 shrink-0 space-y-2.5">
+          <button
+            type="button"
+            onClick={lockApp}
+            className="w-full py-2 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Khóa màn hình (/login)</span>
+          </button>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white flex items-center gap-1.5 truncate">
+                <span>👨 {settings.husbandName}</span>
+                <Heart className="w-3 h-3 text-rose-400 fill-rose-400 inline shrink-0" />
+                <span>{settings.wifeName} 👩</span>
+              </span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Local-First Sync" />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-blue-300/80 mt-1">
+              <span>HOME MONI v{APP_VERSION}</span>
+              <span className="text-emerald-300 font-medium">Bảo mật cục bộ</span>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="p-3.5 border-t border-blue-800/40 flex justify-center shrink-0 group relative">
+        <div className="p-3 border-t border-blue-800/40 flex flex-col items-center gap-2.5 shrink-0 group relative">
+          <button
+            type="button"
+            onClick={lockApp}
+            title="Khóa màn hình (/login)"
+            aria-label="Khóa màn hình /login"
+            className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-          <div className="absolute left-full bottom-2 ml-3 px-2.5 py-1 bg-slate-900/95 text-white text-[10px] font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 border border-slate-700/50">
-            🟢 Local-First đã sẵn sàng
-          </div>
         </div>
       )}
     </aside>

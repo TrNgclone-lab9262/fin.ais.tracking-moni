@@ -43,6 +43,7 @@ export function PlanningView() {
     updateRecurringRule,
     deleteRecurringRule,
     applyRecurringRule,
+    applyAllPendingRecurringRules,
     getCategoryById,
     getAccountById,
   } = useFinance();
@@ -524,13 +525,25 @@ export function PlanningView() {
                 Tiền lương, tiền thuê nhà, internet, gửi tiết kiệm... ghi sổ 1 chạm mỗi tháng ({activeMonthKey})
               </p>
             </div>
-            <button
-              onClick={openCreateRule}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs sm:text-sm font-bold shadow-xs active:scale-95 transition-all self-start sm:self-auto cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Thêm quy tắc định kỳ</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              {recurringRules.some((r) => r.isActive && r.lastAppliedMonth !== activeMonthKey) && (
+                <button
+                  type="button"
+                  onClick={() => applyAllPendingRecurringRules(activeMonthKey)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs sm:text-sm font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Ghi sổ tất cả</span>
+                </button>
+              )}
+              <button
+                onClick={openCreateRule}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs sm:text-sm font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Thêm quy tắc định kỳ</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

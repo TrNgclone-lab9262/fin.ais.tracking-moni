@@ -74,10 +74,10 @@ async function startServer() {
     }
 
     return res.json({
-      version: '1.3.0',
-      buildId: 'v1.3.0-pwa-autoupdate',
-      releasedAt: '2026-10-31',
-      title: 'Cập nhật PWA một chạm & Thông báo bản mới trên di động',
+      version: '1.4.0',
+      buildId: 'v1.4.0-login-security',
+      releasedAt: '2026-11-13',
+      title: 'Màn hình khóa /login đôi, Face ID di động & Ảnh nền riêng cho 2 vợ chồng',
       mandatory: false,
       highlights: [],
     });

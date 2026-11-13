@@ -1,13 +1,13 @@
 {
-  "version": "1.3.0",
-  "buildId": "v1.3.0-pwa-autoupdate",
-  "releasedAt": "2026-10-31",
-  "title": "Cập nhật PWA một chạm & Thông báo bản mới trên di động",
+  "version": "1.4.0",
+  "buildId": "v1.4.0-login-security",
+  "releasedAt": "2026-11-13",
+  "title": "Màn hình khóa /login đôi, Face ID di động & Ảnh nền riêng cho 2 vợ chồng",
   "mandatory": false,
   "highlights": [
-    "Tự động phát hiện phiên bản mới ngay khi mở ứng dụng hoặc quay lại từ nền trên iPhone & Android.",
-    "Thông báo gọn gàng kèm nút Cập nhật ngay 1 chạm, không làm gián đoạn khi đang nhập giao dịch.",
-    "Bổ sung Trung tâm Phiên bản trong Cài đặt: xem ghi chú thay đổi và nút Kiểm tra cập nhật thủ công.",
-    "Bảo toàn 100% dữ liệu thu chi, thẻ tín dụng và mã PIN lưu cục bộ trên thiết bị khi nâng cấp."
+    "Thiết kế trang /login bo góc hiện đại dành riêng cho Anh Chuột & Bé Mèo kèm bàn phím số 4–6 chữ số mã hóa SHA-256.",
+    "Hỗ trợ mở khóa 1 chạm bằng Face ID / Sinh trắc học WebAuthn trên điện thoại cùng mã Code dự phòng.",
+    "Cho phép mỗi người tự tải ảnh cá nhân từ thư viện thiết bị làm hình nền màn hình khóa và chỉnh độ mờ/tối.",
+    "Hoàn thiện Trung tâm thông báo di động, ghi sổ định kỳ 1 chạm, xuất báo cáo CSV/Excel và tự động khóa phiên."
   ]
 }

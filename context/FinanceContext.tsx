@@ -25,12 +25,15 @@ import {
   FamilyMember,
   ExpenseScope,
   RecurringRule,
+  AuthMemberId,
+  MemberAuthConfig,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
   saveStoredDataV3,
   seedInitialDataV3,
   exportDataToJsonV3,
+  exportTransactionsToCsv,
   importDataFromJsonV3,
   recalculateAccountBalances,
 } from "@/lib/storage";
@@ -50,9 +53,16 @@ import {
   calculateTodaySpent,
   calculateCreditCardCycleInfo,
   calculateCoupleSettlement,
+  shiftMonthKey,
   CoupleSettlementResult,
   CreditCardCycleStatus,
 } from "@/lib/financeEngine";
+import {
+  hashPasscode,
+  verifyPasscode,
+  hasAnyAppPasscode,
+  getMemberAuthConfig,
+} from "@/lib/authSecurity";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { supabaseService } from "@/lib/supabaseService";
 
@@ -124,12 +134,18 @@ interface FinanceContextType {
   activePerspective: PerspectiveMode;
   setActivePerspective: (mode: PerspectiveMode) => void;
 
-  // Chế độ riêng tư & Khóa PIN
+  // Chế độ riêng tư, /login & Khóa bảo mật đa thành viên
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
   isAppLocked: boolean;
-  unlockApp: (pin: string) => boolean;
+  hasPasscodeProtection: boolean;
+  unlockWithPasscode: (member: AuthMemberId, code: string) => Promise<boolean>;
+  unlockWithBiometricSuccess: (member: AuthMemberId, switchPerspective?: boolean) => void;
+  setMemberPasscode: (member: AuthMemberId, newCode: string) => Promise<void>;
+  clearMemberPasscode: (member: AuthMemberId) => void;
+  updateMemberAuthConfig: (member: AuthMemberId, patch: Partial<MemberAuthConfig>) => void;
   lockApp: () => void;
+  bypassLockForFirstSetup: (member: AuthMemberId) => void;
 
   categories: Category[];
   accounts: Account[];
@@ -196,12 +212,14 @@ interface FinanceContextType {
   updateRecurringRule: (id: string, rule: Partial<RecurringRule>) => void;
   deleteRecurringRule: (id: string) => void;
   applyRecurringRule: (id: string, targetMonth?: string) => Transaction | null;
+  applyAllPendingRecurringRules: (targetMonth?: string) => number;
 
   // Cài đặt & Sao lưu
   updateSettings: (settings: Partial<AppSettings>) => void;
   markNotificationRead: (id: string) => void;
   resetToMockData: () => void;
   exportBackup: () => void;
+  exportCsvReport: () => void;
   importBackup: (file: File) => Promise<{ success: boolean; error?: string }>;
 
   // Dữ liệu tính toán & Helpers
@@ -252,7 +270,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
   // Bộ lọc
-  const [selectedMonth, setSelectedMonth] = useState<string>("2026-10");
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentMonthKey());
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [selectedType, setSelectedType] = useState<"ALL" | TransactionType>("ALL");
   const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
@@ -309,7 +327,27 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setInvestments(data.investments);
     setRecurringRules(data.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(data.settings);
-    if (data.settings.pinCode && /^\d{4}$/.test(data.settings.pinCode)) {
+
+    // Chọn tháng mặc định thông minh: ưu tiên tháng hiện tại nếu có dữ liệu, ngược lại dùng tháng gần nhất có giao dịch
+    const currentKey = getCurrentMonthKey();
+    const hasCurrentData =
+      data.transactions.some((tx) => tx.date.startsWith(currentKey)) ||
+      data.budgets.some((b) => b.month === currentKey);
+    if (hasCurrentData) {
+      setSelectedMonth(currentKey);
+    } else if (data.transactions.length > 0) {
+      const sortedMonths = data.transactions
+        .map((tx) => tx.date.slice(0, 7))
+        .filter((m) => /^\d{4}-\d{2}$/.test(m))
+        .sort((a, b) => b.localeCompare(a));
+      if (sortedMonths[0]) {
+        setSelectedMonth(sortedMonths[0]);
+      }
+    }
+
+    const isDirectLoginRoute =
+      typeof window !== "undefined" && window.location.pathname === "/login";
+    if (hasAnyAppPasscode(data.settings) || data.settings.requireAuthOnOpen || isDirectLoginRoute) {
       setIsAppLocked(true);
     }
 
@@ -376,29 +414,200 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [accounts]
   );
 
-  // Privacy & PIN Lock
+  // Privacy, /login Route & Multi-Member Security Lock
   const isPrivacyMode = Boolean(settings.privacyMode);
+  const hasPasscodeProtection = useMemo(() => hasAnyAppPasscode(settings), [settings]);
 
   const togglePrivacyMode = useCallback(() => {
     setSettings((prev) => ({ ...prev, privacyMode: !prev.privacyMode }));
   }, []);
 
-  const unlockApp = useCallback(
-    (pin: string) => {
-      if (!settings.pinCode || pin === settings.pinCode) {
+  const unlockWithPasscode = useCallback(
+    async (member: AuthMemberId, code: string): Promise<boolean> => {
+      const cleaned = code.trim();
+      const memberCfg = getMemberAuthConfig(settings, member);
+      const otherMember: AuthMemberId = member === "HUSBAND" ? "WIFE" : "HUSBAND";
+      const otherCfg = getMemberAuthConfig(settings, otherMember);
+
+      let isValid = false;
+      if (memberCfg.passcodeHash && memberCfg.passcodeSalt) {
+        isValid = await verifyPasscode(cleaned, memberCfg.passcodeHash, memberCfg.passcodeSalt);
+      } else if (otherCfg.passcodeHash && otherCfg.passcodeSalt) {
+        // Cho phép dùng mã gia đình của thành viên còn lại nếu thành viên này chưa đặt mã riêng
+        isValid = await verifyPasscode(cleaned, otherCfg.passcodeHash, otherCfg.passcodeSalt);
+      } else if (settings.pinCode && cleaned === settings.pinCode) {
+        isValid = true;
+        // Tự động nâng cấp PIN thuần văn bản cũ sang băm SHA-256 + salt
+        const upgraded = await hashPasscode(cleaned);
+        setSettings((prev) => ({
+          ...prev,
+          pinCode: "",
+          authActiveProfile: member,
+          [member === "HUSBAND" ? "husbandAuth" : "wifeAuth"]: {
+            ...getMemberAuthConfig(prev, member),
+            passcodeHash: upgraded.hash,
+            passcodeSalt: upgraded.salt,
+            updatedAt: new Date().toISOString(),
+          },
+        }));
+      } else if (!hasAnyAppPasscode(settings)) {
+        isValid = true;
+      }
+
+      if (isValid) {
         setIsAppLocked(false);
+        setSettings((prev) => ({ ...prev, authActiveProfile: member }));
+        if (typeof window !== "undefined" && window.location.pathname === "/login") {
+          window.history.replaceState(null, "", "/");
+        }
         return true;
       }
       return false;
     },
-    [settings.pinCode]
+    [settings]
+  );
+
+  const unlockWithBiometricSuccess = useCallback(
+    (member: AuthMemberId, switchPerspective = false) => {
+      setIsAppLocked(false);
+      setSettings((prev) => ({ ...prev, authActiveProfile: member }));
+      if (switchPerspective) {
+        setActivePerspective(member);
+      }
+      if (typeof window !== "undefined" && window.location.pathname === "/login") {
+        window.history.replaceState(null, "", "/");
+      }
+    },
+    []
+  );
+
+  const setMemberPasscode = useCallback(async (member: AuthMemberId, newCode: string) => {
+    const { hash, salt } = await hashPasscode(newCode);
+    setSettings((prev) => ({
+      ...prev,
+      pinCode: "",
+      requireAuthOnOpen: true,
+      authActiveProfile: member,
+      [member === "HUSBAND" ? "husbandAuth" : "wifeAuth"]: {
+        ...getMemberAuthConfig(prev, member),
+        passcodeHash: hash,
+        passcodeSalt: salt,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  }, []);
+
+  const clearMemberPasscode = useCallback((member: AuthMemberId) => {
+    setSettings((prev) => {
+      const targetKey = member === "HUSBAND" ? "husbandAuth" : "wifeAuth";
+      const currentTarget = getMemberAuthConfig(prev, member);
+      const updatedTarget: MemberAuthConfig = {
+        ...currentTarget,
+        passcodeHash: undefined,
+        passcodeSalt: undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      const nextSettings: AppSettings = {
+        ...prev,
+        pinCode: "",
+        [targetKey]: updatedTarget,
+      };
+      if (!hasAnyAppPasscode(nextSettings)) {
+        nextSettings.requireAuthOnOpen = false;
+      }
+      return nextSettings;
+    });
+  }, []);
+
+  const updateMemberAuthConfig = useCallback(
+    (member: AuthMemberId, patch: Partial<MemberAuthConfig>) => {
+      setSettings((prev) => {
+        const key = member === "HUSBAND" ? "husbandAuth" : "wifeAuth";
+        const current = getMemberAuthConfig(prev, member);
+        return {
+          ...prev,
+          [key]: {
+            ...current,
+            ...patch,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      });
+    },
+    []
   );
 
   const lockApp = useCallback(() => {
-    if (settings.pinCode && /^\d{4}$/.test(settings.pinCode)) {
-      setIsAppLocked(true);
+    setIsAppLocked(true);
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.history.pushState(null, "", "/login");
     }
-  }, [settings.pinCode]);
+  }, []);
+
+  const bypassLockForFirstSetup = useCallback((member: AuthMemberId) => {
+    setIsAppLocked(false);
+    setSettings((prev) => ({ ...prev, authActiveProfile: member }));
+    if (typeof window !== "undefined" && window.location.pathname === "/login") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
+
+  // Đồng bộ nút Back/Forward của trình duyệt với tuyến /login
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopState = () => {
+      if (window.location.pathname === "/login") {
+        setIsAppLocked(true);
+      } else if (!hasAnyAppPasscode(settings)) {
+        setIsAppLocked(false);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [settings]);
+
+  // Tự động khóa theo thời gian không thao tác (autoLockMinutes) & khi ẩn ứng dụng (lockOnBackground)
+  useEffect(() => {
+    if (!isLoaded || isAppLocked || !hasPasscodeProtection) return;
+
+    const timeoutMinutes = settings.autoLockMinutes ?? 0;
+    let inactivityTimer: number | undefined;
+
+    const resetTimer = () => {
+      if (inactivityTimer) window.clearTimeout(inactivityTimer);
+      if (timeoutMinutes > 0) {
+        inactivityTimer = window.setTimeout(() => {
+          lockApp();
+        }, timeoutMinutes * 60 * 1000);
+      }
+    };
+
+    const events: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "touchstart"];
+    if (timeoutMinutes > 0) {
+      resetTimer();
+      events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden" && settings.lockOnBackground) {
+        lockApp();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      if (inactivityTimer) window.clearTimeout(inactivityTimer);
+      events.forEach((ev) => window.removeEventListener(ev, resetTimer));
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [
+    isLoaded,
+    isAppLocked,
+    hasPasscodeProtection,
+    settings.autoLockMinutes,
+    settings.lockOnBackground,
+    lockApp,
+  ]);
 
   // CRUD Danh mục
   const addCategory = useCallback((cat: Omit<Category, "id">): Category => {
@@ -867,6 +1076,44 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [recurringRules, selectedMonth, addTransaction]
   );
 
+  const applyAllPendingRecurringRules = useCallback(
+    (targetMonth?: string): number => {
+      const month =
+        targetMonth ||
+        (selectedMonth !== "ALL" ? selectedMonth : getCurrentMonthKey());
+      const pending = recurringRules.filter(
+        (r) => r.isActive && r.lastAppliedMonth !== month
+      );
+      if (pending.length === 0) return 0;
+
+      const batchInputs: TransactionInput[] = pending.map((rule) => {
+        const safeDay = Math.min(28, Math.max(1, rule.dayOfMonth));
+        return {
+          amount: rule.amount,
+          date: `${month}-${String(safeDay).padStart(2, "0")}`,
+          type: rule.type,
+          categoryId: rule.categoryId,
+          accountId: rule.accountId,
+          toAccountId: rule.toAccountId,
+          memberId: rule.memberId,
+          scope: rule.scope,
+          tag: "RECURRING",
+          note: rule.note ? `${rule.name} (${rule.note})` : rule.name,
+        };
+      });
+
+      addTransactionsBatch(batchInputs);
+
+      const pendingIds = new Set(pending.map((p) => p.id));
+      setRecurringRules((prev) =>
+        prev.map((r) => (pendingIds.has(r.id) ? { ...r, lastAppliedMonth: month } : r))
+      );
+
+      return pending.length;
+    },
+    [recurringRules, selectedMonth, addTransactionsBatch]
+  );
+
   const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...newSettings };
@@ -906,6 +1153,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       settings,
     });
   }, [categories, accounts, transactions, budgets, goals, debts, investments, recurringRules, settings]);
+
+  const exportCsvReport = useCallback(() => {
+    exportTransactionsToCsv(
+      transactions,
+      categories,
+      accounts,
+      selectedMonth,
+      settings.husbandName,
+      settings.wifeName
+    );
+  }, [transactions, categories, accounts, selectedMonth, settings.husbandName, settings.wifeName]);
 
   const importBackup = useCallback(
     async (file: File): Promise<{ success: boolean; error?: string }> => {
@@ -1050,7 +1308,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   // Ngân sách tháng (Dynamic daysRemaining)
   const budgetSummary = useMemo<BudgetSummary>(() => {
-    const monthKey = selectedMonth === "ALL" ? "2026-10" : selectedMonth;
+    const monthKey = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
     const currentMonthBudgets = budgets.filter((b) => b.month === monthKey);
 
     const categorySpentMap = new Map<string, number>();
@@ -1195,9 +1453,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return stats.sort((a, b) => b.totalAmount - a.totalAmount);
   }, [transactions, selectedMonth, activePerspective, getCategoryById]);
 
-  // Xu hướng thu chi 6 tháng gần nhất
+  // Xu hướng thu chi 6 tháng gần nhất (trượt động theo tháng đang xem / hiện tại)
   const monthlyTrendData = useMemo<MonthlyTrendItem[]>(() => {
-    const months = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
+    const anchorMonth =
+      selectedMonth !== "ALL"
+        ? selectedMonth
+        : availableMonths[0] || getCurrentMonthKey();
+
+    const months = [-5, -4, -3, -2, -1, 0].map((offset) => shiftMonthKey(anchorMonth, offset));
     const map = new Map<string, { income: number; expense: number }>();
 
     months.forEach((m) => map.set(m, { income: 0, expense: 0 }));
@@ -1224,7 +1487,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         expense: item.expense,
       };
     });
-  }, [transactions, activePerspective]);
+  }, [transactions, activePerspective, selectedMonth, availableMonths]);
 
   // Thông báo động theo 30% Credit Guardrail, Ngân sách & Định kỳ
   const notifications = useMemo<AppNotification[]>(() => {
@@ -1345,8 +1608,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     isPrivacyMode,
     togglePrivacyMode,
     isAppLocked,
-    unlockApp,
+    hasPasscodeProtection,
+    unlockWithPasscode,
+    unlockWithBiometricSuccess,
+    setMemberPasscode,
+    clearMemberPasscode,
+    updateMemberAuthConfig,
     lockApp,
+    bypassLockForFirstSetup,
     categories,
     accounts,
     transactions,
@@ -1396,10 +1665,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateRecurringRule,
     deleteRecurringRule,
     applyRecurringRule,
+    applyAllPendingRecurringRules,
     updateSettings,
     markNotificationRead,
     resetToMockData,
     exportBackup,
+    exportCsvReport,
     importBackup,
     availableMonths,
     summary,

@@ -1,16 +1,21 @@
 "use client";
 
 import React from "react";
-import { Menu, Home, RefreshCw, Camera, Eye, EyeOff } from "lucide-react";
+import { Menu, Home, RefreshCw, Camera, Eye, EyeOff, Bell, Lock } from "lucide-react";
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 
 interface MobileHeaderProps {
   onOpenDrawer: () => void;
   onOpenScanner?: () => void;
+  onOpenNotifications?: () => void;
 }
 
-export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps) {
+export function MobileHeader({
+  onOpenDrawer,
+  onOpenScanner,
+  onOpenNotifications,
+}: MobileHeaderProps) {
   const {
     activePerspective,
     setActivePerspective,
@@ -18,20 +23,23 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
     isSyncing,
     isPrivacyMode,
     togglePrivacyMode,
+    notifications,
+    hasPasscodeProtection,
+    lockApp,
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
 
   const perspectives: { id: PerspectiveMode; label: string; icon: string }[] = [
-    { id: "ALL", label: "Tất cả", icon: "🏡" },
+    { id: "ALL", label: "Chung", icon: "🏡" },
     { id: "HUSBAND", label: "Chuột", icon: "👨" },
     { id: "WIFE", label: "Mèo", icon: "👩" },
   ];
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#DCE4EE] px-3 py-2.5 flex items-center justify-between gap-1.5 shadow-xs">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#DCE4EE] px-2.5 py-2 flex items-center justify-between gap-1 shadow-xs">
       {/* Nút Hamburger + Logo Brand */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0">
         <button
           onClick={onOpenDrawer}
           aria-label={hasUpdate ? "Mở menu tổ ấm (Có bản cập nhật mới)" : "Mở menu tổ ấm"}
@@ -46,12 +54,12 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
           )}
         </button>
 
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-7 h-7 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+        <div className="flex items-center gap-1 min-w-0">
+          <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
             <Home className="w-3.5 h-3.5 stroke-[2.5]" />
           </div>
-          <span className="font-black text-xs sm:text-sm tracking-wide text-[#1E3A8A] truncate">
-            HOME MONI
+          <span className="hidden min-[375px]:inline font-black text-[11px] tracking-wide text-[#1E3A8A] truncate">
+            MONI
           </span>
         </div>
       </div>
@@ -64,20 +72,20 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
             <button
               key={p.id}
               onClick={() => setActivePerspective(p.id)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                 isActive
                   ? "bg-white text-blue-600 shadow-xs"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
               <span>{p.icon}</span>
-              <span className="text-[10px]">{p.label}</span>
+              <span>{p.label}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         {/* Privacy Eye Toggle */}
         <button
           onClick={togglePrivacyMode}
@@ -89,7 +97,40 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
               : "bg-slate-100 text-slate-600 border-slate-200/80"
           }`}
         >
-          {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+        </button>
+
+        {/* Chuông thông báo di động */}
+        {onOpenNotifications && (
+          <button
+            type="button"
+            onClick={onOpenNotifications}
+            aria-label="Thông báo & cảnh báo"
+            title="Cảnh báo gia đình"
+            className="relative w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200/80 flex items-center justify-center transition-all cursor-pointer"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            {notifications.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center border border-white">
+                {notifications.length > 9 ? "9+" : notifications.length}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Khóa /login */}
+        <button
+          type="button"
+          onClick={lockApp}
+          aria-label="Khóa ứng dụng"
+          title="Mở màn hình khóa /login"
+          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+            hasPasscodeProtection
+              ? "bg-blue-50 text-blue-600 border-blue-200"
+              : "bg-slate-100 text-slate-600 border-slate-200/80"
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5" />
         </button>
 
         {/* Nút Quét Hóa Đơn AI Nhanh */}
@@ -100,18 +141,18 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
             className="w-8 h-8 rounded-lg bg-indigo-50 active:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-all cursor-pointer border border-indigo-200/80"
             title="Quét hóa đơn thông minh"
           >
-            <Camera className="w-4 h-4" />
+            <Camera className="w-3.5 h-3.5" />
           </button>
         )}
 
         {/* Sync dot */}
-        <div className="flex items-center">
+        <div className="hidden min-[380px]:flex items-center pl-0.5">
           {isSyncing ? (
-            <RefreshCw className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+            <RefreshCw className="w-3 h-3 text-blue-600 animate-spin" />
           ) : isCloudConnected ? (
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100" title="Cloud Sync Hoạt động" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-100" title="Cloud Sync Hoạt động" />
           ) : (
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" title="Local-first Storage" />
+            <span className="w-2 h-2 rounded-full bg-slate-400" title="Local-first Storage" />
           )}
         </div>
       </div>

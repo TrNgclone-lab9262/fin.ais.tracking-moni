@@ -200,6 +200,77 @@ export function exportDataToJsonV3(state: StoredAppStateV3): void {
   URL.revokeObjectURL(url);
 }
 
+function escapeCsvCell(value: string): string {
+  const safe = value.replace(/"/g, '""');
+  return `"${safe}"`;
+}
+
+/**
+ * Xuất danh sách giao dịch ra tệp CSV chuẩn UTF-8 BOM (mở trực tiếp bằng Excel / Google Sheets)
+ */
+export function exportTransactionsToCsv(
+  transactions: Transaction[],
+  categories: Category[],
+  accounts: Account[],
+  monthFilter: string,
+  husbandName = "Anh Chuột",
+  wifeName = "Bé Mèo"
+): void {
+  const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
+  const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
+
+  const filtered = transactions
+    .filter((tx) => monthFilter === "ALL" || tx.date.startsWith(monthFilter))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const headers = [
+    "Mã GD",
+    "Ngày",
+    "Loại",
+    "Số tiền (VND)",
+    "Danh mục",
+    "Tài khoản nguồn",
+    "Tài khoản đích",
+    "Thành viên",
+    "Phạm vi",
+    "Ghi chú",
+  ];
+
+  const rows = filtered.map((tx) => {
+    const typeLabel =
+      tx.type === "INCOME" ? "Thu nhập" : tx.type === "EXPENSE" ? "Chi tiêu" : "Chuyển khoản";
+    const memberLabel =
+      tx.memberId === "HUSBAND" ? husbandName : tx.memberId === "WIFE" ? wifeName : "Chung";
+    const scopeLabel = tx.scope === "FAMILY" ? "Chung gia đình" : "Cá nhân";
+
+    return [
+      escapeCsvCell(tx.id),
+      escapeCsvCell(tx.date),
+      escapeCsvCell(typeLabel),
+      String(tx.amount),
+      escapeCsvCell(categoryMap.get(tx.categoryId) || tx.categoryId),
+      escapeCsvCell(accountMap.get(tx.accountId) || tx.accountId),
+      escapeCsvCell(tx.toAccountId ? accountMap.get(tx.toAccountId) || tx.toAccountId : ""),
+      escapeCsvCell(memberLabel),
+      escapeCsvCell(scopeLabel),
+      escapeCsvCell(tx.note || ""),
+    ].join(",");
+  });
+
+  const csvContent = "\uFEFF" + [headers.map(escapeCsvCell).join(","), ...rows].join("\r\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const label = monthFilter === "ALL" ? "toan_thoi_gian" : monthFilter;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `home_moni_bao_cao_${label}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Nhập dữ liệu sao lưu JSON
  */

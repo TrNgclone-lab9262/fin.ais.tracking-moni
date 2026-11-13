@@ -1,12 +1,12 @@
 /**
  * @file sw.js
- * @description Service Worker cho HOME MONI v1.3.0
+ * @description Service Worker cho HOME MONI v1.4.0
  * - Quản lý vòng đời cập nhật an toàn: giữ bản mới ở trạng thái `waiting` và chỉ kích hoạt khi người dùng bấm "Cập nhật ngay" (`SKIP_WAITING`).
  * - Chỉ dọn bộ nhớ đệm vỏ ứng dụng (CacheStorage), tuyệt đối không đụng chạm tới `localStorage` (`HOME_MONI_DATA_V4`).
  * - Bỏ qua cache cho `/api/*`, `/version.json`, `/sw.js` và dùng Network-First cho HTML điều hướng để tránh lỗi màn hình trắng sau khi nâng cấp.
  */
 
-const SW_VERSION = '1.3.0';
+const SW_VERSION = '1.4.0';
 const CACHE_PREFIX = 'homemoni-pwa-';
 const CACHE_NAME = `${CACHE_PREFIX}v${SW_VERSION}`;
 const STATIC_ASSETS = [

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileJson,
+  FileSpreadsheet,
   ShieldCheck,
   RotateCcw,
 } from "lucide-react";
@@ -24,7 +25,14 @@ export function ExportImportModal({
   onClose,
   onOpenResetDemo,
 }: ExportImportModalProps) {
-  const { transactions, categories, exportBackup, importBackup } = useFinance();
+  const {
+    transactions,
+    categories,
+    selectedMonth,
+    exportBackup,
+    exportCsvReport,
+    importBackup,
+  } = useFinance();
   const [activeTab, setActiveTab] = useState<"EXPORT" | "IMPORT">("EXPORT");
   const [importStatus, setImportStatus] = useState<{
     type: "idle" | "loading" | "success" | "error";
@@ -153,13 +161,26 @@ export function ExportImportModal({
                 </div>
               </div>
 
-              <button
-                onClick={handleExport}
-                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm rounded-md transition-all shadow-xs flex items-center justify-center gap-2 active:scale-95"
-              >
-                <Download className="w-4 h-4" />
-                Tải file sao lưu JSON về máy (.json)
-              </button>
+              <div className="space-y-2.5">
+                <button
+                  onClick={handleExport}
+                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm rounded-md transition-all shadow-xs flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  Tải file sao lưu JSON về máy (.json)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportCsvReport}
+                  className="w-full py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs sm:text-sm rounded-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span>
+                    Xuất báo cáo Excel / CSV ({selectedMonth === "ALL" ? "Tất cả" : selectedMonth})
+                  </span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">

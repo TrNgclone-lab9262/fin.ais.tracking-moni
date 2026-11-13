@@ -21,6 +21,7 @@ export function MobilePlanningView() {
     deleteGoal,
     setCategoryBudget,
     applyRecurringRule,
+    applyAllPendingRecurringRules,
   } = useFinance();
 
   const [activeTab, setActiveTab] = useState<"GOALS" | "BUDGET">("GOALS");
@@ -343,6 +344,15 @@ export function MobilePlanningView() {
                   <Repeat className="w-3.5 h-3.5 text-blue-600" />
                   <span>Thu/Chi Định Kỳ ({activeMonthKey})</span>
                 </span>
+                {recurringRules.some((r) => r.isActive && r.lastAppliedMonth !== activeMonthKey) && (
+                  <button
+                    type="button"
+                    onClick={() => applyAllPendingRecurringRules(activeMonthKey)}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    Ghi sổ hết
+                  </button>
+                )}
               </div>
 
               <div className="bg-white rounded-xl border border-[#DCE4EE] shadow-xs divide-y divide-slate-100 overflow-hidden">

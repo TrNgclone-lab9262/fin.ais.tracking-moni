@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Lock } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { Sidebar } from "@/components/common/Sidebar";
@@ -35,6 +34,8 @@ import { PWAInstallBanner } from "@/components/common/PWAInstallBanner";
 import { PWAUpdateBanner } from "@/components/common/PWAUpdateBanner";
 import { ReleaseNotesModal } from "@/components/common/ReleaseNotesModal";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
+import { LoginGateView } from "@/components/auth/LoginGateView";
+import { MobileNotificationSheet } from "@/components/mobile/sheets/MobileNotificationSheet";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
@@ -47,7 +48,6 @@ export default function HomePage() {
     addTransactionsBatch,
     accounts,
     isAppLocked,
-    unlockApp,
   } = useFinance();
 
   const {
@@ -62,8 +62,7 @@ export default function HomePage() {
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
-  const [pinEntry, setPinEntry] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
 
   // Responsive layout detection to prevent mounting hidden DOM tree with 0x0 Recharts containers
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -97,58 +96,9 @@ export default function HomePage() {
     );
   }
 
-  // PIN Lock Gate
+  // Couple /login Security Gate (Profile + Access Code + Face ID + Personal Wallpaper)
   if (isAppLocked) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8] flex items-center justify-center p-4">
-        <div className="w-full max-w-xs bg-white rounded-2xl p-6 shadow-2xl space-y-4 text-center">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
-            <Lock className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-[#172B4D]">HOME MONI Đang Khóa</h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Nhập mã PIN 4 số để mở sổ tài chính tổ ấm
-            </p>
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (unlockApp(pinEntry)) {
-                setPinEntry("");
-                setPinError(false);
-              } else {
-                setPinError(true);
-              }
-            }}
-            className="space-y-3"
-          >
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              autoFocus
-              value={pinEntry}
-              onChange={(e) => {
-                setPinEntry(e.target.value.replace(/[^0-9]/g, "").slice(0, 4));
-                setPinError(false);
-              }}
-              placeholder="••••"
-              className="w-full text-center text-2xl font-black tracking-[0.5em] bg-slate-50 border border-slate-200 rounded-xl py-3 outline-none focus:border-blue-600"
-            />
-            {pinError && (
-              <p className="text-xs font-bold text-rose-600">Mã PIN không đúng, vui lòng thử lại.</p>
-            )}
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
-            >
-              Mở khóa
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    return <LoginGateView />;
   }
 
   // Luồng render View cho Desktop
@@ -272,6 +222,7 @@ export default function HomePage() {
           <MobileHeader
             onOpenDrawer={() => setIsMobileMenuOpen(true)}
             onOpenScanner={() => setIsGlobalScannerOpen(true)}
+            onOpenNotifications={() => setIsMobileNotifOpen(true)}
           />
 
           <main className="p-3.5 space-y-3.5">
@@ -293,6 +244,11 @@ export default function HomePage() {
       <MobileDrawer
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+      />
+
+      <MobileNotificationSheet
+        isOpen={isMobileNotifOpen}
+        onClose={() => setIsMobileNotifOpen(false)}
       />
 
       <MobileNumpadSheet

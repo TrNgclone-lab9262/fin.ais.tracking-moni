@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Shield,
   Download,
@@ -23,10 +23,26 @@ import {
   WifiOff,
   ChevronDown,
   ChevronUp,
+  ScanFace,
+  ImagePlus,
+  KeyRound,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { formatCheckTimestamp } from "@/constants/appVersion";
+import { AuthMemberId } from "@/types/finance";
+import {
+  checkBiometricAvailability,
+  compressDeviceWallpaper,
+  getMemberAuthConfig,
+  hasMemberPasscode,
+  loadMemberWallpapers,
+  MemberWallpaperMap,
+  registerMemberBiometric,
+  removeMemberWallpaper,
+  saveMemberWallpaper,
+  BiometricAvailability,
+} from "@/lib/authSecurity";
 
 interface SettingsViewProps {
   onOpenBackupModal: () => void;
@@ -50,6 +66,11 @@ export function SettingsView({
     addCategory,
     deleteCategory,
     setActiveTab,
+    setMemberPasscode,
+    clearMemberPasscode,
+    updateMemberAuthConfig,
+    lockApp,
+    hasPasscodeProtection,
   } = useFinance();
 
   const {
@@ -72,10 +93,24 @@ export function SettingsView({
   const [husbandName, setHusbandName] = useState(settings.husbandName);
   const [wifeName, setWifeName] = useState(settings.wifeName);
   const [splitRatio, setSplitRatio] = useState(settings.sharedSplitRatioHusband ?? 50);
-  const [pinInput, setPinInput] = useState(settings.pinCode || "");
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [aiServerReady, setAiServerReady] = useState<boolean | null>(null);
   const [showMobileUpdateGuide, setShowMobileUpdateGuide] = useState(false);
+
+  // /login & Lock Screen Security state per member
+  const [securityMember, setSecurityMember] = useState<AuthMemberId>(
+    settings.authActiveProfile || "HUSBAND"
+  );
+  const [passcodeInput, setPasscodeInput] = useState("");
+  const [passcodeConfirm, setPasscodeConfirm] = useState("");
+  const [wallpapers, setWallpapers] = useState<MemberWallpaperMap>({});
+  const [bioAvailability, setBioAvailability] = useState<BiometricAvailability>({
+    supported: false,
+    platformAuthenticatorAvailable: false,
+  });
+  const [isBioBusy, setIsBioBusy] = useState(false);
+  const [isUploadingWallpaper, setIsUploadingWallpaper] = useState(false);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
 
   // Quick Category Form
   const [newCatName, setNewCatName] = useState("");
@@ -86,15 +121,25 @@ export function SettingsView({
     setHusbandName(settings.husbandName);
     setWifeName(settings.wifeName);
     setSplitRatio(settings.sharedSplitRatioHusband ?? 50);
-    setPinInput(settings.pinCode || "");
   }, [settings]);
+
+  useEffect(() => {
+    setWallpapers(loadMemberWallpapers());
+    void checkBiometricAvailability().then(setBioAvailability);
+  }, []);
 
   useEffect(() => {
     fetch("/api/health")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d && typeof d.geminiConfigured === "boolean") {
-          setAiServerReady(d.geminiConfigured);
+        if (d) {
+          const ready =
+            typeof d.aiConfigured === "boolean"
+              ? d.aiConfigured
+              : typeof d.geminiConfigured === "boolean"
+              ? d.geminiConfigured
+              : false;
+          setAiServerReady(ready);
         }
       })
       .catch(() => setAiServerReady(false));
@@ -102,7 +147,7 @@ export function SettingsView({
 
   const flashSaved = (msg: string) => {
     setSavedToast(msg);
-    setTimeout(() => setSavedToast(null), 2500);
+    setTimeout(() => setSavedToast(null), 2800);
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -115,15 +160,90 @@ export function SettingsView({
     flashSaved("Đã lưu cấu hình thành viên & tỷ lệ quỹ chung.");
   };
 
-  const handleSavePin = (e: React.FormEvent) => {
+  const activeSecurityConfig = getMemberAuthConfig(settings, securityMember);
+  const activeSecurityName =
+    securityMember === "HUSBAND" ? settings.husbandName : settings.wifeName;
+  const activeMemberHasCode = hasMemberPasscode(settings, securityMember);
+  const activeMemberWallpaper = wallpapers[securityMember];
+
+  const handleSaveMemberPasscode = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleaned = pinInput.replace(/[^0-9]/g, "");
-    if (cleaned.length > 0 && cleaned.length !== 4) {
-      flashSaved("Mã PIN bảo mật phải gồm đúng 4 chữ số.");
+    const cleaned = passcodeInput.replace(/[^0-9]/g, "");
+    if (!/^\d{4,6}$/.test(cleaned)) {
+      flashSaved("Mã Code bảo mật phải gồm 4 đến 6 chữ số.");
       return;
     }
-    updateSettings({ pinCode: cleaned || undefined });
-    flashSaved(cleaned ? "Đã bật khóa ứng dụng bằng PIN 4 số." : "Đã tắt khóa mã PIN.");
+    if (passcodeConfirm && cleaned !== passcodeConfirm.replace(/[^0-9]/g, "")) {
+      flashSaved("Mã Code xác nhận chưa khớp.");
+      return;
+    }
+    await setMemberPasscode(securityMember, cleaned);
+    setPasscodeInput("");
+    setPasscodeConfirm("");
+    flashSaved(`Đã cập nhật mã Code ${cleaned.length} số cho ${activeSecurityName}.`);
+  };
+
+  const handleClearMemberPasscode = () => {
+    clearMemberPasscode(securityMember);
+    setPasscodeInput("");
+    setPasscodeConfirm("");
+    flashSaved(`Đã gỡ mã Code cho ${activeSecurityName}.`);
+  };
+
+  const handleToggleBiometric = async () => {
+    if (activeSecurityConfig.webauthnCredentialId) {
+      updateMemberAuthConfig(securityMember, {
+        webauthnCredentialId: undefined,
+        webauthnDeviceLabel: undefined,
+      });
+      flashSaved(`Đã tắt Face ID trên thiết bị này cho ${activeSecurityName}.`);
+      return;
+    }
+
+    setIsBioBusy(true);
+    try {
+      const result = await registerMemberBiometric(securityMember, activeSecurityName);
+      if (result.success && result.credentialId) {
+        updateMemberAuthConfig(securityMember, {
+          webauthnCredentialId: result.credentialId,
+          webauthnDeviceLabel: result.deviceLabel || "Face ID / Sinh trắc học",
+        });
+        flashSaved(`Đã kích hoạt ${result.deviceLabel || "Face ID"} cho ${activeSecurityName}.`);
+      } else {
+        flashSaved(result.error || "Chưa kích hoạt được Face ID.");
+      }
+    } finally {
+      setIsBioBusy(false);
+    }
+  };
+
+  const handleUploadWallpaper = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingWallpaper(true);
+    try {
+      const dataUrl = await compressDeviceWallpaper(file);
+      const saved = saveMemberWallpaper(securityMember, dataUrl);
+      if (saved) {
+        setWallpapers(loadMemberWallpapers());
+        flashSaved(`Đã cập nhật ảnh nền màn hình khóa riêng cho ${activeSecurityName}.`);
+      } else {
+        flashSaved("Bộ nhớ trình duyệt đã đầy, hãy thử ảnh nhẹ hơn.");
+      }
+    } catch (err) {
+      flashSaved(err instanceof Error ? err.message : "Không thể xử lý ảnh này.");
+    } finally {
+      setIsUploadingWallpaper(false);
+      if (wallpaperInputRef.current) {
+        wallpaperInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveWallpaper = () => {
+    removeMemberWallpaper(securityMember);
+    setWallpapers(loadMemberWallpapers());
+    flashSaved(`Đã khôi phục nền Calm Slate mặc định cho ${activeSecurityName}.`);
   };
 
   const handleAddCategory = (e: React.FormEvent) => {
@@ -366,54 +486,335 @@ export function SettingsView({
         </div>
       </div>
 
-      {/* 2. Bảo mật & Quyền riêng tư */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
+      {/* 3. Trang /login, Bảo mật 2 Vợ Chồng, Face ID & Hình Nền Cá Nhân */}
+      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[#E9EEF5]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
               <Lock className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
-                Quyền Riêng Tư & Khóa PIN
+                Màn Hình Khóa /login, Face ID & Ảnh Nền Riêng
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                Che số tiền nhạy cảm khi mở nơi công cộng hoặc đặt PIN 4 số
+                Thiết lập mã Code 4–6 số, Face ID và hình nền màn hình khóa riêng cho từng người
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={togglePrivacyMode}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
-              isPrivacyMode
-                ? "bg-amber-50 border-amber-200 text-amber-800"
-                : "bg-slate-100 border-slate-200 text-slate-600"
-            }`}
-          >
-            {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            <span>{isPrivacyMode ? "Đang ẩn số tiền" : "Đang hiện số tiền"}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePrivacyMode}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
+                isPrivacyMode
+                  ? "bg-amber-50 border-amber-200 text-amber-800"
+                  : "bg-slate-100 border-slate-200 text-slate-600"
+              }`}
+            >
+              {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{isPrivacyMode ? "Đang ẩn số tiền" : "Ẩn số tiền"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={lockApp}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1E3A8A] hover:bg-blue-800 text-white text-xs font-bold cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Mở /login ngay</span>
+            </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSavePin} className="flex flex-col sm:flex-row gap-2.5">
-          <input
-            type="password"
-            inputMode="numeric"
-            maxLength={4}
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
-            placeholder="Nhập PIN 4 số (để trống để tắt)"
-            className="flex-1 bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm font-bold tracking-widest"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
-          >
-            {pinInput ? "Cập nhật PIN" : "Tắt khóa PIN"}
-          </button>
-        </form>
+        {/* Bộ chọn hồ sơ cần tùy chỉnh */}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-[#E9EEF5]">
+          {(
+            [
+              { id: "HUSBAND" as AuthMemberId, emoji: "👨", label: settings.husbandName },
+              { id: "WIFE" as AuthMemberId, emoji: "👩", label: settings.wifeName },
+            ] as const
+          ).map((item) => {
+            const isActive = securityMember === item.id;
+            const configured = hasMemberPasscode(settings, item.id);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setSecurityMember(item.id);
+                  setPasscodeInput("");
+                  setPasscodeConfirm("");
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-white text-[#1E3A8A] shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span>{item.emoji}</span>
+                <span className="truncate">{item.label}</span>
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    configured ? "bg-emerald-500" : "bg-slate-300"
+                  }`}
+                  title={configured ? "Đã đặt mã Code" : "Chưa đặt mã Code"}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Cột trái: Mã Code 4-6 số & Face ID */}
+          <div className="p-4 rounded-xl bg-slate-50/80 border border-[#E9EEF5] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-blue-600" />
+                Mã Code ({activeSecurityName})
+              </span>
+              <span
+                className={`text-[11px] font-bold ${
+                  activeMemberHasCode ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                {activeMemberHasCode ? "Đã mã hóa SHA-256" : "Chưa đặt mã"}
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveMemberPasscode} className="space-y-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={passcodeInput}
+                onChange={(e) =>
+                  setPasscodeInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
+                }
+                placeholder="Nhập mã Code mới (4–6 số)"
+                className="w-full bg-white border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-bold tracking-[0.25em] outline-none focus:border-blue-600"
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={passcodeConfirm}
+                onChange={(e) =>
+                  setPasscodeConfirm(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
+                }
+                placeholder="Xác nhận lại mã Code"
+                className="w-full bg-white border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-bold tracking-[0.25em] outline-none focus:border-blue-600"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  {activeMemberHasCode ? "Đổi mã Code" : "Kích hoạt mã Code"}
+                </button>
+                {activeMemberHasCode && (
+                  <button
+                    type="button"
+                    onClick={handleClearMemberPasscode}
+                    className="min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-[#DCE4EE] text-xs font-bold cursor-pointer"
+                  >
+                    Gỡ mã
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Face ID / WebAuthn */}
+            <div className="pt-3 border-t border-[#E9EEF5] space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
+                  <ScanFace className="w-4 h-4 text-emerald-600" />
+                  Face ID / Sinh trắc học
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500">
+                  {activeSecurityConfig.webauthnCredentialId
+                    ? activeSecurityConfig.webauthnDeviceLabel || "Đã liên kết"
+                    : "Chưa liên kết"}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleToggleBiometric()}
+                disabled={isBioBusy || (!bioAvailability.supported && !activeSecurityConfig.webauthnCredentialId)}
+                className={`w-full min-h-[40px] px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 ${
+                  activeSecurityConfig.webauthnCredentialId
+                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
+                    : "bg-white hover:bg-slate-100 text-slate-800 border border-[#DCE4EE]"
+                }`}
+              >
+                <ScanFace className="w-4 h-4" />
+                <span>
+                  {isBioBusy
+                    ? "Đang xác nhận cảm biến..."
+                    : activeSecurityConfig.webauthnCredentialId
+                    ? "Đang bật Face ID (Chạm để tắt)"
+                    : "Đăng ký Face ID trên thiết bị này"}
+                </span>
+              </button>
+
+              {!bioAvailability.platformAuthenticatorAvailable && (
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  {bioAvailability.reason ||
+                    "Thiết bị này sẽ tự dùng mã Code dự phòng 4–6 số khi mở khóa."}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Cột phải: Hình nền màn hình khóa cá nhân */}
+          <div className="p-4 rounded-xl bg-slate-50/80 border border-[#E9EEF5] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
+                <ImagePlus className="w-4 h-4 text-indigo-600" />
+                Hình Nền Khóa ({activeSecurityName})
+              </span>
+              <span className="text-[11px] font-semibold text-slate-500">
+                {activeMemberWallpaper ? "Ảnh cá nhân" : "Mặc định"}
+              </span>
+            </div>
+
+            <div className="relative h-32 rounded-xl overflow-hidden border border-[#DCE4EE] bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8]">
+              {activeMemberWallpaper && (
+                <img
+                  src={activeMemberWallpaper}
+                  alt={`Ảnh nền ${activeSecurityName}`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{
+                    filter: `blur(${activeSecurityConfig.wallpaperBlur ?? 6}px)`,
+                    transform: "scale(1.06)",
+                  }}
+                />
+              )}
+              <div
+                className="absolute inset-0 bg-slate-950"
+                style={{ opacity: (activeSecurityConfig.wallpaperDim ?? 45) / 100 }}
+              />
+              <div className="relative z-10 h-full flex flex-col items-center justify-center text-white text-center px-3">
+                <span className="text-xs font-extrabold">{activeSecurityName}</span>
+                <span className="text-[10px] text-white/75 mt-0.5">
+                  Xem trước độ mờ {activeSecurityConfig.wallpaperBlur ?? 6}px · Tối{" "}
+                  {activeSecurityConfig.wallpaperDim ?? 45}%
+                </span>
+              </div>
+            </div>
+
+            <input
+              ref={wallpaperInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => void handleUploadWallpaper(e)}
+              className="hidden"
+            />
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => wallpaperInputRef.current?.click()}
+                disabled={isUploadingWallpaper}
+                className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-slate-100 border border-[#DCE4EE] text-xs font-bold text-slate-800 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ImagePlus className="w-4 h-4 text-blue-600" />
+                <span>{isUploadingWallpaper ? "Đang tối ưu..." : "Chọn ảnh từ máy"}</span>
+              </button>
+
+              {activeMemberWallpaper && (
+                <button
+                  type="button"
+                  onClick={handleRemoveWallpaper}
+                  className="min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-rose-50 border border-[#DCE4EE] text-xs font-bold text-rose-600 cursor-pointer"
+                >
+                  Xóa ảnh
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                  <span>Độ mờ</span>
+                  <span>{activeSecurityConfig.wallpaperBlur ?? 6}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={20}
+                  value={activeSecurityConfig.wallpaperBlur ?? 6}
+                  onChange={(e) =>
+                    updateMemberAuthConfig(securityMember, {
+                      wallpaperBlur: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                  <span>Độ tối phủ</span>
+                  <span>{activeSecurityConfig.wallpaperDim ?? 45}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={15}
+                  max={75}
+                  step={5}
+                  value={activeSecurityConfig.wallpaperDim ?? 45}
+                  onChange={(e) =>
+                    updateMemberAuthConfig(securityMember, {
+                      wallpaperDim: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tùy chọn tự động khóa phiên */}
+        <div className="p-3.5 rounded-xl bg-slate-50 border border-[#E9EEF5] grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.requireAuthOnOpen ?? hasPasscodeProtection)}
+              onChange={(e) => updateSettings({ requireAuthOnOpen: e.target.checked })}
+              className="w-4 h-4 accent-blue-600 rounded"
+            />
+            <span>Hỏi mã khi vừa mở app</span>
+          </label>
+
+          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.lockOnBackground)}
+              onChange={(e) => updateSettings({ lockOnBackground: e.target.checked })}
+              className="w-4 h-4 accent-blue-600 rounded"
+            />
+            <span>Khóa khi thu gọn nền</span>
+          </label>
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-slate-700">Tự khóa khi rảnh:</span>
+            <select
+              value={settings.autoLockMinutes ?? 5}
+              onChange={(e) =>
+                updateSettings({ autoLockMinutes: parseInt(e.target.value, 10) })
+              }
+              className="bg-white border border-[#DCE4EE] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+            >
+              <option value={0}>Không tự khóa</option>
+              <option value={1}>1 phút</option>
+              <option value={5}>5 phút</option>
+              <option value={15}>15 phút</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* 3. Quản lý Danh mục nhanh */}

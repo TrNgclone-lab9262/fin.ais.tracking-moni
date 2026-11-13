@@ -120,6 +120,16 @@ export const InvestmentItemSchema = z.object({
   memberId: FamilyMemberSchema.optional(),
 });
 
+export const MemberAuthConfigSchema = z.object({
+  passcodeHash: z.string().optional(),
+  passcodeSalt: z.string().optional(),
+  webauthnCredentialId: z.string().optional(),
+  webauthnDeviceLabel: z.string().optional(),
+  wallpaperBlur: z.number().min(0).max(24).optional(),
+  wallpaperDim: z.number().min(10).max(90).optional(),
+  updatedAt: z.string().optional(),
+});
+
 export const AppSettingsSchema = z.object({
   themeColor: z.enum(["blue", "purple", "pink", "green", "orange"]),
   currency: z.literal("VND"),
@@ -129,6 +139,12 @@ export const AppSettingsSchema = z.object({
   sharedSplitRatioHusband: z.number().min(0).max(100).optional(),
   privacyMode: z.boolean().optional(),
   pinCode: z.string().optional(),
+  requireAuthOnOpen: z.boolean().optional(),
+  autoLockMinutes: z.number().min(0).max(120).optional(),
+  lockOnBackground: z.boolean().optional(),
+  authActiveProfile: z.enum(["HUSBAND", "WIFE"]).optional(),
+  husbandAuth: MemberAuthConfigSchema.optional(),
+  wifeAuth: MemberAuthConfigSchema.optional(),
 });
 
 export const AppDataBackupSchema = z.object({

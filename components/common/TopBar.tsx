@@ -52,10 +52,17 @@ export function TopBar({
     isPrivacyMode,
     togglePrivacyMode,
     settings,
+    hasPasscodeProtection,
     lockApp,
+    recurringRules,
+    applyAllPendingRecurringRules,
   } = useFinance();
 
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const pendingRecurringCount = recurringRules.filter(
+    (r) => r.isActive && r.lastAppliedMonth !== (selectedMonth === "ALL" ? availableMonths[0] : selectedMonth)
+  ).length;
 
   const tabTitles: Record<NavTab, string> = {
     overview: "Tổng quan tổ ấm (My Home)",
@@ -191,18 +198,24 @@ export function TopBar({
               {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
 
-            {/* Lock PIN button when configured */}
-            {settings.pinCode && /^\d{4}$/.test(settings.pinCode) && (
-              <button
-                type="button"
-                onClick={lockApp}
-                aria-label="Khóa ứng dụng"
-                title="Khóa ứng dụng bằng mã PIN"
-                className="p-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 border border-[#E9EEF5] transition-colors cursor-pointer"
-              >
-                <Lock className="w-4 h-4" />
-              </button>
-            )}
+            {/* Lock /login screen button */}
+            <button
+              type="button"
+              onClick={lockApp}
+              aria-label="Mở màn hình khóa /login"
+              title={
+                hasPasscodeProtection
+                  ? "Khóa ứng dụng & mở màn hình /login"
+                  : "Mở màn hình khóa /login để thiết lập mã Code & Face ID"
+              }
+              className={`p-2 rounded-md border transition-colors cursor-pointer ${
+                hasPasscodeProtection
+                  ? "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-[#E9EEF5]"
+              }`}
+            >
+              <Lock className="w-4 h-4" />
+            </button>
 
             {/* Chuông Thông Báo */}
             <div className="relative">
@@ -237,6 +250,21 @@ export function TopBar({
                       <X className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {pendingRecurringCount > 0 && (
+                    <div className="mx-3 mt-2.5 p-2.5 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#1E3A8A]">
+                        {pendingRecurringCount} khoản định kỳ chưa ghi sổ
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => applyAllPendingRecurringRules()}
+                        className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                      >
+                        Ghi hết
+                      </button>
+                    </div>
+                  )}
 
                   <div className="max-h-72 overflow-y-auto divide-y divide-[#E9EEF5] p-2">
                     {notifications.length === 0 ? (

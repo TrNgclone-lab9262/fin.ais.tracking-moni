@@ -1,6 +1,6 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.3.0-pwa-autoupdate` | **Ngày phát hành:** 2026-10-31 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
+> **Phiên bản:** `v1.4.0-login-security` | **Ngày phát hành:** 2026-11-13 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
 > **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
 
 ---
@@ -125,6 +125,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `lib/supabaseMappers.ts` | Bộ chuyển đổi qua lại giữa camelCase (Client) và snake_case (PostgreSQL DB) | **STABLE** |
 | `lib/supabaseService.ts` | Dịch vụ CRUD và đồng bộ hóa ngầm với Supabase Cloud | **STABLE** |
 | `lib/geminiReceiptService.ts` | Bridge gọi API `/api/ai/*` (quét hóa đơn, nhập liệu ngôn ngữ tự nhiên, phân tích tháng) kèm offline fallback | **STABLE** |
+| `lib/authSecurity.ts` | Bảo mật `/login` đa thành viên: băm SHA-256 + salt, WebAuthn Face ID, nén & lưu hình nền khóa từ thư viện thiết bị | **STABLE** |
+| `lib/authSecurity.test.ts` | Unit test kiểm tra định dạng mã Code, băm/kiểm chứng SHA-256 và cấu hình khóa đôi | **STABLE** |
 
 ### 4.2. State Management & App Routing
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -176,6 +178,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/mobile/sheets/TransactionDetailSheet.tsx`| Sheet xem chi tiết và sửa/xóa giao dịch trên di động | **STABLE** |
 | `components/mobile/sheets/CreditCardRepaymentSheet.tsx`| Sheet thanh toán dư nợ thẻ tín dụng BIDV nhanh | **STABLE** |
 | `components/mobile/sheets/GoalDepositSheet.tsx` | Sheet nạp thêm tiền vào mục tiêu tiết kiệm | **STABLE** |
+| `components/mobile/sheets/MobileNotificationSheet.tsx` | Bottom sheet thông báo cảnh báo BIDV/ngân sách & ghi sổ nhanh định kỳ trên di động | **STABLE** |
+| `components/auth/LoginGateView.tsx` | Màn hình khóa `/login` đôi bo góc hiện đại cho Anh Chuột & Bé Mèo (Code 4-6 số, Face ID, ảnh nền cá nhân) | **STABLE** |
 | `components/mobile/views/MobileOverviewView.tsx` | Màn hình Tổng quan Bento tối ưu di động với thẻ Net Worth, 2 thẻ BIDV, Hạn mức ngày | **STABLE** |
 | `components/mobile/views/MobileTransactionsView.tsx` | Sổ giao dịch dạng thẻ danh sách di động dễ vuốt chạm | **STABLE** |
 | `components/mobile/views/MobileAccountsView.tsx` | Màn hình danh sách ví và thẻ tín dụng di động | **STABLE** |
@@ -284,7 +288,10 @@ $$\text{SafeDailyLimit} = \frac{\text{RemainingBudget}}{D_{\text{remaining}}}$$
   * Thêm `public/manifest.webmanifest`, bộ icon đa kích cỡ (`public/icons/icon.svg`), và `public/sw.js` (Service Worker) hỗ trợ cài đặt toàn màn hình và offline caching 0ms.
   * Tích hợp hook `usePWAInstall.ts`, banner cài đặt `PWAInstallBanner.tsx` và modal hướng dẫn cho iPhone/iPad `IOSInstallModal.tsx`.
   * Kích hoạt sẵn tính năng Quét Hóa Đơn bằng Google Gemini Vision AI (`lib/geminiReceiptService.ts`, `components/transactions/ReceiptScannerModal.tsx`) với nút camera 📷 trên thanh ghi chép nhanh di động và TopBar.
-* **v1.3.0 — Mobile PWA 1-Tap Auto-Update (Hiện tại - Hoàn tất 100%):**
+* **v1.4.0 — Secure Couple `/login`, Mobile Face ID & Custom Wallpapers (Hiện tại - Hoàn tất 100%):**
+  * Thiết kế màn hình khóa `/login` (`components/auth/LoginGateView.tsx`) phong cách Calm Slate Glass-Minimalist bo góc hiện đại cho **Anh Chuột** & **Bé Mèo** với hồ sơ tách biệt, mã Code 4–6 chữ số băm SHA-256 + muối (`lib/authSecurity.ts`), WebAuthn Face ID trên mobile kèm mã Code dự phòng, và tải ảnh cá nhân trực tiếp từ thư viện thiết bị làm hình nền khóa.
+  * Tích hợp tự động khóa khi rảnh (`autoLockMinutes`), khóa khi thu gọn nền (`lockOnBackground`), đồng bộ URL `/login`, trung tâm thông báo di động (`MobileNotificationSheet.tsx`), nút ghi sổ tất cả định kỳ 1 chạm và xuất báo cáo CSV/Excel (`exportTransactionsToCsv`).
+* **v1.3.0 — Mobile PWA 1-Tap Auto-Update (Hoàn tất 100%):**
   * Triển khai hệ thống phát hiện bản mới tức thì khi mở app qua endpoint `/api/app-version` (`no-store`) + `/version.json` kết hợp vòng đời Service Worker (`waiting` -> `SKIP_WAITING`).
   * Bổ sung `PWAUpdateContext.tsx`, banner `PWAUpdateBanner.tsx` (1 chạm "Cập nhật ngay"), modal `ReleaseNotesModal.tsx` và Trung tâm Phiên bản & Kiểm tra cập nhật thủ công trong `SettingsView.tsx` + `GuideView.tsx`.
 * **v1.2.0 — Data Studio, Couple Settlement & Server-Side Gemini AI (Hoàn tất 100%):**
@@ -304,6 +311,10 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.4.0-login-security (2026-11-13):**
+  * Ra mắt màn hình khóa `/login` bo góc hiện đại (`components/auth/LoginGateView.tsx`) cùng mô hình bảo mật đôi cho Anh Chuột & Bé Mèo trong `lib/authSecurity.ts`: mã Code 4–6 số băm SHA-256 + muối, Face ID WebAuthn trên di động có fallback dự phòng, và tùy chỉnh hình nền khóa từ ảnh cá nhân trong thiết bị (nén Canvas lưu riêng tại `HOME_MONI_WALLPAPERS_V1`).
+  * Nâng cấp `SettingsView.tsx`, `TopBar.tsx`, `MobileHeader.tsx`, `Sidebar.tsx`, `MobileDrawer.tsx` để cấu hình từng người, khóa nhanh `/login` và cấu hình tự động khóa phiên.
+  * Bổ sung `MobileNotificationSheet.tsx`, loại bỏ mốc tháng cứng trong `FinanceContext.tsx` sang dải tháng động theo dữ liệu thực tế, thêm nút ghi sổ định kỳ hàng loạt (`applyAllPendingRecurringRules`) và xuất báo cáo CSV/Excel trong `ExportImportModal.tsx`.
 * **v1.3.0-pwa-autoupdate (2026-10-31):**
   * Nâng cấp Service Worker (`public/sw.js`) với cơ chế giữ phiên bản mới ở trạng thái chờ (`waiting`), bỏ qua cache cho `/api/*`, `/version.json`, `/sw.js`, và áp dụng Network-First cho trang HTML để tránh kẹt giao diện cũ.
   * Bổ sung `GET /api/app-version` (`no-store`), `constants/appVersion.ts` (SSOT phiên bản & changelog) và `context/PWAUpdateContext.tsx` tự kiểm tra bản mới mỗi lần mở app, quay lại từ nền hoặc lấy lại mạng.

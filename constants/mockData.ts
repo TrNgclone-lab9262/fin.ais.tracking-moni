@@ -249,6 +249,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sharedSplitRatioHusband: 50,
   privacyMode: false,
   pinCode: "",
+  requireAuthOnOpen: false,
+  autoLockMinutes: 5,
+  lockOnBackground: false,
+  authActiveProfile: "HUSBAND",
 };
 
 export const DEFAULT_RECURRING_RULES: RecurringRule[] = [

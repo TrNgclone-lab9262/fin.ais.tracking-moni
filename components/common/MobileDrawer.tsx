@@ -13,6 +13,7 @@ import {
   Settings,
   Heart,
   ShieldCheck,
+  Lock,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -34,6 +35,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     wifeCreditCard,
     debts,
     settings,
+    lockApp,
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
@@ -221,12 +223,26 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 flex items-center justify-between shrink-0">
-          <span>HOME MONI v{APP_VERSION}</span>
-          <span className="flex items-center gap-1 text-emerald-300 font-semibold">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            An toàn bảo mật
-          </span>
+        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 space-y-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              lockApp();
+            }}
+            className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Khóa & Mở màn hình /login</span>
+          </button>
+
+          <div className="flex items-center justify-between">
+            <span>HOME MONI v{APP_VERSION}</span>
+            <span className="flex items-center gap-1 text-emerald-300 font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              An toàn bảo mật
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -13,11 +13,24 @@ export interface AppReleaseEntry {
   mandatory?: boolean;
 }
 
-export const APP_VERSION = '1.3.0';
-export const APP_BUILD_ID = 'v1.3.0-pwa-autoupdate';
-export const APP_RELEASE_DATE = '2026-10-31';
+export const APP_VERSION = '1.4.0';
+export const APP_BUILD_ID = 'v1.4.0-login-security';
+export const APP_RELEASE_DATE = '2026-11-13';
 
 export const APP_CHANGELOG: AppReleaseEntry[] = [
+  {
+    version: '1.4.0',
+    buildId: 'v1.4.0-login-security',
+    releasedAt: '2026-11-13',
+    title: 'Màn hình khóa /login đôi, Face ID di động & Ảnh nền riêng cho 2 vợ chồng',
+    highlights: [
+      'Thiết kế trang /login bo góc hiện đại dành riêng cho Anh Chuột & Bé Mèo kèm bàn phím số 4–6 chữ số mã hóa SHA-256.',
+      'Hỗ trợ mở khóa 1 chạm bằng Face ID / Sinh trắc học WebAuthn trên điện thoại cùng mã Code dự phòng.',
+      'Cho phép mỗi người tự tải ảnh cá nhân từ thư viện thiết bị làm hình nền màn hình khóa và chỉnh độ mờ/tối.',
+      'Hoàn thiện Trung tâm thông báo di động, ghi sổ định kỳ 1 chạm, xuất báo cáo CSV/Excel và tự động khóa phiên.',
+    ],
+    mandatory: false,
+  },
   {
     version: '1.3.0',
     buildId: 'v1.3.0-pwa-autoupdate',
