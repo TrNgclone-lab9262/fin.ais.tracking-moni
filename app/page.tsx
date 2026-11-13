@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Lock } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
+import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { Sidebar } from "@/components/common/Sidebar";
 import { TopBar } from "@/components/common/TopBar";
 import { MobileDrawer } from "@/components/common/MobileDrawer";
@@ -31,6 +32,8 @@ import { MobileNumpadSheet } from "@/components/mobile/sheets/MobileNumpadSheet"
 import { ExportImportModal } from "@/components/common/ExportImportModal";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PWAInstallBanner } from "@/components/common/PWAInstallBanner";
+import { PWAUpdateBanner } from "@/components/common/PWAUpdateBanner";
+import { ReleaseNotesModal } from "@/components/common/ReleaseNotesModal";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
@@ -46,6 +49,12 @@ export default function HomePage() {
     isAppLocked,
     unlockApp,
   } = useFinance();
+
+  const {
+    hasUpdate: hasPWAUpdate,
+    isDismissedForSession: isUpdateDismissed,
+    status: pwaUpdateStatus,
+  } = usePWAUpdate();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -229,9 +238,14 @@ export default function HomePage() {
     }
   };
 
+  const showUpdateBanner =
+    pwaUpdateStatus === "UPDATING" ||
+    pwaUpdateStatus === "JUST_UPDATED" ||
+    (hasPWAUpdate && !isUpdateDismissed);
+
   return (
     <>
-      <PWAInstallBanner />
+      {showUpdateBanner ? <PWAUpdateBanner /> : <PWAInstallBanner />}
 
       {/* 1. DESKTOP VIEW SHELL (>= 768px) */}
       {!isMobile && (
@@ -296,6 +310,8 @@ export default function HomePage() {
         onClose={() => setIsBackupModalOpen(false)}
         onOpenResetDemo={() => setIsResetConfirmOpen(true)}
       />
+
+      <ReleaseNotesModal />
 
       <ConfirmDialog
         isOpen={isResetConfirmOpen}

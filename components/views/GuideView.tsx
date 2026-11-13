@@ -10,6 +10,7 @@ import {
   Target,
   Settings,
   Users,
+  Smartphone,
 } from "lucide-react";
 
 interface GuideSection {
@@ -109,6 +110,29 @@ export function GuideView() {
           <p>
             Dữ liệu tài chính gia đình được mã hóa và lưu trực tiếp trên thiết bị này. Hãy xuất file sao lưu JSON định kỳ để bảo toàn dữ liệu.
           </p>
+        </div>
+      ),
+    },
+    {
+      id: "pwa_update",
+      title: "Cài đặt & Cập nhật bản mới 1 chạm trên iPhone / Android (PWA)",
+      icon: Smartphone,
+      content: (
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <p>
+            Khi HOME MONI đã được cài ra màn hình chính điện thoại, thiết bị vẫn tự động nhận phiên bản mới mà không cần xóa app cài lại:
+          </p>
+          <ul className="list-disc pl-5 space-y-1.5">
+            <li>
+              <strong>Nhận thông báo ngay khi mở app:</strong> Mỗi lần bạn mở app (hoặc quay lại từ màn hình đa nhiệm), hệ thống tự kiểm tra bản mới nhất từ máy chủ.
+            </li>
+            <li>
+              <strong>Cài đặt bằng 1 chạm:</strong> Chạm nút <strong>Cập nhật ngay</strong> trên thanh thông báo xanh để nâng cấp giao diện trong 1 giây, toàn bộ giao dịch & mã PIN vẫn được giữ nguyên.
+            </li>
+            <li>
+              <strong>Kiểm tra thủ công:</strong> Mở mục <strong>Cài đặt & Tùy biến</strong> để xem số phiên bản hiện tại, đọc ghi chú thay đổi hoặc bấm <strong>Kiểm tra cập nhật</strong> bất cứ lúc nào.
+            </li>
+          </ul>
         </div>
       ),
     },

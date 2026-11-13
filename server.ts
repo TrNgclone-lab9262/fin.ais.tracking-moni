@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -49,6 +50,47 @@ async function startServer() {
         process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'
     );
     res.json({ ok: true, aiConfigured: hasKey });
+  });
+
+  // PWA Version Manifest Endpoint (luôn bỏ qua cache để thiết bị di động nhận biết bản mới tức thì)
+  app.get('/api/app-version', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const candidates = [
+      path.resolve(__dirname, 'public', 'version.json'),
+      path.resolve(__dirname, 'dist', 'version.json'),
+    ];
+
+    for (const filePath of candidates) {
+      try {
+        const raw = await fs.readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return res.json(parsed);
+      } catch {
+        // Thử đường dẫn tiếp theo
+      }
+    }
+
+    return res.json({
+      version: '1.3.0',
+      buildId: 'v1.3.0-pwa-autoupdate',
+      releasedAt: '2026-10-31',
+      title: 'Cập nhật PWA một chạm & Thông báo bản mới trên di động',
+      mandatory: false,
+      highlights: [],
+    });
+  });
+
+  // Đảm bảo tệp Service Worker và version.json không bao giờ bị browser/CDN cache cứng
+  app.use((req, res, next) => {
+    if (req.path === '/sw.js' || req.path === '/version.json') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    next();
   });
 
   // 1. POST /api/ai/scan-receipt — Multimodal Receipt OCR + Itemized Split Suggestions

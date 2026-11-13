@@ -15,6 +15,8 @@ import {
   Heart,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
+import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { APP_VERSION } from "@/constants/appVersion";
 
 interface NavItemDef {
   id: NavTab;
@@ -41,6 +43,8 @@ export function Sidebar() {
     debts,
     settings,
   } = useFinance();
+
+  const { hasUpdate } = usePWAUpdate();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -127,7 +131,12 @@ export function Sidebar() {
           icon: Database,
         },
         { id: "guide", label: "Cẩm nang tổ ấm", icon: HelpCircle },
-        { id: "settings", label: "Cài đặt & Tùy biến", icon: Settings },
+        {
+          id: "settings",
+          label: "Cài đặt & Tùy biến",
+          icon: Settings,
+          badge: hasUpdate ? { text: "Bản mới", variant: "info" } : undefined,
+        },
       ],
     },
   ];
@@ -255,7 +264,7 @@ export function Sidebar() {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Local-First Sync" />
           </div>
           <div className="flex items-center justify-between text-[10px] text-blue-300/80 mt-1">
-            <span>HOME MONI v4.2</span>
+            <span>HOME MONI v{APP_VERSION}</span>
             <span className="text-emerald-300 font-medium">Bảo mật cục bộ</span>
           </div>
         </div>

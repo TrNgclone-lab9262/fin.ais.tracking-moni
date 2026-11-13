@@ -1,6 +1,6 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.2.0-data-studio` | **Ngày phát hành:** 2026-10-30 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
+> **Phiên bản:** `v1.3.0-pwa-autoupdate` | **Ngày phát hành:** 2026-10-31 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
 > **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
 
 ---
@@ -113,6 +113,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `types/finance.ts` | Định nghĩa toàn bộ interfaces & types (`Transaction`, `Account`, `Category`, `SavingsGoal`, `DebtItem`, `InvestmentItem`...) | **STABLE** |
 | `constants/defaultCategories.ts` | 18 danh mục chi tiêu & thu nhập chuẩn Việt Nam phân nhóm rõ ràng (Ăn uống, Nhà cửa, Con cái...) | **STABLE** |
 | `constants/mockData.ts` | Dữ liệu mẫu chuẩn của gia đình Anh Chuột & Bé Mèo tháng 10/2026 | **STABLE** |
+| `constants/appVersion.ts` | Nguồn chân lý (SSOT) cho phiên bản ứng dụng, nhật ký thay đổi (Changelog) và hàm so sánh SemVer | **STABLE** |
+| `constants/appVersion.test.ts` | Unit test tự động cho hàm `compareSemver` và cấu trúc `APP_CHANGELOG` | **STABLE** |
 | `lib/validations.ts` | Zod Schemas kiểm tra tính toàn vẹn dữ liệu giao dịch, tài khoản và sao lưu JSON | **STABLE** |
 | `lib/formatters.ts` | Bộ hàm định dạng tiền tệ Việt Nam (`15.000.000 đ`, `15 tr`), ngày tháng tiếng Việt, tỷ lệ phần trăm | **STABLE** |
 | `lib/storage.ts` | Cơ chế lưu trữ offline LocalStorage V4 (auto-migrate V3), xuất/nhập file JSON dự phòng | **STABLE** |
@@ -128,6 +130,7 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
 | :--- | :--- | :--- |
 | `context/FinanceContext.tsx` | Quản lý state toàn cục, Event Sourcing calculations, CRUD giao dịch, bộ lọc 4 chiều, đồng bộ cloud không vòng lặp | **STABLE** |
+| `context/PWAUpdateContext.tsx` | Quản lý vòng đời cập nhật PWA (kiểm tra SW + `/api/app-version` no-store, `SKIP_WAITING` 1 chạm, reload an toàn) | **STABLE** |
 | `app/page.tsx` | View Router điều phối layout Desktop/Mobile thích ứng, mount độc quyền shell hiển thị | **STABLE** |
 | `app/layout.tsx` | Root Layout thiết lập font sans, metadata và cấu trúc khung bao bọc | **STABLE** |
 | `app/globals.css` | Import Tailwind CSS và khai báo các tiện ích toàn cục | **STABLE** |
@@ -147,6 +150,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/common/ConfirmDialog.tsx` | Modal xác nhận hành động nguy hiểm (Xóa giao dịch, Khôi phục cài đặt gốc) | **STABLE** |
 | `components/common/ExportImportModal.tsx`| Hộp thoại xuất file sao lưu JSON hoặc nhập file khôi phục dữ liệu | **STABLE** |
 | `components/common/PWAInstallBanner.tsx` | Banner gợi ý cài đặt HOME MONI lên màn hình chính cho 2 vợ chồng | **STABLE** |
+| `components/common/PWAUpdateBanner.tsx` | Banner thông báo bản mới trên di động/desktop với nút Cập nhật ngay 1 chạm & toast xác nhận sau nâng cấp | **STABLE** |
+| `components/common/ReleaseNotesModal.tsx` | Hộp thoại/Sheet xem nhật ký phiên bản, tính năng mới và cam kết bảo toàn dữ liệu khi cập nhật | **STABLE** |
 | `components/common/IOSInstallModal.tsx` | Modal hướng dẫn chi tiết cách cài đặt lên màn hình chính cho iPhone/iPad Safari | **STABLE** |
 
 ### 4.4. Desktop Dashboard Widgets (`components/dashboard/`)
@@ -279,7 +284,10 @@ $$\text{SafeDailyLimit} = \frac{\text{RemainingBudget}}{D_{\text{remaining}}}$$
   * Thêm `public/manifest.webmanifest`, bộ icon đa kích cỡ (`public/icons/icon.svg`), và `public/sw.js` (Service Worker) hỗ trợ cài đặt toàn màn hình và offline caching 0ms.
   * Tích hợp hook `usePWAInstall.ts`, banner cài đặt `PWAInstallBanner.tsx` và modal hướng dẫn cho iPhone/iPad `IOSInstallModal.tsx`.
   * Kích hoạt sẵn tính năng Quét Hóa Đơn bằng Google Gemini Vision AI (`lib/geminiReceiptService.ts`, `components/transactions/ReceiptScannerModal.tsx`) với nút camera 📷 trên thanh ghi chép nhanh di động và TopBar.
-* **v1.2.0 — Data Studio, Couple Settlement & Server-Side Gemini AI (Hiện tại - Hoàn tất 100%):**
+* **v1.3.0 — Mobile PWA 1-Tap Auto-Update (Hiện tại - Hoàn tất 100%):**
+  * Triển khai hệ thống phát hiện bản mới tức thì khi mở app qua endpoint `/api/app-version` (`no-store`) + `/version.json` kết hợp vòng đời Service Worker (`waiting` -> `SKIP_WAITING`).
+  * Bổ sung `PWAUpdateContext.tsx`, banner `PWAUpdateBanner.tsx` (1 chạm "Cập nhật ngay"), modal `ReleaseNotesModal.tsx` và Trung tâm Phiên bản & Kiểm tra cập nhật thủ công trong `SettingsView.tsx` + `GuideView.tsx`.
+* **v1.2.0 — Data Studio, Couple Settlement & Server-Side Gemini AI (Hoàn tất 100%):**
   * Triển khai Backend Express (`server.ts`) với các endpoint `/api/health`, `/api/ai/scan-receipt`, `/api/ai/parse-transaction`, `/api/ai/monthly-digest` bảo mật khóa API trên server.
   * Tách toàn bộ phép tính tài chính thuần túy sang `lib/financeEngine.ts` (hạn mức ngày động, chu kỳ sao kê 45 ngày BIDV, đối soát chi tiêu chung 2 vợ chồng, kiểm toán Event Sourcing) kèm bộ unit test `lib/financeEngine.test.ts`.
   * Bổ sung **Data Studio (`DataAdminView.tsx`)** cho phép Add / Modify / Delete đồng bộ xuyên suốt 8 bảng dữ liệu (Ngân sách, Mục tiêu, Khoản nợ, Đầu tư, Giao dịch, Ví/Thẻ, Danh mục, Giao dịch định kỳ), Privacy Mode, khóa PIN 4 số và quản lý Thu/Chi định kỳ.
@@ -296,6 +304,10 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.3.0-pwa-autoupdate (2026-10-31):**
+  * Nâng cấp Service Worker (`public/sw.js`) với cơ chế giữ phiên bản mới ở trạng thái chờ (`waiting`), bỏ qua cache cho `/api/*`, `/version.json`, `/sw.js`, và áp dụng Network-First cho trang HTML để tránh kẹt giao diện cũ.
+  * Bổ sung `GET /api/app-version` (`no-store`), `constants/appVersion.ts` (SSOT phiên bản & changelog) và `context/PWAUpdateContext.tsx` tự kiểm tra bản mới mỗi lần mở app, quay lại từ nền hoặc lấy lại mạng.
+  * Ra mắt `PWAUpdateBanner.tsx` (1 chạm "Cập nhật ngay"), `ReleaseNotesModal.tsx` (xem ghi chú thay đổi) và thẻ **Phiên Bản & Cập Nhật Ứng Dụng** trong `SettingsView.tsx` kèm nút kiểm tra thủ công và hướng dẫn cập nhật trên iPhone/Android.
 * **v1.2.0-data-studio (2026-10-30):**
   * Sửa triệt để các chỉ số giả/cứng trên Mobile & Desktop (hạn mức ngày động, ngày sao kê/hạn thanh toán BIDV, liên kết Sửa giao dịch trên mobile, nạp mục tiêu & trả/thu nợ chuẩn Event Sourcing).
   * Bổ sung Backend Express `/api/ai/*` (Quét hóa đơn đa dòng, Nhập liệu ngôn ngữ tự nhiên, Trợ lý phân tích tài chính tháng), Đối soát quỹ chung 2 vợ chồng, Quản lý Thu/Chi định kỳ, Privacy Mode & Khóa PIN 4 số.

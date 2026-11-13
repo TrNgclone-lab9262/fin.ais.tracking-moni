@@ -15,6 +15,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
+import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { APP_VERSION } from "@/constants/appVersion";
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -33,6 +35,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     debts,
     settings,
   } = useFinance();
+
+  const { hasUpdate } = usePWAUpdate();
 
   if (!isOpen) return null;
 
@@ -74,7 +78,13 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       badgeColor: "bg-indigo-400 text-indigo-950",
     },
     { id: "guide", label: "Cẩm nang tổ ấm", icon: HelpCircle },
-    { id: "settings", label: "Cài đặt & Tùy biến", icon: Settings },
+    {
+      id: "settings",
+      label: "Cài đặt & Tùy biến",
+      icon: Settings,
+      badge: hasUpdate ? "Bản mới" : undefined,
+      badgeColor: "bg-sky-300 text-blue-950",
+    },
   ];
 
   const handleSelectTab = (tab: NavTab) => {
@@ -212,7 +222,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
         {/* Footer */}
         <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 flex items-center justify-between shrink-0">
-          <span>HOME MONI v5.2</span>
+          <span>HOME MONI v{APP_VERSION}</span>
           <span className="flex items-center gap-1 text-emerald-300 font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />
             An toàn bảo mật

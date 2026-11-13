@@ -3,6 +3,7 @@
 import React from "react";
 import { Menu, Home, RefreshCw, Camera, Eye, EyeOff } from "lucide-react";
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
+import { usePWAUpdate } from "@/context/PWAUpdateContext";
 
 interface MobileHeaderProps {
   onOpenDrawer: () => void;
@@ -19,6 +20,8 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
     togglePrivacyMode,
   } = useFinance();
 
+  const { hasUpdate } = usePWAUpdate();
+
   const perspectives: { id: PerspectiveMode; label: string; icon: string }[] = [
     { id: "ALL", label: "Tất cả", icon: "🏡" },
     { id: "HUSBAND", label: "Chuột", icon: "👨" },
@@ -31,10 +34,16 @@ export function MobileHeader({ onOpenDrawer, onOpenScanner }: MobileHeaderProps)
       <div className="flex items-center gap-2 min-w-0">
         <button
           onClick={onOpenDrawer}
-          aria-label="Mở menu tổ ấm"
-          className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+          aria-label={hasUpdate ? "Mở menu tổ ấm (Có bản cập nhật mới)" : "Mở menu tổ ấm"}
+          className="relative w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
         >
           <Menu className="w-4 h-4" />
+          {hasUpdate && (
+            <span
+              className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-blue-600 ring-2 ring-white"
+              title="Có bản cập nhật ứng dụng mới"
+            />
+          )}
         </button>
 
         <div className="flex items-center gap-1.5 min-w-0">

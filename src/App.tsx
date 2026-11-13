@@ -1,10 +1,13 @@
 import { FinanceProvider } from "@/context/FinanceContext";
+import { PWAUpdateProvider } from "@/context/PWAUpdateContext";
 import HomePage from "@/app/page";
 
 export default function App() {
   return (
-    <FinanceProvider>
-      <HomePage />
-    </FinanceProvider>
+    <PWAUpdateProvider>
+      <FinanceProvider>
+        <HomePage />
+      </FinanceProvider>
+    </PWAUpdateProvider>
   );
 }

@@ -17,8 +17,16 @@ import {
   EyeOff,
   Check,
   ArrowRight,
+  Smartphone,
+  Sparkles,
+  FileText,
+  WifiOff,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
+import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { formatCheckTimestamp } from "@/constants/appVersion";
 
 interface SettingsViewProps {
   onOpenBackupModal: () => void;
@@ -44,12 +52,30 @@ export function SettingsView({
     setActiveTab,
   } = useFinance();
 
+  const {
+    status: pwaStatus,
+    currentVersion,
+    currentReleaseDate,
+    latestRelease,
+    lastCheckedAt,
+    isChecking,
+    hasUpdate,
+    isStandalone,
+    platform,
+    isOnline,
+    errorMessage,
+    checkForUpdate,
+    applyUpdateNow,
+    openReleaseNotes,
+  } = usePWAUpdate();
+
   const [husbandName, setHusbandName] = useState(settings.husbandName);
   const [wifeName, setWifeName] = useState(settings.wifeName);
   const [splitRatio, setSplitRatio] = useState(settings.sharedSplitRatioHusband ?? 50);
   const [pinInput, setPinInput] = useState(settings.pinCode || "");
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [aiServerReady, setAiServerReady] = useState<boolean | null>(null);
+  const [showMobileUpdateGuide, setShowMobileUpdateGuide] = useState(false);
 
   // Quick Category Form
   const [newCatName, setNewCatName] = useState("");
@@ -188,6 +214,157 @@ export function SettingsView({
           </button>
         </div>
       </form>
+
+      {/* 2. Phiên bản & Cập nhật PWA Di động */}
+      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E9EEF5]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+                Phiên Bản & Cập Nhật Ứng Dụng
+              </h3>
+              <p className="text-[11px] text-slate-500 font-medium">
+                v{currentVersion} · Phát hành {currentReleaseDate} ·{" "}
+                {isStandalone ? "Chế độ PWA đã cài đặt" : "Trình duyệt Web"}
+              </p>
+            </div>
+          </div>
+
+          <span
+            className={`text-xs font-bold ${
+              hasUpdate
+                ? "text-blue-600"
+                : !isOnline || pwaStatus === "OFFLINE"
+                ? "text-amber-600"
+                : pwaStatus === "ERROR"
+                ? "text-rose-600"
+                : "text-emerald-600"
+            }`}
+          >
+            {hasUpdate
+              ? `Có bản mới v${latestRelease?.version}`
+              : !isOnline || pwaStatus === "OFFLINE"
+              ? "Đang ngoại tuyến"
+              : pwaStatus === "CHECKING"
+              ? "Đang kiểm tra..."
+              : "Đang ở bản mới nhất"}
+          </span>
+        </div>
+
+        {/* Thẻ trạng thái bản mới hoặc kiểm tra gần nhất */}
+        {hasUpdate && latestRelease ? (
+          <div className="p-3.5 rounded-xl bg-blue-50/90 border border-blue-200 space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div className="space-y-1 min-w-0">
+                <div className="text-xs font-extrabold text-[#1E3A8A]">
+                  Phiên bản v{latestRelease.version} đã sẵn sàng cài đặt
+                </div>
+                <p className="text-xs text-slate-700 font-medium">{latestRelease.title}</p>
+                <ul className="space-y-1 pt-0.5">
+                  {latestRelease.highlights.slice(0, 3).map((item, idx) => (
+                    <li key={idx} className="text-[11px] text-slate-600 flex items-start gap-1.5">
+                      <span className="text-blue-600 font-bold">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 rounded-xl bg-slate-50 border border-[#E9EEF5] flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-600 font-medium">
+              {!isOnline || pwaStatus === "OFFLINE" ? (
+                <WifiOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              ) : (
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              )}
+              <span>
+                {errorMessage ||
+                  "Ứng dụng tự kiểm tra bản mới mỗi khi bạn mở lại từ màn hình chính."}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 font-semibold">
+              Kiểm tra: {formatCheckTimestamp(lastCheckedAt)}
+            </span>
+          </div>
+        )}
+
+        {/* Hàng nút thao tác (>= 44px cho mobile thumb-zone) */}
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          {hasUpdate && (
+            <button
+              type="button"
+              onClick={() => void applyUpdateNow()}
+              disabled={pwaStatus === "UPDATING"}
+              className="min-h-[44px] flex-1 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${pwaStatus === "UPDATING" ? "animate-spin" : ""}`}
+              />
+              <span>
+                {pwaStatus === "UPDATING" ? "Đang cài bản mới..." : "Cập nhật ngay (1 chạm)"}
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void checkForUpdate({ silent: false })}
+            disabled={isChecking || pwaStatus === "UPDATING"}
+            className="min-h-[44px] flex-1 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-[#DCE4EE] text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 text-blue-600 ${isChecking ? "animate-spin" : ""}`} />
+            <span>{isChecking ? "Đang dò bản mới..." : "Kiểm tra cập nhật"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openReleaseNotes}
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-[#DCE4EE] text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-slate-500" />
+            <span>Xem thay đổi</span>
+          </button>
+        </div>
+
+        {/* Hướng dẫn nhận cập nhật trên điện thoại Android & iPhone */}
+        <div className="border-t border-[#E9EEF5] pt-3">
+          <button
+            type="button"
+            onClick={() => setShowMobileUpdateGuide((prev) => !prev)}
+            className="w-full flex items-center justify-between text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer py-1"
+          >
+            <span>
+              Hướng dẫn nhận thông báo & cài bản mới trên{" "}
+              {platform === "ios" ? "iPhone / iPad" : platform === "android" ? "Android" : "điện thoại"}
+            </span>
+            {showMobileUpdateGuide ? (
+              <ChevronUp className="w-4 h-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+
+          {showMobileUpdateGuide && (
+            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50 border border-[#E9EEF5] space-y-2 text-xs text-slate-600 leading-relaxed">
+              <p>
+                <strong>1. Tự động khi mở app:</strong> Mỗi lần bạn mở HOME MONI từ biểu tượng màn hình chính (hoặc quay lại từ đa nhiệm), ứng dụng âm thầm đối chiếu phiên bản mới nhất trên máy chủ.
+              </p>
+              <p>
+                <strong>2. Cài đặt 1 chạm không mất dữ liệu:</strong> Khi có bản mới, thanh thông báo xanh xuất hiện ngay phía trên. Chạm <strong>Cập nhật ngay</strong> để nạp giao diện mới trong 1 giây — toàn bộ giao dịch & mã PIN trong máy được giữ nguyên.
+              </p>
+              <p>
+                <strong>3. Mẹo riêng trên iPhone (iOS Safari PWA):</strong> Nếu để app chạy ngầm nhiều ngày mà chưa thấy nhắc, bạn chỉ cần vào <strong>Cài đặt → Kiểm tra cập nhật</strong> hoặc vuốt đóng hẳn cửa sổ app rồi mở lại là nhận ngay.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* 2. Bảo mật & Quyền riêng tư */}
       <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
