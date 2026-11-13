@@ -82,7 +82,7 @@ export function GoalDepositSheet({
 
     setIsSubmitting(true);
     try {
-      depositGoal(goal.id, amount);
+      depositGoal(goal.id, amount, sourceAccountId || undefined);
       setIsSubmitting(false);
       if (onSuccess) onSuccess();
       onClose();

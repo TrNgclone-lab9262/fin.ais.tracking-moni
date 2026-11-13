@@ -1,22 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { Lock } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { Sidebar } from "@/components/common/Sidebar";
 import { TopBar } from "@/components/common/TopBar";
 import { MobileDrawer } from "@/components/common/MobileDrawer";
 import { BottomNavBar } from "@/components/common/BottomNavBar";
 
-// 1. Desktop Shell Views (Bản mở rộng đầy đủ Recharts, Heatmap 31 ngày, Bảng 8 cột)
+// 1. Desktop Shell Views
 import { OverviewView } from "@/components/views/OverviewView";
 import { TransactionsView } from "@/components/views/TransactionsView";
 import { AccountsView } from "@/components/views/AccountsView";
 import { PlanningView } from "@/components/views/PlanningView";
 import { DebtsInvestView } from "@/components/views/DebtsInvestView";
+import { DataAdminView } from "@/components/views/DataAdminView";
 import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
 
-// 2. Mobile Shell Views (Chuẩn Vàng Figma 1:1 - Cô đọng, Bento, Thumb-zone)
+// 2. Mobile Shell Views
 import { MobileHeader } from "@/components/mobile/MobileHeader";
 import { MobileOverviewView } from "@/components/mobile/views/MobileOverviewView";
 import { MobileTransactionsView } from "@/components/mobile/views/MobileTransactionsView";
@@ -33,7 +35,17 @@ import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerMod
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
-  const { isLoaded, activeTab, resetToMockData, addTransaction, accounts } = useFinance();
+  const {
+    isLoaded,
+    activeTab,
+    activePerspective,
+    resetToMockData,
+    addTransaction,
+    addTransactionsBatch,
+    accounts,
+    isAppLocked,
+    unlockApp,
+  } = useFinance();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -41,6 +53,8 @@ export default function HomePage() {
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
+  const [pinEntry, setPinEntry] = useState("");
+  const [pinError, setPinError] = useState(false);
 
   // Responsive layout detection to prevent mounting hidden DOM tree with 0x0 Recharts containers
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -74,6 +88,60 @@ export default function HomePage() {
     );
   }
 
+  // PIN Lock Gate
+  if (isAppLocked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8] flex items-center justify-center p-4">
+        <div className="w-full max-w-xs bg-white rounded-2xl p-6 shadow-2xl space-y-4 text-center">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-lg font-black text-[#172B4D]">HOME MONI Đang Khóa</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Nhập mã PIN 4 số để mở sổ tài chính tổ ấm
+            </p>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (unlockApp(pinEntry)) {
+                setPinEntry("");
+                setPinError(false);
+              } else {
+                setPinError(true);
+              }
+            }}
+            className="space-y-3"
+          >
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              autoFocus
+              value={pinEntry}
+              onChange={(e) => {
+                setPinEntry(e.target.value.replace(/[^0-9]/g, "").slice(0, 4));
+                setPinError(false);
+              }}
+              placeholder="••••"
+              className="w-full text-center text-2xl font-black tracking-[0.5em] bg-slate-50 border border-slate-200 rounded-xl py-3 outline-none focus:border-blue-600"
+            />
+            {pinError && (
+              <p className="text-xs font-bold text-rose-600">Mã PIN không đúng, vui lòng thử lại.</p>
+            )}
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+            >
+              Mở khóa
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   // Luồng render View cho Desktop
   const renderActiveDesktopView = () => {
     switch (activeTab) {
@@ -92,6 +160,8 @@ export default function HomePage() {
         return <PlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
+      case "data_admin":
+        return <DataAdminView />;
       case "guide":
         return <GuideView />;
       case "settings":
@@ -123,6 +193,8 @@ export default function HomePage() {
         return <MobilePlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
+      case "data_admin":
+        return <DataAdminView />;
       case "guide":
         return <GuideView />;
       case "settings":
@@ -139,13 +211,16 @@ export default function HomePage() {
 
   const handleApplyGlobalReceipt = (receipt: ParsedReceiptResult) => {
     try {
+      const targetMember = activePerspective === "WIFE" ? "WIFE" : "HUSBAND";
+      const preferredAcc =
+        accounts.find((a) => a.owner === targetMember && a.type !== "CREDIT_CARD") || accounts[0];
       addTransaction({
         amount: receipt.amount,
         date: receipt.date || new Date().toISOString().slice(0, 10),
         type: "EXPENSE",
         categoryId: receipt.suggestedCategoryId || "cat_expense_food",
-        accountId: accounts[0]?.id || "acc_husband_vietinbank",
-        memberId: "HUSBAND",
+        accountId: preferredAcc?.id || "acc_husband_vietinbank",
+        memberId: targetMember,
         scope: "FAMILY",
         note: `${receipt.merchantName}${receipt.notes ? " - " + receipt.notes : ""}`,
       });
@@ -156,13 +231,9 @@ export default function HomePage() {
 
   return (
     <>
-      {/* Banner Cài Đặt PWA Thông Minh (Toàn Màn Hình Không Viền) */}
       <PWAInstallBanner />
 
-      {/* =========================================================================
-          1. DESKTOP VIEW SHELL (>= 768px)
-          Bố cục rộng rãi 1440px: Sidebar, TopBar desktop, Bảng 8 cột, Recharts
-         ========================================================================= */}
+      {/* 1. DESKTOP VIEW SHELL (>= 768px) */}
       {!isMobile && (
         <div className="flex min-h-screen bg-[#F6F8FB] text-slate-900 font-sans antialiased">
           <Sidebar />
@@ -181,50 +252,40 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* =========================================================================
-          2. MOBILE VIEW SHELL (< 768px)
-          Cô đọng, Bento layout, thumb-zone tối ưu
-         ========================================================================= */}
+      {/* 2. MOBILE VIEW SHELL (< 768px) */}
       {isMobile && (
         <div className="min-h-screen bg-[#F6F8FB] text-slate-900 font-sans antialiased pb-24">
-          {/* Mobile Header Bar */}
           <MobileHeader
             onOpenDrawer={() => setIsMobileMenuOpen(true)}
             onOpenScanner={() => setIsGlobalScannerOpen(true)}
           />
 
-          {/* Thân Màn Hình Mobile Cô Đọng Khớp 100% Figma */}
           <main className="p-3.5 space-y-3.5">
             {renderActiveMobileView()}
           </main>
 
-          {/* Thanh Điều Hướng Đáy Cho Di Động */}
           <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
         </div>
       )}
 
-      {/* =========================================================================
-          3. GLOBAL MODALS & BOTTOM SHEETS
-         ========================================================================= */}
-      {/* Modal Quét Hóa Đơn Thông Minh Bằng Gemini Vision */}
+      {/* 3. GLOBAL MODALS & BOTTOM SHEETS */}
       <ReceiptScannerModal
         isOpen={isGlobalScannerOpen}
         onClose={() => setIsGlobalScannerOpen(false)}
         onApplyReceipt={handleApplyGlobalReceipt}
+        onApplyTransactions={(batch) => addTransactionsBatch(batch)}
       />
-      {/* Drawer Menu cho Di Động */}
+
       <MobileDrawer
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* Mobile Numpad 3 Giây Bottom Sheet */}
       <MobileNumpadSheet
         isOpen={isMobileNumpadOpen}
         onClose={() => setIsMobileNumpadOpen(false)}
       />
 
-      {/* Desktop Transaction Form Modal */}
       <TransactionFormModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}

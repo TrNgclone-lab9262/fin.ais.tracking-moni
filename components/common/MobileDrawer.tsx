@@ -8,13 +8,13 @@ import {
   CreditCard,
   Target,
   Coins,
+  Database,
   HelpCircle,
   Settings,
   Heart,
   ShieldCheck,
-  RefreshCw,
 } from "lucide-react";
-import { useFinance, NavTab, PerspectiveMode } from "@/context/FinanceContext";
+import { useFinance, NavTab } from "@/context/FinanceContext";
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -28,17 +28,17 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     activePerspective,
     setActivePerspective,
     isCloudConnected,
-    isSyncing,
     husbandCreditCard,
     wifeCreditCard,
     debts,
+    settings,
   } = useFinance();
 
   if (!isOpen) return null;
 
   const creditCardWarning =
-    (husbandCreditCard && husbandCreditCard.usagePercentage >= 70) ||
-    (wifeCreditCard && wifeCreditCard.usagePercentage >= 70);
+    (husbandCreditCard && husbandCreditCard.usagePercentage > 30) ||
+    (wifeCreditCard && wifeCreditCard.usagePercentage > 30);
 
   const activeDebtsCount = debts.filter((d) => d.status === "ACTIVE").length;
 
@@ -55,7 +55,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       id: "accounts",
       label: "Tài khoản & Thẻ",
       icon: CreditCard,
-      badge: creditCardWarning ? "Cảnh báo" : undefined,
+      badge: creditCardWarning ? ">30%" : undefined,
       badgeColor: "bg-amber-400 text-amber-950",
     },
     { id: "planning", label: "Ngân sách & Mục tiêu", icon: Target },
@@ -65,6 +65,13 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       icon: Coins,
       badge: activeDebtsCount > 0 ? `${activeDebtsCount}` : undefined,
       badgeColor: "bg-blue-600 text-white",
+    },
+    {
+      id: "data_admin",
+      label: "Quản trị Dữ liệu",
+      icon: Database,
+      badge: "Studio",
+      badgeColor: "bg-indigo-400 text-indigo-950",
     },
     { id: "guide", label: "Cẩm nang tổ ấm", icon: HelpCircle },
     { id: "settings", label: "Cài đặt & Tùy biến", icon: Settings },
@@ -88,7 +95,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
         className="relative w-full max-w-[320px] bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <div>
+        <div className="overflow-y-auto">
           {/* Header */}
           <div className="h-18 flex items-center justify-between px-5 border-b border-blue-800/40">
             <div className="flex items-center gap-3">
@@ -107,7 +114,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Đóng menu"
+              className="p-1.5 rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -117,9 +125,9 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
           <div className="p-4 mx-3 my-3 rounded-xl bg-blue-950/40 border border-blue-800/40 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <span>👨 Anh Chuột</span>
+                <span>👨 {settings.husbandName}</span>
                 <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
-                <span>👩 Bé Mèo</span>
+                <span>👩 {settings.wifeName}</span>
               </span>
               <span className="text-[10px] text-emerald-300 font-bold flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -132,7 +140,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <button
                 type="button"
                 onClick={() => setActivePerspective("ALL")}
-                className={`py-1 rounded-md transition-all ${
+                className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "ALL"
                     ? "bg-white text-blue-900 shadow-xs"
                     : "text-blue-200 hover:text-white"
@@ -143,7 +151,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <button
                 type="button"
                 onClick={() => setActivePerspective("HUSBAND")}
-                className={`py-1 rounded-md transition-all ${
+                className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "HUSBAND"
                     ? "bg-white text-blue-900 shadow-xs"
                     : "text-blue-200 hover:text-white"
@@ -154,7 +162,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <button
                 type="button"
                 onClick={() => setActivePerspective("WIFE")}
-                className={`py-1 rounded-md transition-all ${
+                className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "WIFE"
                     ? "bg-white text-blue-900 shadow-xs"
                     : "text-blue-200 hover:text-white"
@@ -175,7 +183,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                 <button
                   key={item.id}
                   onClick={() => handleSelectTab(item.id)}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                     isActive
                       ? "bg-white text-blue-900 shadow-md font-black"
                       : "text-blue-100 hover:bg-white/10 hover:text-white"
@@ -203,7 +211,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 flex items-center justify-between">
+        <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 flex items-center justify-between shrink-0">
           <span>HOME MONI v5.2</span>
           <span className="flex items-center gap-1 text-emerald-300 font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />

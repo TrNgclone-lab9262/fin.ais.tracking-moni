@@ -1,6 +1,6 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.1.0-pwa` | **Ngày phát hành:** 2026-10-30 | **Môi trường:** Production Ready (PWA / SPA)  
+> **Phiên bản:** `v1.2.0-data-studio` | **Ngày phát hành:** 2026-10-30 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
 > **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
 
 ---
@@ -17,7 +17,7 @@
 | **Skill Phát Hành** | `home-moni-ais-git-release` (GitHub Flow + CI Check + Conventional Commits + SemVer) |
 | **Tech Stack** | React 19 (`^19.0.1`), TypeScript (`^7.0.2`), Vite (`^8.3.0`), Tailwind CSS v4 (`^4.3.3`), Recharts (`^3.10.1`), Motion (`^12.23.24`), Lucide React (`^0.546.0`), Zod (`^4.6.7`), `@google/genai` (`^2.4.0`) |
 | **Kiến trúc Trình diễn** | Responsive Adaptive Shell: Phân tách hoàn toàn Desktop Shell (`>= 768px`) và Mobile Shell (`< 768px`) để tối ưu hiệu năng và triệt tiêu lỗi render ẩn $0 \times 0$ của Recharts. |
-| **Tầng Dữ liệu** | Offline-First LocalStorage V3 Cache kết hợp kiến trúc sẵn sàng kết nối Supabase Cloud (PostgreSQL + RLS + Realtime). |
+| **Tầng Dữ liệu** | Offline-First LocalStorage V4 Cache (`HOME_MONI_DATA_V4`, tự động migrate từ `homemoni_data_v3`) kết hợp Backend Express (`/api/ai/*`) & sẵn sàng đồng bộ Supabase Cloud. |
 
 ---
 
@@ -62,8 +62,8 @@ Mọi hoạt động phát triển, sửa đổi, tái cấu trúc hoặc sinh m
 * Mọi cấu trúc dữ liệu lưu trữ, import/export hoặc nhận từ Cloud phải được kiểm tra qua Zod schema trong `lib/validations.ts`. Nếu dữ liệu bị hỏng, hệ thống tự kích hoạt fallback an toàn thay vì làm ứng dụng crash.
 
 ### Invariant 6: Offline-First Resilience (0ms Tải trang)
-* Ứng dụng phải mở lên ngay lập tức trong $0$ms bằng bộ nhớ đệm `localStorage` (Key: `homemoni_data_v3`).
-* Mọi tương tác người dùng phải có phản hồi thị giác tức thì (Optimistic UI), sau đó đồng bộ ngầm với Supabase hoặc Cloud Storage.
+* Ứng dụng phải mở lên ngay lập tức trong $0$ms bằng bộ nhớ đệm `localStorage` (Key: `HOME_MONI_DATA_V4`, tương thích ngược với `homemoni_data_v3`).
+* Mọi tương tác người dùng phải có phản hồi thị giác tức thì (Optimistic UI), đi kèm tầng server-side proxy `/api/ai/*` cho các tác vụ Gemini AI an toàn không lộ khóa trên client.
 
 ---
 
@@ -115,12 +115,14 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `constants/mockData.ts` | Dữ liệu mẫu chuẩn của gia đình Anh Chuột & Bé Mèo tháng 10/2026 | **STABLE** |
 | `lib/validations.ts` | Zod Schemas kiểm tra tính toàn vẹn dữ liệu giao dịch, tài khoản và sao lưu JSON | **STABLE** |
 | `lib/formatters.ts` | Bộ hàm định dạng tiền tệ Việt Nam (`15.000.000 đ`, `15 tr`), ngày tháng tiếng Việt, tỷ lệ phần trăm | **STABLE** |
-| `lib/storage.ts` | Cơ chế lưu trữ offline LocalStorage V3, xuất/nhập file JSON dự phòng | **STABLE** |
+| `lib/storage.ts` | Cơ chế lưu trữ offline LocalStorage V4 (auto-migrate V3), xuất/nhập file JSON dự phòng | **STABLE** |
 | `lib/storage.test.ts` | Unit test tự động kiểm tra cơ chế lưu trữ và validation schema | **STABLE** |
+| `lib/financeEngine.ts` | Domain Engine thuần túy: hạn mức ngày, chu kỳ thẻ BIDV, đối soát 2 vợ chồng, heatmap, toàn vẹn Event Sourcing | **STABLE** |
+| `lib/financeEngine.test.ts` | Unit test tự động cho các phép tính tài chính trong `financeEngine.ts` | **STABLE** |
 | `lib/supabaseClient.ts` | Khởi tạo Supabase client an toàn với fallback khi chưa có biến môi trường | **STABLE** |
 | `lib/supabaseMappers.ts` | Bộ chuyển đổi qua lại giữa camelCase (Client) và snake_case (PostgreSQL DB) | **STABLE** |
 | `lib/supabaseService.ts` | Dịch vụ CRUD và đồng bộ hóa ngầm với Supabase Cloud | **STABLE** |
-| `lib/geminiReceiptService.ts` | Dịch vụ bóc tách hóa đơn thông minh bằng Google Gemini 2.5 Flash Vision AI | **STABLE** |
+| `lib/geminiReceiptService.ts` | Bridge gọi API `/api/ai/*` (quét hóa đơn, nhập liệu ngôn ngữ tự nhiên, phân tích tháng) kèm offline fallback | **STABLE** |
 
 ### 4.2. State Management & App Routing
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -132,6 +134,7 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `src/App.tsx` | Cầu nối tương thích khởi chạy ứng dụng từ `HomePage` | **STABLE** |
 | `src/main.tsx` | Điểm vào khởi tạo ReactDOM Client `createRoot` & đăng ký PWA Service Worker | **STABLE** |
 | `src/hooks/usePWAInstall.ts` | Hook quản trị trạng thái cài đặt PWA đa nền tảng (Android/Chromium & iOS Safari) | **STABLE** |
+| `server.ts` | Express Server cổng 3000 phục vụ Vite SSR/Dev & các endpoint AI `/api/ai/*`, `/api/health` | **STABLE** |
 
 ### 4.3. Shared & Common Components (`components/common/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -189,7 +192,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/views/PlanningView.tsx` | Thiết lập ngân sách danh mục, quy tắc 6 hũ, tiến độ các mục tiêu tiết kiệm | **STABLE** |
 | `components/views/DebtsInvestView.tsx` | Theo dõi sổ nợ (Ai nợ mình / Mình nợ ai) và danh mục đầu tư (Vàng, Cổ phiếu, Tiết kiệm) | **STABLE** |
 | `components/views/GuideView.tsx` | Cẩm nang tài chính gia đình: Lời khuyên chi tiêu, hướng dẫn dùng thẻ tín dụng 45 ngày | **STABLE** |
-| `components/views/SettingsView.tsx` | Quản lý thành viên, cấu hình Supabase Cloud, Sao lưu & Khôi phục dữ liệu JSON | **STABLE** |
+| `components/views/SettingsView.tsx` | Quản lý thành viên, Privacy Mode & PIN 4 số, quản lý danh mục, kiểm tra AI Server & sao lưu JSON | **STABLE** |
+| `components/views/DataAdminView.tsx` | Studio Quản trị Dữ liệu đa bảng (8 thực thể: Ngân sách, Mục tiêu, Nợ, Đầu tư, Giao dịch, Ví/Thẻ, Danh mục, Định kỳ) với kiểm toán Event Sourcing | **STABLE** |
 
 ### 4.8. Release Engineering & Developer Skills
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -210,9 +214,9 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 
 ## 5. DATA ENGINE & STORAGE SPECIFICATIONS
 
-### 5.1. Cấu trúc Khóa Lưu trữ LocalStorage V3
-* **Storage Key:** `homemoni_data_v3`
-* **Schema Contract:** Được kiểm định bằng `storedDataV3Schema` trong `lib/validations.ts`:
+### 5.1. Cấu trúc Khóa Lưu trữ LocalStorage V4
+* **Storage Key:** `HOME_MONI_DATA_V4` (tự động nâng cấp từ `homemoni_data_v3`)
+* **Schema Contract:** Được kiểm định bằng `storedDataV4Schema` (và alias tương thích `storedDataV3Schema`) trong `lib/validations.ts`:
 ```json
 {
   "categories": [ ... ],
@@ -222,12 +226,15 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
   "goals": [ ... ],
   "debts": [ ... ],
   "investments": [ ... ],
+  "recurringRules": [ ... ],
   "settings": {
     "currency": "VND",
     "theme": "blue",
     "husbandName": "Anh Chuột",
     "wifeName": "Bé Mèo",
-    "monthlyIncomeTarget": 50000000
+    "monthlyIncomeTarget": 50000000,
+    "sharedSplitRatioHusband": 50,
+    "privacyMode": false
   }
 }
 ```
@@ -272,16 +279,10 @@ $$\text{SafeDailyLimit} = \frac{\text{RemainingBudget}}{D_{\text{remaining}}}$$
   * Thêm `public/manifest.webmanifest`, bộ icon đa kích cỡ (`public/icons/icon.svg`), và `public/sw.js` (Service Worker) hỗ trợ cài đặt toàn màn hình và offline caching 0ms.
   * Tích hợp hook `usePWAInstall.ts`, banner cài đặt `PWAInstallBanner.tsx` và modal hướng dẫn cho iPhone/iPad `IOSInstallModal.tsx`.
   * Kích hoạt sẵn tính năng Quét Hóa Đơn bằng Google Gemini Vision AI (`lib/geminiReceiptService.ts`, `components/transactions/ReceiptScannerModal.tsx`) với nút camera 📷 trên thanh ghi chép nhanh di động và TopBar.
-* **v1.2.0 — Advanced Receipt Automation & Category Auto-Tuning:**
-  * Huấn luyện mẫu hóa đơn thực tế Việt Nam, tự động bóc tách hóa đơn nhiều món hàng (itemized receipt extraction) và đề xuất cảnh báo vượt trần ngân sách tức thì.
-* **v1.3.0 — Supabase Realtime Multi-Device Sync:**
-  * Kích hoạt PostgreSQL RLS, đăng nhập tài khoản riêng cho Chồng & Vợ, đồng bộ tức thời qua WebSockets.
-* **v2.0.0 — Open Banking & Automation (2027 - 2028):**
-  * Tích hợp mã VietQR động và đọc biến động số dư tự động qua SMS Parser / Open Banking API.
-* **v3.0.0 — Autonomous Family Wealth & AI Twin (2029 - 2031):**
-  * AI Copilot phân tích dữ liệu 10 năm, tái cân bằng danh mục đầu tư Vàng/Cổ phiếu, quản trị tài sản thế hệ con cái.
-* **v4.0.0 — Sovereign Private Vault & Next-Gen Education (2032 - 2035):**
-  * Chạy Local LLM hoàn toàn offline trên Home NAS, bảo mật Zero-Knowledge và giáo dục tài chính game hóa F2.
+* **v1.2.0 — Data Studio, Couple Settlement & Server-Side Gemini AI (Hiện tại - Hoàn tất 100%):**
+  * Triển khai Backend Express (`server.ts`) với các endpoint `/api/health`, `/api/ai/scan-receipt`, `/api/ai/parse-transaction`, `/api/ai/monthly-digest` bảo mật khóa API trên server.
+  * Tách toàn bộ phép tính tài chính thuần túy sang `lib/financeEngine.ts` (hạn mức ngày động, chu kỳ sao kê 45 ngày BIDV, đối soát chi tiêu chung 2 vợ chồng, kiểm toán Event Sourcing) kèm bộ unit test `lib/financeEngine.test.ts`.
+  * Bổ sung **Data Studio (`DataAdminView.tsx`)** cho phép Add / Modify / Delete đồng bộ xuyên suốt 8 bảng dữ liệu (Ngân sách, Mục tiêu, Khoản nợ, Đầu tư, Giao dịch, Ví/Thẻ, Danh mục, Giao dịch định kỳ), Privacy Mode, khóa PIN 4 số và quản lý Thu/Chi định kỳ.
 
 ---
 
@@ -295,6 +296,10 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.2.0-data-studio (2026-10-30):**
+  * Sửa triệt để các chỉ số giả/cứng trên Mobile & Desktop (hạn mức ngày động, ngày sao kê/hạn thanh toán BIDV, liên kết Sửa giao dịch trên mobile, nạp mục tiêu & trả/thu nợ chuẩn Event Sourcing).
+  * Bổ sung Backend Express `/api/ai/*` (Quét hóa đơn đa dòng, Nhập liệu ngôn ngữ tự nhiên, Trợ lý phân tích tài chính tháng), Đối soát quỹ chung 2 vợ chồng, Quản lý Thu/Chi định kỳ, Privacy Mode & Khóa PIN 4 số.
+  * Ra mắt tab **Quản trị Dữ liệu (`DataAdminView.tsx`)** theo phong cách Supabase Studio/Airtable kết nối trực tiếp `FinanceContext` cùng kiểm toán toàn vẹn Event Sourcing 100%.
 * **v1.1.0-pwa (2026-10-30):**
   * Chuyển đổi HOME MONI thành Progressive Web App (PWA) cài đặt trực tiếp lên iPhone/Android, chạy độc lập toàn màn hình.
   * Tích hợp Service Worker (`public/sw.js`) lưu bộ nhớ đệm ngoại tuyến Stale-While-Revalidate mở app tức thì 0ms.

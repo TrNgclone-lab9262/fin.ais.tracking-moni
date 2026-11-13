@@ -10,6 +10,17 @@ export function formatVND(amount: number, showCurrency: boolean = true): string 
   return showCurrency ? `${formatted} ₫` : formatted;
 }
 
+export function formatVNDMasked(
+  amount: number,
+  isPrivacyMode: boolean,
+  showCurrency: boolean = true
+): string {
+  if (isPrivacyMode) {
+    return showCurrency ? "•••••••• ₫" : "••••••••";
+  }
+  return formatVND(amount, showCurrency);
+}
+
 /**
  * Định dạng rút gọn cho biểu đồ tâm tròn hoặc nhãn nhỏ
  * Ví dụ: 7469000 -> "7.5tr", 21619000 -> "21.6tr"

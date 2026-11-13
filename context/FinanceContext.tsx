@@ -24,6 +24,7 @@ import {
   CategoryExpenseStat,
   FamilyMember,
   ExpenseScope,
+  RecurringRule,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -42,9 +43,17 @@ import {
   DEFAULT_DEBTS,
   DEFAULT_INVESTMENTS,
   DEFAULT_SETTINGS,
-  DEFAULT_NOTIFICATIONS,
+  DEFAULT_RECURRING_RULES,
 } from "@/constants/mockData";
-import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  calculateDaysRemainingInMonth,
+  calculateTodaySpent,
+  calculateCreditCardCycleInfo,
+  calculateCoupleSettlement,
+  CoupleSettlementResult,
+  CreditCardCycleStatus,
+} from "@/lib/financeEngine";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { supabaseService } from "@/lib/supabaseService";
 
 export type NavTab =
@@ -53,12 +62,13 @@ export type NavTab =
   | "accounts"
   | "planning"
   | "debts_invest"
+  | "data_admin"
   | "guide"
   | "settings";
 
 export type PerspectiveMode = "ALL" | "HUSBAND" | "WIFE";
 
-interface TransactionInput {
+export interface TransactionInput {
   amount: number;
   date: string;
   type: TransactionType;
@@ -97,13 +107,7 @@ interface BudgetSummary {
   items: BudgetProgressItem[];
 }
 
-export interface CreditCardInfo {
-  account: Account;
-  creditLimit: number;
-  usedAmount: number;
-  availableAmount: number;
-  usagePercentage: number;
-}
+export type CreditCardInfo = CreditCardCycleStatus;
 
 interface FinanceContextType {
   isLoaded: boolean;
@@ -120,6 +124,13 @@ interface FinanceContextType {
   activePerspective: PerspectiveMode;
   setActivePerspective: (mode: PerspectiveMode) => void;
 
+  // Chế độ riêng tư & Khóa PIN
+  isPrivacyMode: boolean;
+  togglePrivacyMode: () => void;
+  isAppLocked: boolean;
+  unlockApp: (pin: string) => boolean;
+  lockApp: () => void;
+
   categories: Category[];
   accounts: Account[];
   transactions: Transaction[];
@@ -127,6 +138,7 @@ interface FinanceContextType {
   goals: SavingsGoal[];
   debts: DebtItem[];
   investments: InvestmentItem[];
+  recurringRules: RecurringRule[];
   settings: AppSettings;
   notifications: AppNotification[];
 
@@ -143,10 +155,17 @@ interface FinanceContextType {
   setSelectedAccount: (accId: string) => void;
   setSearchQuery: (query: string) => void;
 
+  // CRUD Danh mục
+  addCategory: (cat: Omit<Category, "id">) => Category;
+  updateCategory: (id: string, cat: Partial<Category>) => void;
+  deleteCategory: (id: string) => void;
+
   // CRUD Giao dịch
   addTransaction: (data: TransactionInput) => Transaction;
+  addTransactionsBatch: (items: TransactionInput[]) => Transaction[];
   updateTransaction: (id: string, data: Partial<TransactionInput>) => void;
   deleteTransaction: (id: string) => void;
+  deleteTransactionsBatch: (ids: string[]) => void;
 
   // Quản lý Tài khoản (Ví)
   addAccount: (acc: Omit<Account, "id" | "currentBalance">) => void;
@@ -155,20 +174,28 @@ interface FinanceContextType {
 
   // Quản lý Ngân sách & Mục tiêu
   setCategoryBudget: (categoryId: string, limitAmount: number, month?: string) => void;
+  deleteBudget: (categoryId: string, month?: string) => void;
+  copyBudgetsFromMonth: (fromMonth: string, toMonth: string) => number;
   addGoal: (goal: Omit<SavingsGoal, "id" | "isCompleted">) => void;
   updateGoal: (id: string, goal: Partial<SavingsGoal>) => void;
   deleteGoal: (id: string) => void;
-  depositGoal: (id: string, amount: number) => void;
+  depositGoal: (id: string, amount: number, sourceAccountId?: string) => void;
 
   // Quản lý Nợ & Đầu tư
   addDebt: (debt: Omit<DebtItem, "id">) => void;
   updateDebt: (id: string, debt: Partial<DebtItem>) => void;
-  payDebt: (id: string, amount: number) => void;
+  payDebt: (id: string, amount: number, sourceAccountId?: string) => void;
   deleteDebt: (id: string) => void;
 
   addInvestment: (inv: Omit<InvestmentItem, "id">) => void;
   updateInvestment: (id: string, inv: Partial<InvestmentItem>) => void;
   deleteInvestment: (id: string) => void;
+
+  // Quản lý Giao dịch Định kỳ
+  addRecurringRule: (rule: Omit<RecurringRule, "id">) => void;
+  updateRecurringRule: (id: string, rule: Partial<RecurringRule>) => void;
+  deleteRecurringRule: (id: string) => void;
+  applyRecurringRule: (id: string, targetMonth?: string) => Transaction | null;
 
   // Cài đặt & Sao lưu
   updateSettings: (settings: Partial<AppSettings>) => void;
@@ -181,6 +208,8 @@ interface FinanceContextType {
   availableMonths: string[];
   summary: FinancialSummary;
   budgetSummary: BudgetSummary;
+  todaySpentInfo: { amount: number; referenceDate: string; isCurrentDay: boolean };
+  coupleSettlement: CoupleSettlementResult;
   filteredTransactions: Transaction[];
   categoryExpenseStats: CategoryExpenseStat[];
   monthlyTrendData: MonthlyTrendItem[];
@@ -193,6 +222,12 @@ interface FinanceContextType {
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
+
+function createTxId(): string {
+  const datePart = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const randPart = Math.floor(100000 + Math.random() * 900000);
+  return `TX${datePart}${randPart}`;
+}
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
@@ -211,7 +246,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [goals, setGoals] = useState<SavingsGoal[]>(DEFAULT_SAVINGS_GOALS);
   const [debts, setDebts] = useState<DebtItem[]>(DEFAULT_DEBTS);
   const [investments, setInvestments] = useState<InvestmentItem[]>(DEFAULT_INVESTMENTS);
+  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEFAULT_RECURRING_RULES);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
+  const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
   // Bộ lọc
   const [selectedMonth, setSelectedMonth] = useState<string>("2026-10");
@@ -234,7 +272,6 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setIsCloudConnected(true);
         setLastSyncedAt(new Date());
 
-        // Nếu trên Cloud đã có dữ liệu, hợp nhất vào State
         if (cloudData.accounts.length > 0 || cloudData.transactions.length > 0) {
           if (cloudData.categories.length > 0) setCategories(cloudData.categories);
           if (cloudData.budgets.length > 0) setBudgets(cloudData.budgets);
@@ -243,7 +280,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           if (cloudData.investments.length > 0) setInvestments(cloudData.investments);
           if (cloudData.settings) setSettings(cloudData.settings);
 
-          const recalcAccounts = recalculateAccountBalances(cloudData.accounts, cloudData.transactions);
+          const recalcAccounts = recalculateAccountBalances(
+            cloudData.accounts,
+            cloudData.transactions
+          );
           setTransactions(cloudData.transactions);
           setAccounts(recalcAccounts);
         }
@@ -258,7 +298,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Khởi tạo từ LocalStorage khi mount (0ms) sau đó đồng bộ Cloud
+  // Khởi tạo từ LocalStorage khi mount (0ms)
   useEffect(() => {
     const data = loadStoredDataV3();
     setCategories(data.categories);
@@ -267,21 +307,24 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setGoals(data.goals);
     setDebts(data.debts);
     setInvestments(data.investments);
+    setRecurringRules(data.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(data.settings);
+    if (data.settings.pinCode && /^\d{4}$/.test(data.settings.pinCode)) {
+      setIsAppLocked(true);
+    }
 
     const updatedAccounts = recalculateAccountBalances(data.accounts, data.transactions);
     setAccounts(updatedAccounts);
 
     setIsLoaded(true);
 
-    // Kích hoạt đồng bộ Cloud nếu đã cấu hình
     if (isSupabaseConfigured) {
       syncWithCloud();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tự động lưu vào LocalStorage V3 để đảm bảo offline
+  // Tự động lưu vào LocalStorage
   useEffect(() => {
     if (!isLoaded) return;
     saveStoredDataV3({
@@ -292,9 +335,21 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       goals,
       debts,
       investments,
+      recurringRules,
       settings,
     });
-  }, [categories, accounts, transactions, budgets, goals, debts, investments, settings, isLoaded]);
+  }, [
+    categories,
+    accounts,
+    transactions,
+    budgets,
+    goals,
+    debts,
+    investments,
+    recurringRules,
+    settings,
+    isLoaded,
+  ]);
 
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
@@ -305,8 +360,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         set.add(tx.date.substring(0, 7));
       }
     });
+    budgets.forEach((b) => {
+      if (b.month) set.add(b.month);
+    });
     return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [transactions]);
+  }, [transactions, budgets]);
 
   const getCategoryById = useCallback(
     (id: string) => categories.find((c) => c.id === id),
@@ -318,99 +376,171 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [accounts]
   );
 
-  // CRUD Giao dịch (Optimistic UI + Background Cloud Sync)
-  const addTransaction = useCallback(
-    (input: TransactionInput): Transaction => {
-      const now = new Date().toISOString();
-      const newTx: Transaction = {
-        id: `TX${new Date().toISOString().slice(2, 10).replace(/-/g, "")}${Math.floor(100000 + Math.random() * 900000)}`,
-        amount: Math.abs(input.amount),
-        date: input.date,
-        type: input.type,
-        categoryId: input.categoryId,
-        accountId: input.accountId,
-        toAccountId: input.toAccountId,
-        memberId: input.memberId,
-        scope: input.scope,
-        note: input.note?.trim() || "",
-        tag: input.tag || "NORMAL",
-        createdAt: now,
-        updatedAt: now,
-      };
+  // Privacy & PIN Lock
+  const isPrivacyMode = Boolean(settings.privacyMode);
 
-      setTransactions((prev) => {
-        const next = [newTx, ...prev];
-        setAccounts((prevAccs) => {
-          const recalc = recalculateAccountBalances(prevAccs, next);
-          if (isSupabaseConfigured) {
-            supabaseService.upsertTransaction(newTx);
-            supabaseService.updateAccounts(recalc);
-          }
-          return recalc;
-        });
-        return next;
-      });
+  const togglePrivacyMode = useCallback(() => {
+    setSettings((prev) => ({ ...prev, privacyMode: !prev.privacyMode }));
+  }, []);
 
-      return newTx;
+  const unlockApp = useCallback(
+    (pin: string) => {
+      if (!settings.pinCode || pin === settings.pinCode) {
+        setIsAppLocked(false);
+        return true;
+      }
+      return false;
     },
-    []
+    [settings.pinCode]
   );
 
-  const updateTransaction = useCallback(
-    (id: string, input: Partial<TransactionInput>) => {
-      let updatedTx: Transaction | undefined;
-      setTransactions((prev) => {
-        const next = prev.map((tx) => {
-          if (tx.id !== id) return tx;
-          updatedTx = {
-            ...tx,
-            amount: input.amount !== undefined ? Math.abs(input.amount) : tx.amount,
-            date: input.date !== undefined ? input.date : tx.date,
-            type: input.type !== undefined ? input.type : tx.type,
-            categoryId: input.categoryId !== undefined ? input.categoryId : tx.categoryId,
-            accountId: input.accountId !== undefined ? input.accountId : tx.accountId,
-            toAccountId: input.toAccountId !== undefined ? input.toAccountId : tx.toAccountId,
-            memberId: input.memberId !== undefined ? input.memberId : tx.memberId,
-            scope: input.scope !== undefined ? input.scope : tx.scope,
-            note: input.note !== undefined ? input.note.trim() : tx.note,
-            tag: input.tag !== undefined ? input.tag : tx.tag,
-            updatedAt: new Date().toISOString(),
-          };
-          return updatedTx;
-        });
+  const lockApp = useCallback(() => {
+    if (settings.pinCode && /^\d{4}$/.test(settings.pinCode)) {
+      setIsAppLocked(true);
+    }
+  }, [settings.pinCode]);
 
-        setAccounts((prevAccs) => {
-          const recalc = recalculateAccountBalances(prevAccs, next);
-          if (isSupabaseConfigured && updatedTx) {
-            supabaseService.upsertTransaction(updatedTx);
-            supabaseService.updateAccounts(recalc);
-          }
-          return recalc;
-        });
+  // CRUD Danh mục
+  const addCategory = useCallback((cat: Omit<Category, "id">): Category => {
+    const newCat: Category = {
+      ...cat,
+      id: `cat_${cat.type.toLowerCase()}_${Date.now()}`,
+      isDefault: false,
+    };
+    setCategories((prev) => [...prev, newCat]);
+    return newCat;
+  }, []);
 
-        return next;
+  const updateCategory = useCallback((id: string, cat: Partial<Category>) => {
+    setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...cat } : c)));
+  }, []);
+
+  const deleteCategory = useCallback((id: string) => {
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  // CRUD Giao dịch
+  const addTransaction = useCallback((input: TransactionInput): Transaction => {
+    const now = new Date().toISOString();
+    const newTx: Transaction = {
+      id: createTxId(),
+      amount: Math.abs(input.amount),
+      date: input.date,
+      type: input.type,
+      categoryId: input.categoryId,
+      accountId: input.accountId,
+      toAccountId: input.toAccountId,
+      memberId: input.memberId,
+      scope: input.scope,
+      note: input.note?.trim() || "",
+      tag: input.tag || "NORMAL",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      setAccounts((prevAccs) => {
+        const recalc = recalculateAccountBalances(prevAccs, next);
+        if (isSupabaseConfigured) {
+          supabaseService.upsertTransaction(newTx);
+          supabaseService.updateAccounts(recalc);
+        }
+        return recalc;
       });
-    },
-    []
-  );
+      return next;
+    });
 
-  const deleteTransaction = useCallback(
-    (id: string) => {
-      setTransactions((prev) => {
-        const next = prev.filter((tx) => tx.id !== id);
-        setAccounts((prevAccs) => {
-          const recalc = recalculateAccountBalances(prevAccs, next);
-          if (isSupabaseConfigured) {
-            supabaseService.deleteTransaction(id);
-            supabaseService.updateAccounts(recalc);
-          }
-          return recalc;
-        });
-        return next;
+    return newTx;
+  }, []);
+
+  const addTransactionsBatch = useCallback((inputs: TransactionInput[]): Transaction[] => {
+    if (inputs.length === 0) return [];
+    const now = new Date().toISOString();
+    const created: Transaction[] = inputs.map((input, idx) => ({
+      id: `${createTxId()}_${idx}`,
+      amount: Math.abs(input.amount),
+      date: input.date,
+      type: input.type,
+      categoryId: input.categoryId,
+      accountId: input.accountId,
+      toAccountId: input.toAccountId,
+      memberId: input.memberId,
+      scope: input.scope,
+      note: input.note?.trim() || "",
+      tag: input.tag || "NORMAL",
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    setTransactions((prev) => {
+      const next = [...created, ...prev];
+      setAccounts((prevAccs) => recalculateAccountBalances(prevAccs, next));
+      return next;
+    });
+
+    return created;
+  }, []);
+
+  const updateTransaction = useCallback((id: string, input: Partial<TransactionInput>) => {
+    let updatedTx: Transaction | undefined;
+    setTransactions((prev) => {
+      const next = prev.map((tx) => {
+        if (tx.id !== id) return tx;
+        updatedTx = {
+          ...tx,
+          amount: input.amount !== undefined ? Math.abs(input.amount) : tx.amount,
+          date: input.date !== undefined ? input.date : tx.date,
+          type: input.type !== undefined ? input.type : tx.type,
+          categoryId: input.categoryId !== undefined ? input.categoryId : tx.categoryId,
+          accountId: input.accountId !== undefined ? input.accountId : tx.accountId,
+          toAccountId: input.toAccountId !== undefined ? input.toAccountId : tx.toAccountId,
+          memberId: input.memberId !== undefined ? input.memberId : tx.memberId,
+          scope: input.scope !== undefined ? input.scope : tx.scope,
+          note: input.note !== undefined ? input.note.trim() : tx.note,
+          tag: input.tag !== undefined ? input.tag : tx.tag,
+          updatedAt: new Date().toISOString(),
+        };
+        return updatedTx;
       });
-    },
-    []
-  );
+
+      setAccounts((prevAccs) => {
+        const recalc = recalculateAccountBalances(prevAccs, next);
+        if (isSupabaseConfigured && updatedTx) {
+          supabaseService.upsertTransaction(updatedTx);
+          supabaseService.updateAccounts(recalc);
+        }
+        return recalc;
+      });
+
+      return next;
+    });
+  }, []);
+
+  const deleteTransaction = useCallback((id: string) => {
+    setTransactions((prev) => {
+      const next = prev.filter((tx) => tx.id !== id);
+      setAccounts((prevAccs) => {
+        const recalc = recalculateAccountBalances(prevAccs, next);
+        if (isSupabaseConfigured) {
+          supabaseService.deleteTransaction(id);
+          supabaseService.updateAccounts(recalc);
+        }
+        return recalc;
+      });
+      return next;
+    });
+  }, []);
+
+  const deleteTransactionsBatch = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    setTransactions((prev) => {
+      const next = prev.filter((tx) => !idSet.has(tx.id));
+      setAccounts((prevAccs) => recalculateAccountBalances(prevAccs, next));
+      return next;
+    });
+  }, []);
 
   // Quản lý Tài khoản (Ví)
   const addAccount = useCallback((acc: Omit<Account, "id" | "currentBalance">) => {
@@ -429,22 +559,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateAccount = useCallback((id: string, acc: Partial<Account>) => {
-    setAccounts((prev) => {
-      let target: Account | undefined;
-      const next = prev.map((a) => {
-        if (a.id === id) {
-          target = { ...a, ...acc };
-          return target;
+  const updateAccount = useCallback(
+    (id: string, acc: Partial<Account>) => {
+      setAccounts((prev) => {
+        const mapped = prev.map((a) => (a.id === id ? { ...a, ...acc } : a));
+        const recalc = recalculateAccountBalances(mapped, transactions);
+        if (isSupabaseConfigured) {
+          const target = recalc.find((a) => a.id === id);
+          if (target) supabaseService.upsertAccount(target);
         }
-        return a;
+        return recalc;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertAccount(target);
-      }
-      return next;
-    });
-  }, []);
+    },
+    [transactions]
+  );
 
   const deleteAccount = useCallback((id: string) => {
     setAccounts((prev) => {
@@ -459,7 +587,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // Ngân sách
   const setCategoryBudget = useCallback(
     (categoryId: string, limitAmount: number, month?: string) => {
-      const targetMonth = month || selectedMonth || "2026-10";
+      const targetMonth = month || (selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth);
       const targetBudget: CategoryBudget = { categoryId, limitAmount, month: targetMonth };
 
       setBudgets((prev) => {
@@ -482,6 +610,33 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     },
     [selectedMonth]
   );
+
+  const deleteBudget = useCallback(
+    (categoryId: string, month?: string) => {
+      const targetMonth = month || (selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth);
+      setBudgets((prev) =>
+        prev.filter((b) => !(b.categoryId === categoryId && b.month === targetMonth))
+      );
+    },
+    [selectedMonth]
+  );
+
+  const copyBudgetsFromMonth = useCallback((fromMonth: string, toMonth: string): number => {
+    let copied = 0;
+    setBudgets((prev) => {
+      const source = prev.filter((b) => b.month === fromMonth);
+      if (source.length === 0) return prev;
+      const existingKeys = new Set(
+        prev.filter((b) => b.month === toMonth).map((b) => b.categoryId)
+      );
+      const additions = source
+        .filter((b) => !existingKeys.has(b.categoryId))
+        .map((b) => ({ ...b, month: toMonth }));
+      copied = additions.length;
+      return [...prev, ...additions];
+    });
+    return copied;
+  }, []);
 
   // Mục tiêu
   const addGoal = useCallback((goal: Omit<SavingsGoal, "id" | "isCompleted">) => {
@@ -519,25 +674,47 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const depositGoal = useCallback((id: string, amount: number) => {
-    setGoals((prev) => {
-      let target: SavingsGoal | undefined;
-      const next = prev.map((g) => {
-        if (g.id !== id) return g;
-        const newCurrent = g.currentAmount + amount;
-        target = {
-          ...g,
-          currentAmount: newCurrent,
-          isCompleted: newCurrent >= g.targetAmount,
-        };
-        return target;
+  // Event-sourced goal deposit: deducts from sourceAccountId via TRANSFER transaction
+  const depositGoal = useCallback(
+    (id: string, amount: number, sourceAccountId?: string) => {
+      let targetGoalName = "Mục tiêu";
+      setGoals((prev) => {
+        let target: SavingsGoal | undefined;
+        const next = prev.map((g) => {
+          if (g.id !== id) return g;
+          targetGoalName = g.name;
+          const newCurrent = g.currentAmount + amount;
+          target = {
+            ...g,
+            currentAmount: newCurrent,
+            isCompleted: newCurrent >= g.targetAmount,
+          };
+          return target;
+        });
+        if (isSupabaseConfigured && target) {
+          supabaseService.upsertGoal(target);
+        }
+        return next;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertGoal(target);
+
+      if (sourceAccountId) {
+        const srcAcc = accounts.find((a) => a.id === sourceAccountId);
+        addTransaction({
+          amount,
+          date: new Date().toISOString().slice(0, 10),
+          type: "TRANSFER",
+          categoryId: "cat_expense_other",
+          accountId: sourceAccountId,
+          toAccountId: `goal_${id}`,
+          memberId: srcAcc?.owner && srcAcc.owner !== "SHARED" ? srcAcc.owner : "HUSBAND",
+          scope: "FAMILY",
+          tag: "INVESTMENT",
+          note: `Nạp hũ tích lũy: ${targetGoalName}`,
+        });
       }
-      return next;
-    });
-  }, []);
+    },
+    [accounts, addTransaction]
+  );
 
   // Nợ & Đầu tư
   const addDebt = useCallback((debt: Omit<DebtItem, "id">) => {
@@ -554,6 +731,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const next = prev.map((d) => {
         if (d.id !== id) return d;
         target = { ...d, ...debt };
+        target.status = target.paidAmount >= target.totalAmount ? "PAID" : (debt.status || target.status);
         return target;
       });
       if (isSupabaseConfigured && target) {
@@ -563,25 +741,45 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const payDebt = useCallback((id: string, amount: number) => {
-    setDebts((prev) => {
-      let target: DebtItem | undefined;
-      const next = prev.map((d) => {
-        if (d.id !== id) return d;
-        const newPaid = d.paidAmount + amount;
-        target = {
-          ...d,
-          paidAmount: newPaid,
-          status: newPaid >= d.totalAmount ? "PAID" : "ACTIVE",
-        };
-        return target;
+  const payDebt = useCallback(
+    (id: string, amount: number, sourceAccountId?: string) => {
+      const targetDebt = debts.find((d) => d.id === id);
+      setDebts((prev) => {
+        let target: DebtItem | undefined;
+        const next = prev.map((d) => {
+          if (d.id !== id) return d;
+          const newPaid = d.paidAmount + amount;
+          target = {
+            ...d,
+            paidAmount: newPaid,
+            status: newPaid >= d.totalAmount ? "PAID" : "ACTIVE",
+          };
+          return target;
+        });
+        if (isSupabaseConfigured && target) {
+          supabaseService.upsertDebt(target);
+        }
+        return next;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertDebt(target);
+
+      if (sourceAccountId && targetDebt) {
+        const srcAcc = accounts.find((a) => a.id === sourceAccountId);
+        const isBorrow = targetDebt.type === "BORROW";
+        addTransaction({
+          amount,
+          date: new Date().toISOString().slice(0, 10),
+          type: isBorrow ? "EXPENSE" : "INCOME",
+          categoryId: isBorrow ? "cat_expense_other" : "cat_income_investment",
+          accountId: sourceAccountId,
+          memberId: srcAcc?.owner && srcAcc.owner !== "SHARED" ? srcAcc.owner : "HUSBAND",
+          scope: "FAMILY",
+          tag: "DEBT",
+          note: `${isBorrow ? "Trả nợ" : "Thu nợ"}: ${targetDebt.name}`,
+        });
       }
-      return next;
-    });
-  }, []);
+    },
+    [debts, accounts, addTransaction]
+  );
 
   const deleteDebt = useCallback((id: string) => {
     setDebts((prev) => prev.filter((d) => d.id !== id));
@@ -622,6 +820,53 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Giao dịch Định kỳ (Recurring Rules)
+  const addRecurringRule = useCallback((rule: Omit<RecurringRule, "id">) => {
+    const newRule: RecurringRule = { ...rule, id: `rec_${Date.now()}` };
+    setRecurringRules((prev) => [...prev, newRule]);
+  }, []);
+
+  const updateRecurringRule = useCallback((id: string, rule: Partial<RecurringRule>) => {
+    setRecurringRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...rule } : r)));
+  }, []);
+
+  const deleteRecurringRule = useCallback((id: string) => {
+    setRecurringRules((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  const applyRecurringRule = useCallback(
+    (id: string, targetMonth?: string): Transaction | null => {
+      const rule = recurringRules.find((r) => r.id === id);
+      if (!rule) return null;
+
+      const month =
+        targetMonth ||
+        (selectedMonth !== "ALL" ? selectedMonth : getCurrentMonthKey());
+      const safeDay = Math.min(28, Math.max(1, rule.dayOfMonth));
+      const txDate = `${month}-${String(safeDay).padStart(2, "0")}`;
+
+      const created = addTransaction({
+        amount: rule.amount,
+        date: txDate,
+        type: rule.type,
+        categoryId: rule.categoryId,
+        accountId: rule.accountId,
+        toAccountId: rule.toAccountId,
+        memberId: rule.memberId,
+        scope: rule.scope,
+        tag: "RECURRING",
+        note: rule.note ? `${rule.name} (${rule.note})` : rule.name,
+      });
+
+      setRecurringRules((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, lastAppliedMonth: month } : r))
+      );
+
+      return created;
+    },
+    [recurringRules, selectedMonth, addTransaction]
+  );
+
   const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...newSettings };
@@ -632,7 +877,6 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Reset to Mock
   const resetToMockData = useCallback(() => {
     const seeded = seedInitialDataV3();
     setCategories(seeded.categories);
@@ -642,12 +886,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setGoals(seeded.goals);
     setDebts(seeded.debts);
     setInvestments(seeded.investments);
+    setRecurringRules(seeded.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(seeded.settings);
     setSelectedMonth("2026-10");
     setActivePerspective("ALL");
+    setIsAppLocked(false);
   }, []);
 
-  // Backup
   const exportBackup = useCallback(() => {
     exportDataToJsonV3({
       categories,
@@ -657,9 +902,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       goals,
       debts,
       investments,
+      recurringRules,
       settings,
     });
-  }, [categories, accounts, transactions, budgets, goals, debts, investments, settings]);
+  }, [categories, accounts, transactions, budgets, goals, debts, investments, recurringRules, settings]);
 
   const importBackup = useCallback(
     async (file: File): Promise<{ success: boolean; error?: string }> => {
@@ -672,10 +918,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setGoals(res.data.goals);
         setDebts(res.data.debts);
         setInvestments(res.data.investments);
+        setRecurringRules(res.data.recurringRules || DEFAULT_RECURRING_RULES);
         setSettings(res.data.settings);
         saveStoredDataV3(res.data);
 
-        // Đẩy lên cloud nếu đã cấu hình
         if (isSupabaseConfigured) {
           res.data.accounts.forEach((a) => supabaseService.upsertAccount(a));
           res.data.transactions.forEach((t) => supabaseService.upsertTransaction(t));
@@ -693,40 +939,24 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  // Tính toán Thông tin 2 thẻ BIDV Credit
+  // Thông tin 2 thẻ BIDV Credit (chuẩn hóa theo 30% guardrail & ngày sao kê/đáo hạn cấu hình)
   const husbandCreditCard = useMemo<CreditCardInfo | null>(() => {
-    const acc = accounts.find((a) => a.id === "acc_husband_bidv_credit");
+    const acc =
+      accounts.find((a) => a.id === "acc_husband_bidv_credit") ||
+      accounts.find((a) => a.type === "CREDIT_CARD" && a.owner === "HUSBAND");
     if (!acc) return null;
-    const limit = acc.creditLimit || 50000000;
-    const used = Math.max(0, acc.currentBalance);
-    const available = Math.max(0, limit - used);
-    const pct = Math.min(100, Math.round((used / limit) * 100));
-    return {
-      account: acc,
-      creditLimit: limit,
-      usedAmount: used,
-      availableAmount: available,
-      usagePercentage: pct,
-    };
-  }, [accounts]);
+    return calculateCreditCardCycleInfo(acc, selectedMonth);
+  }, [accounts, selectedMonth]);
 
   const wifeCreditCard = useMemo<CreditCardInfo | null>(() => {
-    const acc = accounts.find((a) => a.id === "acc_wife_bidv_credit");
+    const acc =
+      accounts.find((a) => a.id === "acc_wife_bidv_credit") ||
+      accounts.find((a) => a.type === "CREDIT_CARD" && a.owner === "WIFE");
     if (!acc) return null;
-    const limit = acc.creditLimit || 20000000;
-    const used = Math.max(0, acc.currentBalance);
-    const available = Math.max(0, limit - used);
-    const pct = Math.min(100, Math.round((used / limit) * 100));
-    return {
-      account: acc,
-      creditLimit: limit,
-      usedAmount: used,
-      availableAmount: available,
-      usagePercentage: pct,
-    };
-  }, [accounts]);
+    return calculateCreditCardCycleInfo(acc, selectedMonth);
+  }, [accounts, selectedMonth]);
 
-  // Tính toán Tổng hợp Tài chính (theo góc nhìn activePerspective)
+  // Tổng hợp Tài chính
   const summary = useMemo<FinancialSummary>(() => {
     const filteredAccounts = accounts.filter((a) => {
       if (activePerspective === "ALL") return true;
@@ -743,15 +973,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       .filter((a) => a.type === "CREDIT_CARD")
       .reduce((sum, a) => sum + Math.max(0, a.currentBalance), 0);
 
+    // Chỉ trừ nợ BORROW (mình đi vay), không trừ LEND (cho vay)
     const totalDebt = debts
-      .filter((d) => d.status === "ACTIVE")
+      .filter((d) => d.status === "ACTIVE" && d.type !== "LEND")
       .filter((d) => {
         if (activePerspective === "ALL") return true;
         if (activePerspective === "HUSBAND") return d.memberId === "HUSBAND" || d.memberId === "SHARED";
         if (activePerspective === "WIFE") return d.memberId === "WIFE" || d.memberId === "SHARED";
         return true;
       })
-      .reduce((sum, d) => sum + (d.totalAmount - d.paidAmount), 0);
+      .reduce((sum, d) => sum + Math.max(0, d.totalAmount - d.paidAmount), 0);
 
     const totalInvested = investments
       .filter((i) => i.status === "ACTIVE")
@@ -817,7 +1048,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     };
   }, [accounts, debts, investments, transactions, selectedMonth, activePerspective]);
 
-  // Ngân sách tháng
+  // Ngân sách tháng (Dynamic daysRemaining)
   const budgetSummary = useMemo<BudgetSummary>(() => {
     const monthKey = selectedMonth === "ALL" ? "2026-10" : selectedMonth;
     const currentMonthBudgets = budgets.filter((b) => b.month === monthKey);
@@ -843,7 +1074,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       totalSpent += spent;
 
       const remaining = Math.max(0, b.limitAmount - spent);
-      const percentage = Math.round((spent / b.limitAmount) * 100);
+      const percentage = b.limitAmount > 0 ? Math.round((spent / b.limitAmount) * 100) : 0;
 
       return {
         categoryId: b.categoryId,
@@ -857,7 +1088,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     });
 
     const remaining = Math.max(0, totalBudget - totalSpent);
-    const daysRemaining = 18;
+    const daysRemaining = calculateDaysRemainingInMonth(monthKey, transactions);
     const dailyAllowance = daysRemaining > 0 ? Math.round(remaining / daysRemaining) : 0;
 
     return {
@@ -870,6 +1101,21 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     };
   }, [budgets, transactions, selectedMonth, activePerspective, getCategoryById]);
 
+  const todaySpentInfo = useMemo(
+    () => calculateTodaySpent(transactions, activePerspective, selectedMonth),
+    [transactions, activePerspective, selectedMonth]
+  );
+
+  const coupleSettlement = useMemo(
+    () =>
+      calculateCoupleSettlement(
+        transactions,
+        selectedMonth,
+        settings.sharedSplitRatioHusband ?? 50
+      ),
+    [transactions, selectedMonth, settings.sharedSplitRatioHusband]
+  );
+
   // Danh sách giao dịch được lọc
   const filteredTransactions = useMemo(() => {
     return transactions
@@ -877,7 +1123,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         if (selectedMonth !== "ALL" && !tx.date.startsWith(selectedMonth)) return false;
         if (selectedType !== "ALL" && tx.type !== selectedType) return false;
         if (selectedCategory !== "ALL" && tx.categoryId !== selectedCategory) return false;
-        if (selectedAccount !== "ALL" && tx.accountId !== selectedAccount && tx.toAccountId !== selectedAccount)
+        if (
+          selectedAccount !== "ALL" &&
+          tx.accountId !== selectedAccount &&
+          tx.toAccountId !== selectedAccount
+        )
           return false;
 
         if (activePerspective === "HUSBAND" && tx.memberId !== "HUSBAND") return false;
@@ -900,7 +1150,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         if (dateCompare !== 0) return dateCompare;
         return (b.createdAt || "").localeCompare(a.createdAt || "");
       });
-  }, [transactions, selectedMonth, selectedType, selectedCategory, selectedAccount, activePerspective, searchQuery, getCategoryById, getAccountById]);
+  }, [
+    transactions,
+    selectedMonth,
+    selectedType,
+    selectedCategory,
+    selectedAccount,
+    activePerspective,
+    searchQuery,
+    getCategoryById,
+    getAccountById,
+  ]);
 
   // Thống kê Donut chi tiêu
   const categoryExpenseStats = useMemo<CategoryExpenseStat[]>(() => {
@@ -935,7 +1195,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return stats.sort((a, b) => b.totalAmount - a.totalAmount);
   }, [transactions, selectedMonth, activePerspective, getCategoryById]);
 
-  // Xu hướng thu chi
+  // Xu hướng thu chi 6 tháng gần nhất
   const monthlyTrendData = useMemo<MonthlyTrendItem[]>(() => {
     const months = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
     const map = new Map<string, { income: number; expense: number }>();
@@ -966,38 +1226,113 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     });
   }, [transactions, activePerspective]);
 
-  // Thông báo
+  // Thông báo động theo 30% Credit Guardrail, Ngân sách & Định kỳ
   const notifications = useMemo<AppNotification[]>(() => {
-    const list: AppNotification[] = [...DEFAULT_NOTIFICATIONS];
+    const list: AppNotification[] = [];
+    const today = new Date().toISOString().slice(0, 10);
+    const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
 
-    if (husbandCreditCard && husbandCreditCard.usagePercentage >= 70) {
+    if (husbandCreditCard) {
+      if (husbandCreditCard.usagePercentage >= 70) {
+        list.push({
+          id: "warn_husband_credit_high",
+          title: "Cảnh báo hạn mức thẻ Anh Chuột",
+          message: `Thẻ BIDV Credit (${settings.husbandName}) đã dùng ${husbandCreditCard.usagePercentage}% hạn mức (vượt 70%). Nên trả bớt trước sao kê ngày ${husbandCreditCard.statementDay}.`,
+          type: "danger",
+          date: today,
+          read: readNotifIds.has("warn_husband_credit_high"),
+        });
+      } else if (husbandCreditCard.usagePercentage > 30) {
+        list.push({
+          id: "watch_husband_credit_30",
+          title: "Thẻ Anh Chuột vượt ngưỡng an toàn 30%",
+          message: `Thẻ BIDV Credit (${settings.husbandName}) đang ở mức ${husbandCreditCard.usagePercentage}% (mốc an toàn ≤ 30%). Hạn trả: ${husbandCreditCard.dueDateDisplay}.`,
+          type: "warning",
+          date: today,
+          read: readNotifIds.has("watch_husband_credit_30"),
+        });
+      } else {
+        list.push({
+          id: "info_husband_credit_cycle",
+          title: "Chu kỳ thẻ BIDV Credit Anh Chuột",
+          message: `Sao kê ngày ${husbandCreditCard.statementDay}, hạn trả ${husbandCreditCard.dueDateDisplay}. Tỷ lệ dùng ${husbandCreditCard.usagePercentage}% (An toàn ≤ 30%).`,
+          type: "info",
+          date: today,
+          read: readNotifIds.has("info_husband_credit_cycle"),
+        });
+      }
+    }
+
+    if (wifeCreditCard) {
+      if (wifeCreditCard.usagePercentage >= 70) {
+        list.push({
+          id: "warn_wife_credit_high",
+          title: "Cảnh báo hạn mức thẻ Bé Mèo",
+          message: `Thẻ BIDV Credit (${settings.wifeName}) đã dùng ${wifeCreditCard.usagePercentage}% hạn mức (vượt 70%).`,
+          type: "danger",
+          date: today,
+          read: readNotifIds.has("warn_wife_credit_high"),
+        });
+      } else if (wifeCreditCard.usagePercentage > 30) {
+        list.push({
+          id: "watch_wife_credit_30",
+          title: "Thẻ Bé Mèo vượt ngưỡng an toàn 30%",
+          message: `Thẻ BIDV Credit (${settings.wifeName}) đang dùng ${wifeCreditCard.usagePercentage}%. Hạn trả: ${wifeCreditCard.dueDateDisplay}.`,
+          type: "warning",
+          date: today,
+          read: readNotifIds.has("watch_wife_credit_30"),
+        });
+      }
+    }
+
+    budgetSummary.items.forEach((b) => {
+      if (b.percentage >= 90) {
+        const nid = `budget_warn_${b.categoryId}_${activeMonth}`;
+        list.push({
+          id: nid,
+          title: `Ngân sách "${b.categoryName}" đạt ${b.percentage}%`,
+          message:
+            b.percentage >= 100
+              ? `Danh mục ${b.categoryName} đã vượt ngân sách tháng ${activeMonth}.`
+              : `Danh mục ${b.categoryName} đã dùng ${b.percentage}% hạn mức tháng.`,
+          type: b.percentage >= 100 ? "danger" : "warning",
+          date: today,
+          read: readNotifIds.has(nid),
+        });
+      }
+    });
+
+    const pendingRecurring = recurringRules.filter(
+      (r) => r.isActive && r.lastAppliedMonth !== activeMonth
+    );
+    if (pendingRecurring.length > 0) {
       list.push({
-        id: "warn_husband_credit_high",
-        title: "Cảnh báo hạn mức thẻ Chồng",
-        message: `Thẻ BIDV Credit Chồng đã dùng ${husbandCreditCard.usagePercentage}% hạn mức (vượt ngưỡng 70%)`,
-        type: "warning",
-        date: "2026-10-21",
-        read: false,
+        id: `rec_pending_${activeMonth}`,
+        title: `${pendingRecurring.length} giao dịch định kỳ chờ ghi sổ`,
+        message: `Có ${pendingRecurring.length} khoản thu/chi định kỳ chưa áp dụng cho kỳ ${activeMonth}. Vào Kế hoạch hoặc Quản trị Dữ liệu để ghi sổ 1 chạm.`,
+        type: "info",
+        date: today,
+        read: readNotifIds.has(`rec_pending_${activeMonth}`),
       });
     }
 
-    if (wifeCreditCard && wifeCreditCard.usagePercentage >= 70) {
-      list.push({
-        id: "warn_wife_credit_high",
-        title: "Cảnh báo hạn mức thẻ Vợ",
-        message: `Thẻ BIDV Credit Vợ đã dùng ${wifeCreditCard.usagePercentage}% hạn mức (vượt ngưỡng 70%)`,
-        type: "warning",
-        date: "2026-10-22",
-        read: false,
-      });
-    }
+    return list.filter((n) => !n.read);
+  }, [
+    husbandCreditCard,
+    wifeCreditCard,
+    settings.husbandName,
+    settings.wifeName,
+    budgetSummary.items,
+    recurringRules,
+    selectedMonth,
+    readNotifIds,
+  ]);
 
-    return list;
-  }, [husbandCreditCard, wifeCreditCard]);
+  const markNotificationRead = useCallback((id: string) => {
+    setReadNotifIds((prev) => new Set(prev).add(id));
+  }, []);
 
-  const markNotificationRead = useCallback((_id: string) => {}, []);
-
-  const value = {
+  const value: FinanceContextType = {
     isLoaded,
     activeTab,
     setActiveTab,
@@ -1007,6 +1342,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     syncWithCloud,
     activePerspective,
     setActivePerspective,
+    isPrivacyMode,
+    togglePrivacyMode,
+    isAppLocked,
+    unlockApp,
+    lockApp,
     categories,
     accounts,
     transactions,
@@ -1014,6 +1354,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     goals,
     debts,
     investments,
+    recurringRules,
     settings,
     notifications,
     selectedMonth,
@@ -1026,13 +1367,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setSelectedType,
     setSelectedAccount,
     setSearchQuery,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     addTransaction,
+    addTransactionsBatch,
     updateTransaction,
     deleteTransaction,
+    deleteTransactionsBatch,
     addAccount,
     updateAccount,
     deleteAccount,
     setCategoryBudget,
+    deleteBudget,
+    copyBudgetsFromMonth,
     addGoal,
     updateGoal,
     deleteGoal,
@@ -1044,6 +1392,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     addInvestment,
     updateInvestment,
     deleteInvestment,
+    addRecurringRule,
+    updateRecurringRule,
+    deleteRecurringRule,
+    applyRecurringRule,
     updateSettings,
     markNotificationRead,
     resetToMockData,
@@ -1052,6 +1404,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     availableMonths,
     summary,
     budgetSummary,
+    todaySpentInfo,
+    coupleSettlement,
     filteredTransactions,
     categoryExpenseStats,
     monthlyTrendData,

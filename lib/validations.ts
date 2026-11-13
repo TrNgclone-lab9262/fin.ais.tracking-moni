@@ -37,6 +37,8 @@ export const AccountSchema = z.object({
   owner: FamilyMemberSchema,
   isSalaryAccount: z.boolean().optional(),
   creditLimit: z.number().optional(),
+  statementDay: z.number().int().min(1).max(31).optional(),
+  dueDay: z.number().int().min(1).max(31).optional(),
   initialBalance: z.number(),
   currentBalance: z.number(),
   accountNumber: z.string().optional(),
@@ -58,6 +60,22 @@ export const TransactionSchema = z.object({
   tag: z.enum(["NORMAL", "DEBT", "INVESTMENT", "RECURRING"]).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+export const RecurringRuleSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  amount: z.number().positive(),
+  type: z.enum(["INCOME", "EXPENSE", "TRANSFER"]),
+  categoryId: z.string().min(1),
+  accountId: z.string().min(1),
+  toAccountId: z.string().optional(),
+  memberId: FamilyMemberSchema,
+  scope: ExpenseScopeSchema,
+  dayOfMonth: z.number().int().min(1).max(31),
+  isActive: z.boolean(),
+  lastAppliedMonth: z.string().optional(),
+  note: z.string().optional(),
 });
 
 export const BudgetSchema = z.object({
@@ -108,6 +126,9 @@ export const AppSettingsSchema = z.object({
   notificationsEnabled: z.boolean(),
   husbandName: z.string(),
   wifeName: z.string(),
+  sharedSplitRatioHusband: z.number().min(0).max(100).optional(),
+  privacyMode: z.boolean().optional(),
+  pinCode: z.string().optional(),
 });
 
 export const AppDataBackupSchema = z.object({
@@ -120,6 +141,7 @@ export const AppDataBackupSchema = z.object({
   goals: z.array(SavingsGoalSchema).optional(),
   debts: z.array(DebtItemSchema).optional(),
   investments: z.array(InvestmentItemSchema).optional(),
+  recurringRules: z.array(RecurringRuleSchema).optional(),
   settings: AppSettingsSchema.optional(),
 });
 

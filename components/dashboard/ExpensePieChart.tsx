@@ -69,7 +69,7 @@ export function ExpensePieChart() {
             </p>
           </div>
         </div>
-        <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md">
+        <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md whitespace-nowrap shrink-0">
           {categoryExpenseStats.length} danh mục
         </span>
       </div>

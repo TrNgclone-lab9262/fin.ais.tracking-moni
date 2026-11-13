@@ -7,6 +7,7 @@ import {
   CreditCard,
   Target,
   Coins,
+  Database,
   HelpCircle,
   Settings,
   ChevronLeft,
@@ -38,11 +39,11 @@ export function Sidebar() {
     wifeCreditCard,
     budgetSummary,
     debts,
+    settings,
   } = useFinance();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Khôi phục trạng thái thu gọn từ LocalStorage hoặc tự động thu gọn trên Tablet (768px - 1023px)
   useEffect(() => {
     const saved = localStorage.getItem("HOME_MONI_SIDEBAR_COLLAPSED");
     if (saved !== null) {
@@ -72,10 +73,9 @@ export function Sidebar() {
     }
   };
 
-  // Tính toán dynamic badges
   const creditCardWarning =
-    (husbandCreditCard && husbandCreditCard.usagePercentage >= 70) ||
-    (wifeCreditCard && wifeCreditCard.usagePercentage >= 70);
+    (husbandCreditCard && husbandCreditCard.usagePercentage > 30) ||
+    (wifeCreditCard && wifeCreditCard.usagePercentage > 30);
 
   const budgetOverLimit = budgetSummary.items.some((i) => i.percentage >= 100);
   const activeDebtsCount = debts.filter((d) => d.status === "ACTIVE").length;
@@ -91,7 +91,7 @@ export function Sidebar() {
           label: "Tài khoản & Thẻ",
           icon: CreditCard,
           badge: creditCardWarning
-            ? { text: "Cảnh báo thẻ", variant: "warning" }
+            ? { text: ">30%", variant: "warning" }
             : undefined,
         },
       ],
@@ -119,8 +119,13 @@ export function Sidebar() {
       ],
     },
     {
-      title: "Hệ thống",
+      title: "Hệ thống & Quản trị",
       items: [
+        {
+          id: "data_admin",
+          label: "Quản trị Dữ liệu",
+          icon: Database,
+        },
         { id: "guide", label: "Cẩm nang tổ ấm", icon: HelpCircle },
         { id: "settings", label: "Cài đặt & Tùy biến", icon: Settings },
       ],
@@ -133,7 +138,7 @@ export function Sidebar() {
         isCollapsed ? "w-20" : "w-64"
       }`}
     >
-      {/* 1. Nút Thu gọn Nổi viền (Floating Edge Toggle) */}
+      {/* 1. Floating Edge Toggle */}
       <button
         onClick={toggleCollapse}
         aria-label={isCollapsed ? "Mở rộng menu" : "Thu gọn menu"}
@@ -143,7 +148,7 @@ export function Sidebar() {
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* 2. Brand Header: HOME MONI */}
+      {/* 2. Brand Header */}
       <div className="h-20 flex items-center justify-between px-4 border-b border-blue-800/40 shrink-0">
         <div className="flex items-center gap-3 overflow-hidden">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-amber-400 via-rose-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-rose-500/25 ring-2 ring-white/20">
@@ -162,7 +167,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 3. Danh sách Điều Hướng Phân Nhóm */}
+      {/* 3. Navigation Groups */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
         {NAV_GROUPS.map((group, gIdx) => (
           <div key={gIdx} className="space-y-1.5">
@@ -180,7 +185,7 @@ export function Sidebar() {
                 <div key={item.id} className="relative group">
                   <button
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                    className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
                       isActive
                         ? "bg-white text-blue-900 shadow-md shadow-blue-950/25 font-black"
                         : "text-blue-100 hover:bg-white/10 hover:text-white hover:translate-x-1"
@@ -213,7 +218,6 @@ export function Sidebar() {
                     )}
                   </button>
 
-                  {/* Tooltip nổi khi Sidebar ở trạng thái thu gọn */}
                   {isCollapsed && (
                     <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-2 bg-slate-900/95 backdrop-blur-md text-white text-xs font-semibold rounded-md shadow-2xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-150 z-50 border border-slate-700/60 flex items-center gap-2">
                       <span>{item.label}</span>
@@ -239,21 +243,19 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* 4. Footer Sidebar */}
+      {/* 4. Footer */}
       {!isCollapsed ? (
         <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-200 bg-blue-950/30 shrink-0">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-white flex items-center gap-1.5">
-              <span>👨</span>
-              <span>Anh Chuột</span>
-              <Heart className="w-3 h-3 text-rose-400 fill-rose-400 inline" />
-              <span>Bé Mèo</span>
-              <span>👩</span>
+            <span className="font-bold text-white flex items-center gap-1.5 truncate">
+              <span>👨 {settings.husbandName}</span>
+              <Heart className="w-3 h-3 text-rose-400 fill-rose-400 inline shrink-0" />
+              <span>{settings.wifeName} 👩</span>
             </span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Local-First Sync" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Local-First Sync" />
           </div>
           <div className="flex items-center justify-between text-[10px] text-blue-300/80 mt-1">
-            <span>HOME MONI v4.0</span>
+            <span>HOME MONI v4.2</span>
             <span className="text-emerald-300 font-medium">Bảo mật cục bộ</span>
           </div>
         </div>

@@ -1,15 +1,12 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import {
-  Search,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { Search, Plus, Sparkles } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, formatDateVN } from "@/lib/formatters";
+import { formatVNDMasked, formatDateVN } from "@/lib/formatters";
 import { Transaction } from "@/types/finance";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
+import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 
 interface MobileTransactionsViewProps {
   onOpenAddModal: () => void;
@@ -20,6 +17,10 @@ type QuickFilter = "ALL" | "HUSBAND" | "WIFE" | "FAMILY";
 export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsViewProps) {
   const {
     filteredTransactions,
+    budgetSummary,
+    todaySpentInfo,
+    isPrivacyMode,
+    settings,
     deleteTransaction,
     getCategoryById,
     getAccountById,
@@ -28,35 +29,33 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("ALL");
   const [search, setSearch] = useState("");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
-  // Lọc theo 4 chip
   const displayedTransactions = useMemo(() => {
     return filteredTransactions.filter((tx) => {
-      // 1. Quick filter
       if (quickFilter === "HUSBAND" && tx.memberId !== "HUSBAND") return false;
       if (quickFilter === "WIFE" && tx.memberId !== "WIFE") return false;
       if (quickFilter === "FAMILY" && tx.scope !== "FAMILY") return false;
 
-      // 2. Search
       if (search.trim()) {
         const q = search.toLowerCase();
         const noteMatch = (tx.note || "").toLowerCase().includes(q);
         const cat = getCategoryById(tx.categoryId);
         const catMatch = (cat?.name || "").toLowerCase().includes(q);
-        return noteMatch || catMatch;
+        const acc = getAccountById(tx.accountId);
+        const accMatch = (acc?.name || "").toLowerCase().includes(q);
+        return noteMatch || catMatch || accMatch;
       }
       return true;
     });
-  }, [filteredTransactions, quickFilter, search, getCategoryById]);
+  }, [filteredTransactions, quickFilter, search, getCategoryById, getAccountById]);
 
-  // Thống kê nhanh theo bộ lọc
   const totalExpense = useMemo(() => {
     return displayedTransactions
       .filter((tx) => tx.type === "EXPENSE")
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [displayedTransactions]);
 
-  // Đếm số lượng cho từng chip
   const counts = useMemo(() => {
     return {
       all: filteredTransactions.length,
@@ -65,6 +64,9 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
       family: filteredTransactions.filter((t) => t.scope === "FAMILY").length,
     };
   }, [filteredTransactions]);
+
+  const dailyAllowance = budgetSummary?.dailyAllowance || 0;
+  const todayRemaining = Math.max(0, dailyAllowance - todaySpentInfo.amount);
 
   return (
     <div className="space-y-3 animate-in fade-in duration-200">
@@ -76,7 +78,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo ghi chú, danh mục..."
+            placeholder="Tìm theo ghi chú, danh mục, ví..."
             className="w-full pl-9 pr-3 py-2 bg-white border border-[#DCE4EE] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -89,7 +91,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
         </button>
       </div>
 
-      {/* 2. KHỐI LỌC 4 VIÊN CỐ ĐỊNH */}
+      {/* 2. KHỐI LỌC 4 VIÊN */}
       <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
         <button
           onClick={() => setQuickFilter("ALL")}
@@ -104,7 +106,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
 
         <button
           onClick={() => setQuickFilter("HUSBAND")}
-          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer ${
+          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "HUSBAND"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
               : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
@@ -115,7 +117,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
 
         <button
           onClick={() => setQuickFilter("WIFE")}
-          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer ${
+          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "WIFE"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
               : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
@@ -126,7 +128,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
 
         <button
           onClick={() => setQuickFilter("FAMILY")}
-          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer ${
+          className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "FAMILY"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
               : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
@@ -137,22 +139,26 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
       </div>
 
       {/* 3. THẺ TÓM TẮT BỘ LỌC */}
-      <div className="p-3 bg-white rounded-xl border border-[#DCE4EE] shadow-xs flex items-center justify-between text-xs">
+      <div className="p-3 bg-white rounded-xl border border-[#DCE4EE] shadow-xs flex items-center justify-between text-xs gap-2">
         <div>
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
             Tổng chi trong bộ lọc
           </span>
           <span className="text-base font-black text-[#BE123C]">
-            -{formatVND(totalExpense)}
+            -{formatVNDMasked(totalExpense, isPrivacyMode)}
           </span>
         </div>
 
         <div className="text-right">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-            Hạn mức ngày hôm nay
+            Hạn mức ngày ({todaySpentInfo.isCurrentDay ? "Hôm nay" : formatDateVN(todaySpentInfo.referenceDate)})
           </span>
-          <span className="text-xs font-black text-emerald-600">
-            Còn {formatVND(350000)} / {formatVND(500000)}
+          <span
+            className={`text-xs font-black ${
+              todaySpentInfo.amount > dailyAllowance ? "text-rose-600" : "text-emerald-600"
+            }`}
+          >
+            Còn {formatVNDMasked(todayRemaining, isPrivacyMode)} / {formatVNDMasked(dailyAllowance, isPrivacyMode)}
           </span>
         </div>
       </div>
@@ -205,7 +211,6 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                 onClick={() => setSelectedTx(tx)}
                 className="p-3.5 bg-white rounded-xl border border-[#DCE4EE] shadow-xs hover:border-blue-400 active:bg-blue-50/50 cursor-pointer transition-all space-y-2"
               >
-                {/* Dòng trên: Người chi + Ngày + Phạm vi */}
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5">
                     <span
@@ -215,7 +220,9 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                           : "bg-rose-50 text-rose-700 border border-rose-200"
                       }`}
                     >
-                      {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
+                      {tx.memberId === "HUSBAND"
+                        ? `👨 ${settings.husbandName}`
+                        : `👩 ${settings.wifeName}`}
                     </span>
 
                     <span
@@ -234,7 +241,6 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                   </span>
                 </div>
 
-                {/* Dòng giữa: Danh mục + Ghi chú + Số tiền */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
@@ -269,7 +275,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                     }`}
                   >
                     {isExpense ? "-" : isTransfer ? "" : "+"}
-                    {formatVND(tx.amount)}
+                    {formatVNDMasked(tx.amount, isPrivacyMode)}
                   </span>
                 </div>
               </div>
@@ -283,13 +289,20 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
         transaction={selectedTx}
         isOpen={selectedTx !== null}
         onClose={() => setSelectedTx(null)}
-        onEdit={(_tx) => {
+        onEdit={(tx) => {
           setSelectedTx(null);
+          setEditingTx(tx);
         }}
         onDelete={(id) => {
           setSelectedTx(null);
           deleteTransaction(id);
         }}
+      />
+
+      <TransactionFormModal
+        isOpen={editingTx !== null}
+        onClose={() => setEditingTx(null)}
+        editTransaction={editingTx}
       />
     </div>
   );

@@ -64,13 +64,13 @@ export function MonthlyTrendChart() {
             <p className="text-xs text-slate-500 font-medium">Xu hướng thu nhập & chi tiêu</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs font-semibold">
-          <span className="flex items-center gap-1.5 text-emerald-600">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-3 text-xs font-semibold shrink-0 whitespace-nowrap">
+          <span className="flex items-center gap-1.5 text-emerald-600 whitespace-nowrap">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
             Thu nhập
           </span>
-          <span className="flex items-center gap-1.5 text-rose-600">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+          <span className="flex items-center gap-1.5 text-rose-600 whitespace-nowrap">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
             Chi tiêu
           </span>
         </div>

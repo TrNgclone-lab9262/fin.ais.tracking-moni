@@ -1,6 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { useFinance } from "@/context/FinanceContext";
+import { formatVNDMasked, getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
+import { generateMonthlyDigest, MonthlyAIDigest } from "@/lib/geminiReceiptService";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { DualCreditCardsWidget } from "@/components/dashboard/DualCreditCardsWidget";
 import { FamilyCashflowWidget } from "@/components/dashboard/FamilyCashflowWidget";
@@ -12,6 +16,73 @@ import { AssetDebtGoalsWidgets } from "@/components/dashboard/AssetDebtGoalsWidg
 import { RecentActivitySection } from "@/components/dashboard/RecentActivitySection";
 
 export function OverviewView() {
+  const {
+    selectedMonth,
+    summary,
+    categoryExpenseStats,
+    husbandCreditCard,
+    wifeCreditCard,
+    budgetSummary,
+    recurringRules,
+    applyRecurringRule,
+    setActiveTab,
+    isPrivacyMode,
+  } = useFinance();
+
+  const [digest, setDigest] = useState<MonthlyAIDigest | null>(null);
+  const [isGeneratingDigest, setIsGeneratingDigest] = useState(false);
+
+  const activeMonthKey = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+  const monthLabel = selectedMonth === "ALL" ? "Toàn thời gian" : getMonthDisplayLabel(selectedMonth);
+
+  const pendingRecurring = recurringRules.filter(
+    (r) => r.isActive && r.lastAppliedMonth !== activeMonthKey
+  );
+
+  const handleGenerateDigest = async () => {
+    setIsGeneratingDigest(true);
+    try {
+      const cards: { name: string; usagePercentage: number; usedAmount: number }[] = [];
+      if (husbandCreditCard) {
+        cards.push({
+          name: husbandCreditCard.account.name,
+          usagePercentage: husbandCreditCard.usagePercentage,
+          usedAmount: husbandCreditCard.usedAmount,
+        });
+      }
+      if (wifeCreditCard) {
+        cards.push({
+          name: wifeCreditCard.account.name,
+          usagePercentage: wifeCreditCard.usagePercentage,
+          usedAmount: wifeCreditCard.usedAmount,
+        });
+      }
+
+      const result = await generateMonthlyDigest({
+        monthLabel,
+        summary: {
+          monthlyIncome: summary.monthlyIncome,
+          monthlyExpense: summary.monthlyExpense,
+          savingsAmount: summary.savingsAmount,
+          savingsRate: summary.savingsRate,
+          netWorth: summary.netWorth,
+        },
+        topCategories: categoryExpenseStats.slice(0, 4).map((c) => ({
+          name: c.categoryName,
+          amount: c.totalAmount,
+          percentage: c.percentage,
+        })),
+        creditCards: cards,
+        budgetOverruns: budgetSummary.items
+          .filter((b) => b.percentage >= 90)
+          .map((b) => `${b.categoryName} (${b.percentage}%)`),
+      });
+      setDigest(result);
+    } finally {
+      setIsGeneratingDigest(false);
+    }
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
       {/* 1. Bốn Thẻ Chỉ Số Gradient Tổng quan */}
@@ -19,17 +90,142 @@ export function OverviewView() {
         <SummaryCards />
       </section>
 
-      {/* 2. Widget Quản lý 2 Thẻ Tín Dụng BIDV Credit (50tr & 20tr) */}
+      {/* 1B. Trợ lý AI Phân Tích Kỳ & Giao Dịch Định Kỳ Chờ Ghi Sổ */}
+      <section aria-label="Phân tích AI và định kỳ" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#172B4D]">
+                  Tổng Kết Thông Minh · {monthLabel}
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Phân tích sức khỏe dòng tiền, tỷ lệ tiết kiệm và cảnh báo thẻ tín dụng BIDV
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateDigest}
+              disabled={isGeneratingDigest}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              {isGeneratingDigest ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Đang phân tích...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{digest ? "Phân tích lại" : "Phân tích AI kỳ này"}</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {digest ? (
+            <div className="bg-slate-50 border border-[#E9EEF5] rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs sm:text-sm font-bold text-[#1E3A8A]">{digest.headline}</p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">
+                  {digest.source === "gemini" ? "Gemini AI" : "Phân tích nội bộ"}
+                </span>
+              </div>
+              <ul className="space-y-1 text-xs text-slate-600">
+                {digest.highlights.map((h, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span>{h}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="pt-2 border-t border-slate-200 text-xs font-semibold text-emerald-700">
+                💡 Gợi ý hành động: {digest.actionTip}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50/70 border border-dashed border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-500">
+              Nhấn <strong>&ldquo;Phân tích AI kỳ này&rdquo;</strong> để nhận bản tóm tắt tài chính cho {monthLabel} (hoạt động ngay cả khi offline).
+            </div>
+          )}
+        </div>
+
+        {/* Recurring Quick Strip */}
+        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Repeat className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#172B4D]">Định Kỳ ({activeMonthKey})</h3>
+                <p className="text-[11px] text-slate-500">
+                  {pendingRecurring.length > 0
+                    ? `${pendingRecurring.length} khoản chờ ghi sổ`
+                    : "Đã ghi đủ kỳ này"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab("planning")}
+              className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>Quản lý</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {pendingRecurring.length === 0 ? (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Tất cả thu/chi định kỳ đã được ghi nhận cho kỳ {activeMonthKey}.</span>
+              </div>
+            ) : (
+              pendingRecurring.slice(0, 3).map((rule) => (
+                <div
+                  key={rule.id}
+                  className="p-2.5 rounded-lg bg-slate-50 border border-[#E9EEF5] flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">{rule.name}</p>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Ngày {rule.dayOfMonth} ·{" "}
+                      <span className={rule.type === "INCOME" ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                        {formatVNDMasked(rule.amount, isPrivacyMode)}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => applyRecurringRule(rule.id, activeMonthKey)}
+                    className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                  >
+                    Ghi sổ
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 2. Widget Quản lý 2 Thẻ Tín Dụng BIDV Credit */}
       <section aria-label="Quản lý thẻ tín dụng BIDV">
         <DualCreditCardsWidget />
       </section>
 
-      {/* 3. Phân Tích Dòng Tiền Thu Nhập 2 Vợ Chồng & Lịch Chi Tiêu Heatmap */}
+      {/* 3. Phân Tích Dòng Tiền & Heatmap */}
       <section aria-label="Dòng tiền gia đình">
         <FamilyCashflowWidget />
       </section>
 
-      {/* 4. Hàng Biểu Đồ: Thu - Chi các tháng, Chi theo danh mục, Thu theo nguồn */}
+      {/* 4. Hàng Biểu Đồ */}
       <section aria-label="Biểu đồ phân tích" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <MonthlyTrendChart />

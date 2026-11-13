@@ -28,6 +28,8 @@ export interface Account {
   owner: FamilyMember;       // Chồng | Vợ | Chung
   isSalaryAccount?: boolean; // Tài khoản nhận lương chính
   creditLimit?: number;      // Hạn mức thẻ tín dụng (50tr Chồng, 20tr Vợ)
+  statementDay?: number;     // Ngày chốt sao kê (mặc định 20)
+  dueDay?: number;           // Ngày đến hạn thanh toán (mặc định 6)
   initialBalance: number;
   currentBalance: number;    // Với thẻ tín dụng: dư nợ đang dùng
   accountNumber?: string;
@@ -49,6 +51,22 @@ export interface Transaction {
   tag?: 'NORMAL' | 'DEBT' | 'INVESTMENT' | 'RECURRING';
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RecurringRule {
+  id: string;
+  name: string;
+  amount: number;
+  type: TransactionType;
+  categoryId: string;
+  accountId: string;
+  toAccountId?: string;
+  memberId: FamilyMember;
+  scope: ExpenseScope;
+  dayOfMonth: number;
+  isActive: boolean;
+  lastAppliedMonth?: string;
+  note?: string;
 }
 
 export interface CategoryBudget {
@@ -99,6 +117,9 @@ export interface AppSettings {
   notificationsEnabled: boolean;
   husbandName: string;
   wifeName: string;
+  sharedSplitRatioHusband?: number; // % đóng góp quỹ chung của Chồng (mặc định 50)
+  privacyMode?: boolean;            // Ẩn số tiền nhạy cảm
+  pinCode?: string;                 // Mã PIN 4 số tùy chọn
 }
 
 export interface AppNotification {
@@ -111,7 +132,7 @@ export interface AppNotification {
 }
 
 export interface AppDataBackup {
-  version: '3.0';
+  version: '3.0' | '4.0';
   exportedAt: string;
   categories: Category[];
   accounts: Account[];
@@ -120,6 +141,7 @@ export interface AppDataBackup {
   goals: SavingsGoal[];
   debts: DebtItem[];
   investments: InvestmentItem[];
+  recurringRules?: RecurringRule[];
   settings: AppSettings;
 }
 

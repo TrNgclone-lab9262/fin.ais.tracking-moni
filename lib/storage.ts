@@ -8,6 +8,7 @@ import {
   InvestmentItem,
   AppSettings,
   AppDataBackup,
+  RecurringRule,
 } from "@/types/finance";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import {
@@ -18,6 +19,7 @@ import {
   DEFAULT_DEBTS,
   DEFAULT_INVESTMENTS,
   DEFAULT_SETTINGS,
+  DEFAULT_RECURRING_RULES,
 } from "@/constants/mockData";
 import { AppDataBackupSchema } from "./validations";
 
@@ -31,6 +33,7 @@ export interface StoredAppStateV3 {
   goals: SavingsGoal[];
   debts: DebtItem[];
   investments: InvestmentItem[];
+  recurringRules: RecurringRule[];
   settings: AppSettings;
 }
 
@@ -95,6 +98,7 @@ export function seedInitialDataV3(): StoredAppStateV3 {
     goals: DEFAULT_SAVINGS_GOALS,
     debts: DEFAULT_DEBTS,
     investments: DEFAULT_INVESTMENTS,
+    recurringRules: DEFAULT_RECURRING_RULES,
     settings: DEFAULT_SETTINGS,
   };
 
@@ -132,7 +136,10 @@ export function loadStoredDataV3(): StoredAppStateV3 {
           goals: parsed.goals || DEFAULT_SAVINGS_GOALS,
           debts: parsed.debts || DEFAULT_DEBTS,
           investments: parsed.investments || DEFAULT_INVESTMENTS,
-          settings: parsed.settings || DEFAULT_SETTINGS,
+          recurringRules: Array.isArray(parsed.recurringRules)
+            ? parsed.recurringRules
+            : DEFAULT_RECURRING_RULES,
+          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
         };
       }
     }
@@ -163,7 +170,7 @@ export function saveStoredDataV3(state: StoredAppStateV3): boolean {
  */
 export function exportDataToJsonV3(state: StoredAppStateV3): void {
   const backupPayload: AppDataBackup = {
-    version: "3.0",
+    version: "4.0",
     exportedAt: new Date().toISOString(),
     categories: state.categories,
     accounts: state.accounts,
@@ -172,6 +179,7 @@ export function exportDataToJsonV3(state: StoredAppStateV3): void {
     goals: state.goals,
     debts: state.debts,
     investments: state.investments,
+    recurringRules: state.recurringRules,
     settings: state.settings,
   };
 
@@ -227,7 +235,8 @@ export async function importDataFromJsonV3(file: File): Promise<{
           goals: validData.goals || DEFAULT_SAVINGS_GOALS,
           debts: validData.debts || DEFAULT_DEBTS,
           investments: validData.investments || DEFAULT_INVESTMENTS,
-          settings: validData.settings || DEFAULT_SETTINGS,
+          recurringRules: validData.recurringRules || DEFAULT_RECURRING_RULES,
+          settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
         };
 
         appState.accounts = recalculateAccountBalances(appState.accounts, appState.transactions);

@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { useFinance, CreditCardInfo } from "@/context/FinanceContext";
 import { Account, AccountType, FamilyMember } from "@/types/finance";
-import { formatVND, formatDateVN } from "@/lib/formatters";
+import { formatVNDMasked, formatDateVN } from "@/lib/formatters";
+import { calculateCreditCardCycleInfo } from "@/lib/financeEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { CreditCardRepaymentSheet } from "@/components/mobile/sheets/CreditCardRepaymentSheet";
 
@@ -20,6 +21,9 @@ export function AccountsView() {
   const {
     accounts,
     transactions,
+    selectedMonth,
+    isPrivacyMode,
+    settings,
     addAccount,
     updateAccount,
     deleteAccount,
@@ -32,12 +36,14 @@ export function AccountsView() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [repayingCardInfo, setRepayingCardInfo] = useState<CreditCardInfo | null>(null);
 
-  // Form states thêm tài khoản
+  // Form states
   const [name, setName] = useState("");
   const [owner, setOwner] = useState<FamilyMember>("HUSBAND");
   const [type, setType] = useState<AccountType>("BANK");
   const [initialBalance, setInitialBalance] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
+  const [statementDay, setStatementDay] = useState("20");
+  const [dueDay, setDueDay] = useState("6");
   const [accountNumber, setAccountNumber] = useState("");
 
   const husbandAccounts = accounts.filter((a) => a.owner === "HUSBAND");
@@ -61,6 +67,8 @@ export function AccountsView() {
     setName("");
     setInitialBalance("");
     setCreditLimit("");
+    setStatementDay("20");
+    setDueDay("6");
     setAccountNumber("");
     setOwner("HUSBAND");
     setType("BANK");
@@ -74,6 +82,8 @@ export function AccountsView() {
     setType(acc.type);
     setInitialBalance(new Intl.NumberFormat("vi-VN").format(acc.initialBalance));
     setCreditLimit(acc.creditLimit ? new Intl.NumberFormat("vi-VN").format(acc.creditLimit) : "");
+    setStatementDay(String(acc.statementDay || 20));
+    setDueDay(String(acc.dueDay || 6));
     setAccountNumber(acc.accountNumber || "");
     setIsAddAccountModalOpen(true);
   };
@@ -84,6 +94,8 @@ export function AccountsView() {
 
     const initVal = parseFloat(initialBalance.replace(/[^0-9]/g, "")) || 0;
     const limitVal = type === "CREDIT_CARD" ? parseFloat(creditLimit.replace(/[^0-9]/g, "")) || 0 : undefined;
+    const stDay = type === "CREDIT_CARD" ? Math.min(28, Math.max(1, parseInt(statementDay, 10) || 20)) : undefined;
+    const duDay = type === "CREDIT_CARD" ? Math.min(28, Math.max(1, parseInt(dueDay, 10) || 6)) : undefined;
 
     if (editingAccount) {
       updateAccount(editingAccount.id, {
@@ -91,6 +103,8 @@ export function AccountsView() {
         owner,
         initialBalance: initVal,
         creditLimit: limitVal,
+        statementDay: stDay,
+        dueDay: duDay,
         accountNumber: accountNumber.trim() || undefined,
       });
     } else {
@@ -100,6 +114,8 @@ export function AccountsView() {
         type,
         initialBalance: initVal,
         creditLimit: limitVal,
+        statementDay: stDay,
+        dueDay: duDay,
         accountNumber: accountNumber.trim() || undefined,
       });
     }
@@ -165,9 +181,7 @@ export function AccountsView() {
 
   const renderAccountCard = (acc: Account) => {
     const isCredit = acc.type === "CREDIT_CARD";
-    const limit = acc.creditLimit || 0;
-    const used = Math.max(0, acc.currentBalance);
-    const available = Math.max(0, limit - used);
+    const cycleInfo = isCredit ? calculateCreditCardCycleInfo(acc, selectedMonth) : null;
 
     return (
       <div
@@ -175,48 +189,93 @@ export function AccountsView() {
         className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
       >
         <div>
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
               <div
                 className="w-11 h-11 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
                 style={{ backgroundColor: acc.color || "#0284C7" }}
               >
                 {isCredit ? <CreditCard className="w-6 h-6" /> : <Building2 className="w-6 h-6" />}
               </div>
-              <div>
-                <h4 className="font-bold text-[#172B4D] text-sm">{acc.name}</h4>
-                <p className="text-[11px] text-slate-400 font-medium">
+              <div className="min-w-0">
+                <h4 className="font-bold text-[#172B4D] text-sm truncate">{acc.name}</h4>
+                <p className="text-[11px] text-slate-400 font-medium truncate">
                   {acc.accountNumber || (isCredit ? "Thẻ tín dụng" : "Tài khoản thanh toán")}
                 </p>
               </div>
             </div>
+
+            {cycleInfo && (
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                  cycleInfo.statusLevel === "DANGER"
+                    ? "bg-rose-100 text-rose-700"
+                    : cycleInfo.statusLevel === "WARNING"
+                    ? "bg-orange-100 text-orange-700"
+                    : cycleInfo.statusLevel === "WATCH"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}
+              >
+                {cycleInfo.usagePercentage}% · {cycleInfo.statusLabel}
+              </span>
+            )}
           </div>
 
           <div className="mt-4 space-y-1.5 pt-3 border-t border-[#E9EEF5] text-xs">
-            {isCredit ? (
+            {isCredit && cycleInfo ? (
               <>
                 <div className="flex justify-between text-slate-400">
                   <span>Hạn mức thẻ:</span>
-                  <span className="font-bold text-slate-700">{formatVND(limit)}</span>
+                  <span className="font-bold text-slate-700">
+                    {formatVNDMasked(cycleInfo.creditLimit, isPrivacyMode)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-slate-800">
                   <span className="font-bold text-amber-600">Dư nợ đã dùng:</span>
-                  <span className="text-sm font-black text-amber-600">{formatVND(used)}</span>
+                  <span className="text-sm font-black text-amber-600">
+                    {formatVNDMasked(cycleInfo.usedAmount, isPrivacyMode)}
+                  </span>
+                </div>
+                <div className="relative w-full h-1.5 bg-slate-100 rounded-full overflow-hidden my-1">
+                  <div
+                    className={`h-full rounded-full ${
+                      cycleInfo.statusLevel === "DANGER"
+                        ? "bg-rose-500"
+                        : cycleInfo.statusLevel === "WARNING"
+                        ? "bg-orange-500"
+                        : cycleInfo.statusLevel === "WATCH"
+                        ? "bg-amber-500"
+                        : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${Math.min(100, cycleInfo.usagePercentage)}%` }}
+                  />
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-slate-700" style={{ left: "30%" }} />
                 </div>
                 <div className="flex justify-between text-slate-500 font-medium">
                   <span>Còn khả dụng:</span>
-                  <span className="text-emerald-600 font-bold">{formatVND(available)}</span>
+                  <span className="text-emerald-600 font-bold">
+                    {formatVNDMasked(cycleInfo.availableAmount, isPrivacyMode)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>Sao kê: Ngày {cycleInfo.statementDay}</span>
+                  <span>Hạn trả: {cycleInfo.dueDateDisplay}</span>
                 </div>
               </>
             ) : (
               <>
                 <div className="flex justify-between text-slate-400">
                   <span>Số dư đầu kỳ:</span>
-                  <span className="font-semibold text-slate-600">{formatVND(acc.initialBalance)}</span>
+                  <span className="font-semibold text-slate-600">
+                    {formatVNDMasked(acc.initialBalance, isPrivacyMode)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-slate-800">
                   <span className="font-bold">Số dư hiện tại:</span>
-                  <span className="text-sm font-black text-blue-600">{formatVND(acc.currentBalance)}</span>
+                  <span className="text-sm font-black text-blue-600">
+                    {formatVNDMasked(acc.currentBalance, isPrivacyMode)}
+                  </span>
                 </div>
               </>
             )}
@@ -233,17 +292,9 @@ export function AccountsView() {
           </button>
 
           <div className="flex items-center gap-1">
-            {isCredit && (
+            {isCredit && cycleInfo && (
               <button
-                onClick={() =>
-                  setRepayingCardInfo({
-                    account: acc,
-                    creditLimit: limit,
-                    usedAmount: used,
-                    availableAmount: available,
-                    usagePercentage: Math.min(100, Math.round((used / limit) * 100)),
-                  })
-                }
+                onClick={() => setRepayingCardInfo(cycleInfo)}
                 title="Trả nợ thẻ"
                 className="px-2 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors cursor-pointer"
               >
@@ -272,7 +323,7 @@ export function AccountsView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Header Tóm tắt số dư gia đình */}
+      {/* Header */}
       <div className="bg-white rounded-xl p-6 border border-[#DCE4EE] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-6 sm:gap-12">
           <div>
@@ -280,7 +331,7 @@ export function AccountsView() {
               Tổng số dư khả dụng (Ví & Bank)
             </span>
             <span className="text-xl sm:text-2xl font-black text-blue-600 mt-1 block">
-              {formatVND(totalAvailable)}
+              {formatVNDMasked(totalAvailable, isPrivacyMode)}
             </span>
           </div>
           <div>
@@ -288,7 +339,7 @@ export function AccountsView() {
               Tổng dư nợ thẻ BIDV Credit
             </span>
             <span className="text-xl sm:text-2xl font-black text-amber-600 mt-1 block">
-              {formatVND(totalCreditDebt)}
+              {formatVNDMasked(totalCreditDebt, isPrivacyMode)}
             </span>
           </div>
         </div>
@@ -302,35 +353,29 @@ export function AccountsView() {
         </button>
       </div>
 
-      {/* NHÓM 1: TÀI KHOẢN CỦA ANH CHUỘT */}
+      {/* NHÓM 1 */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
           <span>👨</span>
-          <span>Tài khoản của Anh Chuột</span>
-          <span className="text-slate-400 font-normal">
-            (Vietinbank Lương, BIDV Chi tiêu, BIDV Credit 50tr)
-          </span>
+          <span>Tài khoản của {settings.husbandName}</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {husbandAccounts.map((acc) => renderAccountCard(acc))}
         </div>
       </section>
 
-      {/* NHÓM 2: TÀI KHOẢN CỦA BÉ MÈO */}
+      {/* NHÓM 2 */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
           <span>👩</span>
-          <span>Tài khoản của Bé Mèo</span>
-          <span className="text-slate-400 font-normal">
-            (Vietcombank Lương, ACB Chi tiêu, BIDV Credit 20tr)
-          </span>
+          <span>Tài khoản của {settings.wifeName}</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {wifeAccounts.map((acc) => renderAccountCard(acc))}
         </div>
       </section>
 
-      {/* NHÓM 3: QUỸ TIỀN MẶT CHUNG TỔ ẤM (MY HOME) */}
+      {/* NHÓM 3 */}
       {sharedAccounts.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -343,7 +388,7 @@ export function AccountsView() {
         </section>
       )}
 
-      {/* Modal Xem Sổ Chi Tiết Giao Dịch */}
+      {/* Modal Sổ chi tiết */}
       {selectedAccountForDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
@@ -357,8 +402,8 @@ export function AccountsView() {
                 </h3>
                 <p className="text-xs text-blue-600 font-semibold mt-0.5">
                   {selectedAccountForDetail.type === "CREDIT_CARD"
-                    ? `Dư nợ hiện tại: ${formatVND(selectedAccountForDetail.currentBalance)}`
-                    : `Số dư lũy kế: ${formatVND(selectedAccountForDetail.currentBalance)}`}
+                    ? `Dư nợ hiện tại: ${formatVNDMasked(selectedAccountForDetail.currentBalance, isPrivacyMode)}`
+                    : `Số dư lũy kế: ${formatVNDMasked(selectedAccountForDetail.currentBalance, isPrivacyMode)}`}
                 </p>
               </div>
               <button
@@ -402,7 +447,7 @@ export function AccountsView() {
                               {formatDateVN(item.date)}
                             </td>
                             <td className="py-3 px-3 font-bold text-slate-700">
-                              {item.memberId === "HUSBAND" ? "👨 Chồng" : "👩 Vợ"}
+                              {item.memberId === "HUSBAND" ? `👨 ${settings.husbandName}` : `👩 ${settings.wifeName}`}
                             </td>
                             <td className="py-3 px-3">
                               <span
@@ -425,7 +470,7 @@ export function AccountsView() {
                                 item.change < 0 ? "text-rose-600" : "text-emerald-600"
                               }`}
                             >
-                              {item.change < 0 ? "-" : "+"} {formatVND(item.amount)}
+                              {item.change < 0 ? "-" : "+"} {formatVNDMasked(item.amount, isPrivacyMode)}
                             </td>
                             <td className="py-3 px-3 text-slate-500 font-medium">
                               {oppAcc?.name || "—"}
@@ -434,7 +479,7 @@ export function AccountsView() {
                               {item.note || "—"}
                             </td>
                             <td className="py-3 px-3 text-right font-black text-slate-800 whitespace-nowrap">
-                              {formatVND(item.balanceAfter)}
+                              {formatVNDMasked(item.balanceAfter, isPrivacyMode)}
                             </td>
                           </tr>
                         );
@@ -448,7 +493,7 @@ export function AccountsView() {
         </div>
       )}
 
-      {/* Modal Thêm hoặc Chỉnh sửa tài khoản */}
+      {/* Modal Thêm / Chỉnh sửa tài khoản */}
       {isAddAccountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
@@ -481,7 +526,7 @@ export function AccountsView() {
                       owner === "HUSBAND" ? "bg-blue-600 text-white" : "border-[#DCE4EE] text-slate-600"
                     }`}
                   >
-                    👨 Chồng
+                    👨 {settings.husbandName}
                   </button>
                   <button
                     type="button"
@@ -490,7 +535,7 @@ export function AccountsView() {
                       owner === "WIFE" ? "bg-emerald-600 text-white" : "border-[#DCE4EE] text-slate-600"
                     }`}
                   >
-                    👩 Vợ
+                    👩 {settings.wifeName}
                   </button>
                   <button
                     type="button"
@@ -531,24 +576,51 @@ export function AccountsView() {
                   <option value="BANK">Tài khoản ngân hàng</option>
                   <option value="CREDIT_CARD">Thẻ tín dụng (Credit Card)</option>
                   <option value="CASH">Tiền mặt</option>
+                  <option value="E_WALLET">Ví điện tử</option>
                 </select>
               </div>
 
               {type === "CREDIT_CARD" ? (
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mức thẻ tín dụng (VND)</label>
-                  <input
-                    type="text"
-                    required
-                    value={creditLimit}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^0-9]/g, "");
-                      setCreditLimit(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
-                    }}
-                    placeholder="VD: 50.000.000"
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-bold"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mức thẻ tín dụng (VND)</label>
+                    <input
+                      type="text"
+                      required
+                      value={creditLimit}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                        setCreditLimit(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
+                      }}
+                      placeholder="VD: 50.000.000"
+                      className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-bold"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Ngày sao kê</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={statementDay}
+                        onChange={(e) => setStatementDay(e.target.value)}
+                        className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Ngày đáo hạn</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={dueDay}
+                        onChange={(e) => setDueDay(e.target.value)}
+                        className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm font-bold"
+                      />
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Số dư ban đầu (VND)</label>
@@ -588,14 +660,12 @@ export function AccountsView() {
         </div>
       )}
 
-      {/* Credit card repayment sheet */}
       <CreditCardRepaymentSheet
         cardInfo={repayingCardInfo}
         isOpen={repayingCardInfo !== null}
         onClose={() => setRepayingCardInfo(null)}
       />
 
-      {/* Confirm xóa */}
       <ConfirmDialog
         isOpen={deleteTargetId !== null}
         title="Xóa tài khoản này?"

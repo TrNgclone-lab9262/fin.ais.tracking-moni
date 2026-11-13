@@ -12,9 +12,12 @@ import {
   FileText,
   Users,
   Check,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVND } from "@/lib/formatters";
+import { parseNaturalLanguageTransactions } from "@/lib/geminiReceiptService";
 import { FamilyMember, ExpenseScope, TransactionType, Transaction } from "@/types/finance";
 
 interface TransactionFormModalProps {
@@ -30,7 +33,15 @@ export function TransactionFormModal({
   defaultType = "EXPENSE",
   editTransaction = null,
 }: TransactionFormModalProps) {
-  const { accounts, categories, addTransaction, updateTransaction, activePerspective } = useFinance();
+  const {
+    accounts,
+    categories,
+    addTransaction,
+    addTransactionsBatch,
+    updateTransaction,
+    activePerspective,
+    settings,
+  } = useFinance();
 
   const [type, setType] = useState<TransactionType>(defaultType);
   const [amountInput, setAmountInput] = useState("");
@@ -43,10 +54,13 @@ export function TransactionFormModal({
   const [memberId, setMemberId] = useState<FamilyMember>("HUSBAND");
   const [scope, setScope] = useState<ExpenseScope>("FAMILY");
   const [error, setError] = useState<string | null>(null);
+  const [smartText, setSmartText] = useState("");
+  const [isParsingAI, setIsParsingAI] = useState(false);
 
   // Khởi tạo giá trị mặc định theo góc nhìn hiện tại hoặc nạp dữ liệu chỉnh sửa
   useEffect(() => {
     if (isOpen) {
+      setSmartText("");
       if (editTransaction) {
         setType(editTransaction.type);
         setAmountInput(new Intl.NumberFormat("vi-VN").format(editTransaction.amount));
@@ -121,6 +135,50 @@ export function TransactionFormModal({
     setAmountInput(next.toLocaleString("vi-VN"));
   };
 
+  const handleSmartParse = async () => {
+    if (!smartText.trim()) return;
+    setIsParsingAI(true);
+    setError(null);
+    try {
+      const parsedList = await parseNaturalLanguageTransactions(
+        smartText,
+        accounts,
+        categories,
+        memberId
+      );
+      if (parsedList.length === 0) {
+        setError("Chưa nhận diện được số tiền từ câu nhập. VD: 'Mèo ăn trưa 120k bằng ACB'");
+      } else if (parsedList.length === 1) {
+        const first = parsedList[0];
+        setType(first.type);
+        setNumericAmount(first.amount);
+        setAmountInput(first.amount.toLocaleString("vi-VN"));
+        setCategoryId(first.categoryId);
+        setAccountId(first.accountId);
+        setMemberId(first.memberId);
+        setScope(first.scope);
+        setDate(first.date);
+        setNote(first.note);
+      } else {
+        addTransactionsBatch(
+          parsedList.map((item) => ({
+            amount: item.amount,
+            date: item.date,
+            type: item.type,
+            categoryId: item.categoryId,
+            accountId: item.accountId,
+            memberId: item.memberId,
+            scope: item.scope,
+            note: item.note,
+          }))
+        );
+        onClose();
+      }
+    } finally {
+      setIsParsingAI(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (numericAmount <= 0) {
@@ -176,6 +234,39 @@ export function TransactionFormModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+          {!editTransaction && (
+            <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200/80 space-y-1.5">
+              <label className="text-[11px] font-bold text-indigo-700 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                Nhập nhanh bằng câu tự nhiên (VD: &quot;{settings.wifeName} đi WinMart 350k bằng BIDV Credit&quot;)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={smartText}
+                  onChange={(e) => setSmartText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSmartParse();
+                    }
+                  }}
+                  placeholder="Gõ mô tả giao dịch hoặc nhiều khoản cách nhau bằng 'và'..."
+                  className="flex-1 bg-white border border-indigo-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSmartParse}
+                  disabled={isParsingAI || !smartText.trim()}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  {isParsingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span>Điền AI</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg">
               {error}

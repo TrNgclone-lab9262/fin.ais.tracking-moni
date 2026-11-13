@@ -7,6 +7,7 @@ import {
   InvestmentItem,
   AppSettings,
   AppNotification,
+  RecurringRule,
 } from "@/types/finance";
 
 export const DEFAULT_ACCOUNTS: Account[] = [
@@ -40,6 +41,8 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     owner: "HUSBAND",
     type: "CREDIT_CARD",
     creditLimit: 50000000, // Hạn mức 50 triệu VND
+    statementDay: 20,
+    dueDay: 6,
     initialBalance: 0,
     currentBalance: 12500000, // Dư nợ đang dùng
     accountNumber: "4111****5050",
@@ -77,6 +80,8 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     owner: "WIFE",
     type: "CREDIT_CARD",
     creditLimit: 20000000, // Hạn mức 20 triệu VND
+    statementDay: 20,
+    dueDay: 6,
     initialBalance: 0,
     currentBalance: 4200000, // Dư nợ đang dùng
     accountNumber: "4111****2020",
@@ -241,7 +246,69 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
   husbandName: "Anh Chuột",
   wifeName: "Bé Mèo",
+  sharedSplitRatioHusband: 50,
+  privacyMode: false,
+  pinCode: "",
 };
+
+export const DEFAULT_RECURRING_RULES: RecurringRule[] = [
+  {
+    id: "rec_salary_husband",
+    name: "Lương tháng Anh Chuột",
+    amount: 28000000,
+    type: "INCOME",
+    categoryId: "cat_income_salary",
+    accountId: "acc_husband_vietinbank",
+    memberId: "HUSBAND",
+    scope: "FAMILY",
+    dayOfMonth: 5,
+    isActive: true,
+    lastAppliedMonth: "2026-10",
+    note: "Lương định kỳ hàng tháng (Tech Corp)",
+  },
+  {
+    id: "rec_salary_wife",
+    name: "Lương tháng Bé Mèo",
+    amount: 22000000,
+    type: "INCOME",
+    categoryId: "cat_income_salary",
+    accountId: "acc_wife_vcb",
+    memberId: "WIFE",
+    scope: "FAMILY",
+    dayOfMonth: 5,
+    isActive: true,
+    lastAppliedMonth: "2026-10",
+    note: "Lương định kỳ hàng tháng (Vingroup)",
+  },
+  {
+    id: "rec_rent_apartment",
+    name: "Tiền thuê chung cư & dịch vụ",
+    amount: 6500000,
+    type: "EXPENSE",
+    categoryId: "cat_expense_rent",
+    accountId: "acc_husband_vietinbank",
+    memberId: "HUSBAND",
+    scope: "FAMILY",
+    dayOfMonth: 6,
+    isActive: true,
+    lastAppliedMonth: "2026-10",
+    note: "Thanh toán cố định đầu tháng",
+  },
+  {
+    id: "rec_internet_fiber",
+    name: "Cước Internet cáp quang gia đình",
+    amount: 250000,
+    type: "EXPENSE",
+    categoryId: "cat_expense_bills",
+    accountId: "acc_husband_bidv",
+    memberId: "HUSBAND",
+    scope: "FAMILY",
+    dayOfMonth: 20,
+    isActive: true,
+    lastAppliedMonth: "2026-10",
+    note: "Gia hạn cước internet hàng tháng",
+  },
+];
 
 export const DEFAULT_NOTIFICATIONS: AppNotification[] = [
   {

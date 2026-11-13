@@ -5,11 +5,12 @@ import {
   Delete,
   AlertCircle,
   Camera,
+  Sparkles,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { FamilyMember, ExpenseScope, TransactionType } from "@/types/finance";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
-import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
+import { ParsedReceiptResult, parseNaturalLanguageTransactions } from "@/lib/geminiReceiptService";
 
 interface MobileNumpadSheetProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ export function MobileNumpadSheet({
   onClose,
   onSuccess,
 }: MobileNumpadSheetProps) {
-  const { accounts, categories, addTransaction, activePerspective } = useFinance();
+  const { accounts, categories, addTransaction, addTransactionsBatch, activePerspective } = useFinance();
 
   const [type, setType] = useState<TransactionType>("EXPENSE");
   const [numericAmount, setNumericAmount] = useState<number>(0);
@@ -328,6 +329,37 @@ export function MobileNumpadSheet({
           </div>
         </div>
 
+        {/* Ghi chú hoặc nhập nhanh AI */}
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Ghi chú nhanh (VD: Cafe 55k bằng ACB)..."
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              if (!note.trim()) return;
+              const list = await parseNaturalLanguageTransactions(note, accounts, categories, memberId);
+              if (list.length > 0) {
+                const first = list[0];
+                setType(first.type);
+                setNumericAmount(first.amount);
+                setCategoryId(first.categoryId);
+                setAccountId(first.accountId);
+                setMemberId(first.memberId);
+                setScope(first.scope);
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI</span>
+          </button>
+        </div>
+
         {/* Quick Amount Chips */}
         <div className="grid grid-cols-5 gap-1.5">
           <button
@@ -415,6 +447,11 @@ export function MobileNumpadSheet({
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onApplyReceipt={handleApplyReceipt}
+        onApplyTransactions={(batch) => {
+          addTransactionsBatch(batch);
+          if (onSuccess) onSuccess();
+          onClose();
+        }}
       />
     </div>
   );

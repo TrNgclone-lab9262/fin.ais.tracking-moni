@@ -9,10 +9,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, getMonthDisplayLabel } from "@/lib/formatters";
+import { formatVNDMasked, getMonthDisplayLabel } from "@/lib/formatters";
 
 export function SummaryCards() {
-  const { summary, selectedMonth, activePerspective } = useFinance();
+  const { summary, selectedMonth, activePerspective, settings, isPrivacyMode } = useFinance();
   const periodLabel =
     selectedMonth === "ALL" ? "Toàn thời gian" : getMonthDisplayLabel(selectedMonth);
 
@@ -20,8 +20,8 @@ export function SummaryCards() {
     activePerspective === "ALL"
       ? "My Home"
       : activePerspective === "HUSBAND"
-      ? "Anh Chuột"
-      : "Bé Mèo";
+      ? settings.husbandName
+      : settings.wifeName;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -39,10 +39,10 @@ export function SummaryCards() {
         </div>
         <div className="mt-3">
           <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-            {formatVND(summary.netWorth)}
+            {formatVNDMasked(summary.netWorth, isPrivacyMode)}
           </h3>
           <p className="text-[11px] text-blue-200/90 mt-1.5 font-medium">
-            Ví: {formatVND(summary.currentBalance)} · Nợ thẻ: {formatVND(summary.totalCreditDebt)}
+            Ví: {formatVNDMasked(summary.currentBalance, isPrivacyMode)} · Nợ thẻ: {formatVNDMasked(summary.totalCreditDebt, isPrivacyMode)}
           </p>
         </div>
       </div>
@@ -62,12 +62,12 @@ export function SummaryCards() {
         </div>
         <div className="mt-3">
           <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D]">
-            {formatVND(summary.monthlyIncome)}
+            {formatVNDMasked(summary.monthlyIncome, isPrivacyMode)}
           </h3>
           <div className="flex items-center gap-2 mt-1.5">
             <span className="text-[11px] text-slate-500 font-medium truncate">
               {activePerspective === "ALL"
-                ? `Chồng: ${formatVND(summary.husbandIncome)} · Vợ: ${formatVND(summary.wifeIncome)}`
+                ? `Chồng: ${formatVNDMasked(summary.husbandIncome, isPrivacyMode)} · Vợ: ${formatVNDMasked(summary.wifeIncome, isPrivacyMode)}`
                 : "Thu nhập ghi nhận theo kỳ"}
             </span>
           </div>
@@ -89,12 +89,12 @@ export function SummaryCards() {
         </div>
         <div className="mt-3">
           <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D]">
-            {formatVND(summary.monthlyExpense)}
+            {formatVNDMasked(summary.monthlyExpense, isPrivacyMode)}
           </h3>
           <div className="flex items-center gap-2 mt-1.5">
             <span className="text-[11px] text-slate-500 font-medium truncate">
               {activePerspective === "ALL"
-                ? `Sinh hoạt chung: ${formatVND(summary.familySharedExpense)}`
+                ? `Sinh hoạt chung: ${formatVNDMasked(summary.familySharedExpense, isPrivacyMode)}`
                 : `Tổng chi trong ${periodLabel}`}
             </span>
           </div>
@@ -116,7 +116,7 @@ export function SummaryCards() {
         </div>
         <div className="mt-3">
           <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D]">
-            {formatVND(summary.savingsAmount)}
+            {formatVNDMasked(summary.savingsAmount, isPrivacyMode)}
           </h3>
           <div className="mt-2 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
             <div

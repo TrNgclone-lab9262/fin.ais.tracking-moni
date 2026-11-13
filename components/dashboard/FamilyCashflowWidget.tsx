@@ -1,43 +1,69 @@
 "use client";
 
-import React, { useMemo } from "react";
-import { Users, Heart, Calendar as CalendarIcon } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Users, Heart, Calendar as CalendarIcon, Scale, CheckCircle2 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND } from "@/lib/formatters";
+import { formatVNDMasked, getMonthDisplayLabel } from "@/lib/formatters";
+import { calculateHeatmapDays } from "@/lib/financeEngine";
 
 export function FamilyCashflowWidget() {
-  const { summary, transactions } = useFinance();
+  const {
+    summary,
+    transactions,
+    selectedMonth,
+    activePerspective,
+    settings,
+    isPrivacyMode,
+    coupleSettlement,
+    accounts,
+    addTransaction,
+  } = useFinance();
 
-  // Tính lịch chi tiêu 31 ngày của Tháng 10/2026 (Calendar Heatmap)
-  const heatmapDays = useMemo(() => {
-    const daysMap = new Map<number, number>();
-    for (let i = 1; i <= 31; i++) daysMap.set(i, 0);
+  const [settledToast, setSettledToast] = useState(false);
 
-    transactions.forEach((tx) => {
-      if (tx.type === "EXPENSE" && tx.date.startsWith("2026-10")) {
-        const day = parseInt(tx.date.split("-")[2], 10);
-        const cur = daysMap.get(day) || 0;
-        daysMap.set(day, cur + tx.amount);
-      }
-    });
+  const heatmap = useMemo(
+    () => calculateHeatmapDays(transactions, selectedMonth, activePerspective),
+    [transactions, selectedMonth, activePerspective]
+  );
 
-    return Array.from(daysMap.entries()).map(([day, amount]) => {
-      let level = "zero"; // 0: không chi
-      if (amount > 0 && amount <= 500000) level = "low"; // <= 500k: xanh
-      else if (amount > 500000 && amount <= 2000000) level = "medium"; // <= 2tr: vàng cam
-      else if (amount > 2000000) level = "high"; // > 2tr: đỏ/hồng
-
-      return { day, amount, level };
-    });
-  }, [transactions]);
-
-  const totalIncome = summary.husbandIncome + summary.wifeIncome || 1;
-  const husbandPct = Math.round((summary.husbandIncome / totalIncome) * 100);
+  const totalIncome = summary.husbandIncome + summary.wifeIncome;
+  const denom = totalIncome > 0 ? totalIncome : 1;
+  const husbandPct = totalIncome > 0 ? Math.round((summary.husbandIncome / denom) * 100) : 50;
   const wifePct = 100 - husbandPct;
+
+  const monthNum = parseInt(heatmap.targetMonth.split("-")[1] || "10", 10);
+
+  const handleSettleCouple = () => {
+    if (coupleSettlement.fromMember === "BALANCED" || coupleSettlement.transferAmount <= 0) return;
+
+    const fromAcc =
+      accounts.find((a) => a.owner === coupleSettlement.fromMember && a.type !== "CREDIT_CARD") ||
+      accounts.find((a) => a.type !== "CREDIT_CARD");
+    const toAcc =
+      accounts.find((a) => a.owner === coupleSettlement.toMember && a.type !== "CREDIT_CARD") ||
+      accounts.find((a) => a.id !== fromAcc?.id && a.type !== "CREDIT_CARD");
+
+    if (!fromAcc || !toAcc) return;
+
+    addTransaction({
+      amount: coupleSettlement.transferAmount,
+      date: new Date().toISOString().slice(0, 10),
+      type: "TRANSFER",
+      categoryId: "cat_expense_other",
+      accountId: fromAcc.id,
+      toAccountId: toAcc.id,
+      memberId: coupleSettlement.fromMember,
+      scope: "FAMILY",
+      note: `Quyết toán chia chi chung ${getMonthDisplayLabel(heatmap.targetMonth)}`,
+    });
+
+    setSettledToast(true);
+    setTimeout(() => setSettledToast(false), 3000);
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {/* 1. CƠ CẤU ĐÓNG GÓP THU NHẬP 2 VỢ CHỒNG */}
+      {/* 1. CƠ CẤU ĐÓNG GÓP THU NHẬP & QUYẾT TOÁN QUỸ CHUNG */}
       <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
           <div className="flex items-center gap-2.5">
@@ -46,19 +72,19 @@ export function FamilyCashflowWidget() {
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
-                Đóng Góp Thu Nhập Tổ Ấm
+                Đóng Góp Thu Nhập & Bù Trừ Tổ Ấm
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                Tỷ trọng lương Anh Chuột (Vietinbank) vs Lương Bé Mèo (VCB)
+                Tỷ trọng {settings.husbandName} vs {settings.wifeName} · Quỹ chung {coupleSettlement.husbandSharePct}/{coupleSettlement.wifeSharePct}%
               </p>
             </div>
           </div>
           <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">
-            Tổng {formatVND(totalIncome)}
+            Tổng {formatVNDMasked(totalIncome, isPrivacyMode)}
           </span>
         </div>
 
-        {/* Thanh tỷ lệ Anh Chuột vs Bé Mèo */}
+        {/* Thanh tỷ lệ thu nhập */}
         <div className="space-y-2.5">
           <div className="w-full h-3.5 bg-slate-100 rounded-md overflow-hidden flex shadow-inner">
             <div
@@ -79,18 +105,18 @@ export function FamilyCashflowWidget() {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
               <div>
-                <span className="font-bold text-slate-800">👨 Anh Chuột (Vietinbank)</span>
+                <span className="font-bold text-slate-800">👨 {settings.husbandName}</span>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {formatVND(summary.husbandIncome)}
+                  Thu: {formatVNDMasked(summary.husbandIncome, isPrivacyMode)} · Chi chung: {formatVNDMasked(coupleSettlement.husbandPaid, isPrivacyMode)}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 text-right">
               <div>
-                <span className="font-bold text-slate-800">👩 Bé Mèo (Vietcombank)</span>
+                <span className="font-bold text-slate-800">👩 {settings.wifeName}</span>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {formatVND(summary.wifeIncome)}
+                  Thu: {formatVNDMasked(summary.wifeIncome, isPrivacyMode)} · Chi chung: {formatVNDMasked(coupleSettlement.wifePaid, isPrivacyMode)}
                 </p>
               </div>
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
@@ -98,16 +124,59 @@ export function FamilyCashflowWidget() {
           </div>
         </div>
 
-        <div className="p-3 bg-slate-50 rounded-lg border border-[#E9EEF5] flex items-center gap-2 text-xs text-slate-600">
-          <Heart className="w-4 h-4 text-rose-500 shrink-0" />
-          <span>
-            Hai vợ chồng cùng hợp lực tích lũy được{" "}
-            <strong className="text-[#172B4D]">{formatVND(summary.savingsAmount)}</strong> trong tháng này!
-          </span>
+        {/* Khối Quyết Toán Chi Tiêu Chung (Couple Settlement) */}
+        <div className="p-3 bg-slate-50 rounded-lg border border-[#E9EEF5] space-y-2">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-bold text-[#172B4D] flex items-center gap-1.5">
+              <Scale className="w-3.5 h-3.5 text-blue-600" />
+              Đối soát chi chung ({formatVNDMasked(coupleSettlement.totalSharedExpense, isPrivacyMode)})
+            </span>
+            {settledToast && (
+              <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Đã ghi chuyển khoản!
+              </span>
+            )}
+          </div>
+
+          {coupleSettlement.fromMember === "BALANCED" ? (
+            <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium">
+              <Heart className="w-4 h-4 text-rose-500 shrink-0" />
+              <span>
+                Chi tiêu chung giữa 2 vợ chồng đang cân bằng theo tỷ lệ {coupleSettlement.husbandSharePct}/{coupleSettlement.wifeSharePct}%!
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span>
+                <strong>
+                  {coupleSettlement.fromMember === "WIFE"
+                    ? `👩 ${settings.wifeName}`
+                    : `👨 ${settings.husbandName}`}
+                </strong>{" "}
+                chuyển bù{" "}
+                <strong className="text-blue-700">
+                  {formatVNDMasked(coupleSettlement.transferAmount, isPrivacyMode)}
+                </strong>{" "}
+                cho{" "}
+                <strong>
+                  {coupleSettlement.toMember === "HUSBAND"
+                    ? `👨 ${settings.husbandName}`
+                    : `👩 ${settings.wifeName}`}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleSettleCouple}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                Ghi nhận bù trừ
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 2. LỊCH CHI TIÊU GIA ĐÌNH (CALENDAR HEATMAP 31 NGÀY) */}
+      {/* 2. LỊCH CHI TIÊU GIA ĐÌNH (CALENDAR HEATMAP ĐỘNG THEO THÁNG) */}
       <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between space-y-3">
         <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
           <div className="flex items-center gap-2.5">
@@ -116,10 +185,10 @@ export function FamilyCashflowWidget() {
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
-                Lịch Chi Tiêu Tháng 10
+                Lịch Chi Tiêu {getMonthDisplayLabel(heatmap.targetMonth)}
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                Bản đồ nhiệt theo dõi ngày tiết kiệm vs ngày mua sắm lớn
+                {heatmap.activeDaysCount} ngày phát sinh chi tiêu · Bản đồ nhiệt theo ngày
               </p>
             </div>
           </div>
@@ -132,9 +201,9 @@ export function FamilyCashflowWidget() {
           </div>
         </div>
 
-        {/* 31 Ô Ngày Trong Tháng */}
+        {/* Ô Ngày Trong Tháng */}
         <div className="grid grid-cols-7 gap-1.5 pt-1">
-          {heatmapDays.map((d) => {
+          {heatmap.days.map((d) => {
             let bgClass = "bg-slate-100 text-slate-400";
             if (d.level === "low") bgClass = "bg-emerald-100 text-emerald-800 font-semibold";
             if (d.level === "medium") bgClass = "bg-amber-100 text-amber-900 font-semibold";
@@ -143,7 +212,9 @@ export function FamilyCashflowWidget() {
             return (
               <div
                 key={d.day}
-                title={`Ngày ${d.day}/10: ${d.amount > 0 ? formatVND(d.amount) : "Không chi tiêu"}`}
+                title={`Ngày ${d.day}/${monthNum}: ${
+                  d.amount > 0 ? formatVNDMasked(d.amount, isPrivacyMode) : "Không chi tiêu"
+                }`}
                 className={`h-8 rounded-md flex flex-col items-center justify-center text-xs transition-transform hover:scale-105 cursor-pointer ${bgClass}`}
               >
                 <span>{d.day}</span>
@@ -152,8 +223,10 @@ export function FamilyCashflowWidget() {
           })}
         </div>
 
-        <p className="text-[10px] text-slate-400 text-center font-medium">
-          💡 Ngày 6 (Tiền nhà 6.5tr) & Ngày 10, 12 (Siêu thị & Sắm đồ) là những ngày phát sinh chi phí chính.
+        <p className="text-[10px] text-slate-500 text-center font-medium">
+          {heatmap.peakDay && heatmap.peakAmount > 0
+            ? `💡 Ngày cao điểm: Ngày ${heatmap.peakDay}/${monthNum} với tổng chi ${formatVNDMasked(heatmap.peakAmount, isPrivacyMode)}.`
+            : `💡 Chưa phát sinh khoản chi nào trong ${getMonthDisplayLabel(heatmap.targetMonth)}.`}
         </p>
       </div>
     </div>
