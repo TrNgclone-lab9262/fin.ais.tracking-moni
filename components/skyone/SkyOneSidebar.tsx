@@ -15,6 +15,7 @@ import {
   Lock,
   Wallet,
   ArrowUpRight,
+  Compass,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -97,6 +98,12 @@ export function SkyOneSidebar() {
       title: "Quản trị Khoản vay",
       items: [
         { id: "OVERVIEW", label: "Tổng quan & Stress-Test", icon: TrendingDown },
+        {
+          id: "ADVISOR",
+          label: "Cố vấn Chiến lược",
+          icon: Compass,
+          badge: { text: "08/2028", variant: "info" },
+        },
         { id: "CASHFLOW", label: "Chi tiết Dòng tiền", icon: Table2 },
         {
           id: "SCHEDULE",

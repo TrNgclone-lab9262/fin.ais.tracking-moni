@@ -22,11 +22,13 @@ export interface MortgageScheduleRow {
   interest: number;
   totalPayment: number;
   prepaidInPeriod: number;
+  disbursedInPeriod: number;
   closingBalance: number;
   cumulativePrincipalPaid: number;
   cumulativeInterestPaid: number;
   status: MortgageInstallmentStatus;
   daysUntilDue: number;
+  dayCountUsed: number;
   paidRecord?: MortgagePaidInstallmentRecord;
 }
 
@@ -181,12 +183,24 @@ export function generateMortgageSchedule(
     prepayByPeriod.set(p.afterPeriod, arr);
   });
 
+  const plannedByPeriod = new Map<
+    number,
+    NonNullable<MortgageContract["plannedDisbursements"]>
+  >();
+  (contract.plannedDisbursements || []).forEach((d) => {
+    const arr = plannedByPeriod.get(d.afterPeriod) || [];
+    arr.push(d);
+    plannedByPeriod.set(d.afterPeriod, arr);
+  });
+
   const rows: MortgageScheduleRow[] = [];
   let remainingBalance = Math.max(0, contract.loanAmount);
-  let scheduledMonthlyPrincipal = Math.round(
-    contract.loanAmount / Math.max(1, contract.termMonths)
-  );
+  let scheduledMonthlyPrincipal =
+    contract.monthlyPrincipalOverride && contract.monthlyPrincipalOverride > 0
+      ? Math.round(contract.monthlyPrincipalOverride)
+      : Math.round(contract.loanAmount / Math.max(1, contract.termMonths));
   let totalPrepaidAmount = 0;
+  let cumulativeDisbursed = Math.max(0, contract.loanAmount);
 
   // Handle period 0 prepayments if recorded before period 1
   const prepayZero = prepayByPeriod.get(0);
@@ -211,6 +225,7 @@ export function generateMortgageSchedule(
   let paidCount = 0;
   let overdueCount = 0;
   let dueSoonCount = 0;
+  let prevDueDateForDays = contract.disbursementDate;
 
   for (
     let period = 1;
@@ -222,6 +237,7 @@ export function generateMortgageSchedule(
       period,
       contract.paymentDayOfMonth
     );
+    const dayCountUsed = Math.max(1, diffDaysIso(prevDueDateForDays, dueDate));
     const monthKey = dueDate.slice(0, 7);
     const yearIndex = Math.ceil(period / 12);
     const stage: MortgageStage =
@@ -255,7 +271,14 @@ export function generateMortgageSchedule(
         rateNote = activeAdj.note;
       }
 
-      interest = Math.round((openingBalance * (appliedRate / 100)) / 12);
+      if (contract.interestBasis === "ACTUAL_365") {
+        interest = Math.round(
+          (openingBalance * (appliedRate / 100) * dayCountUsed) / 365
+        );
+      } else {
+        interest = Math.round((openingBalance * (appliedRate / 100)) / 12);
+      }
+
       const isFinalTerm = period === contract.termMonths;
       if (isFinalTerm || scheduledMonthlyPrincipal >= openingBalance) {
         principal = openingBalance;
@@ -279,6 +302,23 @@ export function generateMortgageSchedule(
         if (p.strategy === "REDUCE_MONTHLY" && closingBalance > 0) {
           const remainingMonths = Math.max(1, contract.termMonths - period);
           scheduledMonthlyPrincipal = Math.round(closingBalance / remainingMonths);
+        }
+      }
+    }
+
+    // Planned progressive disbursement tranche (e.g. project handover tranche)
+    let disbursedInPeriod = 0;
+    const periodPlanned = plannedByPeriod.get(period);
+    if (periodPlanned && periodPlanned.length > 0) {
+      for (const d of periodPlanned) {
+        if (d.amount > 0) {
+          disbursedInPeriod += d.amount;
+          closingBalance += d.amount;
+          cumulativeDisbursed += d.amount;
+          if (!contract.monthlyPrincipalOverride) {
+            const remainingMonths = Math.max(1, contract.termMonths - period);
+            scheduledMonthlyPrincipal = Math.round(closingBalance / remainingMonths);
+          }
         }
       }
     }
@@ -322,15 +362,18 @@ export function generateMortgageSchedule(
       interest,
       totalPayment,
       prepaidInPeriod,
+      disbursedInPeriod,
       closingBalance,
       cumulativePrincipalPaid,
       cumulativeInterestPaid,
       status,
       daysUntilDue,
+      dayCountUsed,
       paidRecord: paidRec,
     });
 
     remainingBalance = closingBalance;
+    prevDueDateForDays = dueDate;
   }
 
   // Aggregate by Loan Year for Recharts
@@ -357,7 +400,7 @@ export function generateMortgageSchedule(
     existing.endingBalance = row.closingBalance;
     const equityAmt = Math.min(
       contract.propertyValue,
-      contract.downPayment + (contract.loanAmount - row.closingBalance)
+      Math.max(0, contract.downPayment + (cumulativeDisbursed - row.closingBalance))
     );
     existing.cumulativeEquity = equityAmt;
     existing.equityPercent =
@@ -423,7 +466,7 @@ export function generateMortgageSchedule(
     totalPrepaymentPenaltyPaid,
     totalProjectedInterest,
     totalProjectedCost:
-      contract.loanAmount + totalProjectedInterest + totalPrepaymentPenaltyPaid,
+      cumulativeDisbursed + totalProjectedInterest + totalPrepaymentPenaltyPaid,
     nextUnpaidInstallment,
     currentReferencePeriod,
     estimatedPayoffDate:
@@ -751,26 +794,81 @@ export function evaluateSkyOneReminders(
   return reminders;
 }
 
+export const REAL_BIDV_SKYONE_SNAPSHOT = {
+  accountNumber: "8866102943",
+  branchName: "PGD Nguyễn Đình Chiểu · 181 Nguyễn Đình Chiểu, TP.HCM",
+  openingBalanceBeforeDec2025: 698_898_193,
+  verifiedRemainingBalanceNov2026: 662_226_193,
+  verifiedPaidPrincipal12M: 36_672_000,
+  verifiedPaidInterest12M: 37_501_005,
+  verifiedTotalCashPaid12M: 74_173_005,
+  fixedInterestRate: 5.5,
+  fixedRateMonths: 36,
+  monthlyPrincipal: 3_056_000,
+  creditLimit: 1_100_160_000,
+  verifiedInstallmentsCount: 12,
+  firstVerifiedPeriod: 4,
+  lastVerifiedPeriod: 15,
+  nextDuePeriod: 16,
+  nextDueDate: "2026-12-10",
+  fixedEndDate: "2028-08-10",
+} as const;
+
+export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
+  // 3 kỳ chuyển tiếp trước sao kê đầu tiên 10/12/2025 để giữ mốc kỳ #36 = 10/08/2028
+  { period: 1, paidAt: "2025-09-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp sau giải ngân 26/08/2025 (trước sao kê 10/12/2025)" },
+  { period: 2, paidAt: "2025-10-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
+  { period: 3, paidAt: "2025-11-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
+  // 12 kỳ sao kê BIDV SmartBanking thực tế từ 10/12/2025 đến 10/11/2026
+  { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 695.842.193 đ" },
+  { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 692.786.193 đ" },
+  { period: 6, paidAt: "2026-02-10", paidPrincipal: 3_056_000, paidInterest: 3_027_381, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 689.730.193 đ" },
+  { period: 7, paidAt: "2026-03-10", paidPrincipal: 3_056_000, paidInterest: 2_910_095, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 686.674.193 đ" },
+  { period: 8, paidAt: "2026-04-11", paidPrincipal: 3_056_000, paidInterest: 3_194_351, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 683.618.193 đ" },
+  { period: 9, paidAt: "2026-05-11", paidPrincipal: 3_056_000, paidInterest: 3_193_800, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 680.562.193 đ" },
+  { period: 10, paidAt: "2026-06-10", paidPrincipal: 3_056_000, paidInterest: 3_076_514, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 677.506.193 đ" },
+  { period: 11, paidAt: "2026-07-10", paidPrincipal: 3_056_000, paidInterest: 3_062_699, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 674.450.193 đ" },
+  { period: 12, paidAt: "2026-08-10", paidPrincipal: 3_056_000, paidInterest: 3_150_514, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 671.394.193 đ" },
+  { period: 13, paidAt: "2026-09-10", paidPrincipal: 3_056_000, paidInterest: 3_136_239, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 668.338.193 đ" },
+  { period: 14, paidAt: "2026-10-12", paidPrincipal: 3_056_000, paidInterest: 3_222_671, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 665.282.193 đ" },
+  { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.193 đ" },
+];
+
+export function isRealBidvProfileSynced(contract: MortgageContract): boolean {
+  return (
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    contract.disbursementDate === "2025-08-26" &&
+    contract.fixedRateMonths === 36 &&
+    Math.abs(contract.fixedInterestRate - 5.5) < 0.01 &&
+    contract.paidRecords.length >= 15
+  );
+}
+
 export function createDefaultSkyOneLoan(
   referenceDate: string = getTodayIsoDate()
 ): MortgageContract {
-  const baseContract: MortgageContract = {
+  return {
     id: "skyone_apartment_loan",
     projectName: "Phú Đông SKYONE",
     unitCode: "Căn hộ 2PN · 68m² · Tháp A",
-    bankName: "BIDV Liên kết CĐT",
+    bankName: "BIDV · PGD Nguyễn Đình Chiểu",
+    accountNumber: REAL_BIDV_SKYONE_SNAPSHOT.accountNumber,
+    branchName: REAL_BIDV_SKYONE_SNAPSHOT.branchName,
     propertyValue: 2_150_000_000,
     currentMarketValue: 2_280_000_000,
     downPayment: 645_000_000,
-    loanAmount: 1_505_000_000,
-    termMonths: 240,
-    disbursementDate: "2025-11-15",
-    paymentDayOfMonth: 15,
-    fixedRateMonths: 24,
-    fixedInterestRate: 6.8,
-    floatingBaseRate: 7.0,
+    creditLimit: REAL_BIDV_SKYONE_SNAPSHOT.creditLimit,
+    loanAmount: REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025,
+    termMonths: 360,
+    disbursementDate: "2025-08-26",
+    paymentDayOfMonth: 10,
+    fixedRateMonths: 36,
+    fixedInterestRate: 5.5,
+    floatingBaseRate: 6.5,
     floatingSpread: 3.5,
-    prepayStrategyDefault: "SHORTEN_TERM",
+    monthlyPrincipalOverride: REAL_BIDV_SKYONE_SNAPSHOT.monthlyPrincipal,
+    interestBasis: "ACTUAL_365",
+    prepayStrategyDefault: "REDUCE_MONTHLY",
     prepaymentPenaltyTiers: [
       { fromYear: 1, toYear: 1, feePercent: 2.0 },
       { fromYear: 2, toYear: 2, feePercent: 1.5 },
@@ -778,26 +876,10 @@ export function createDefaultSkyOneLoan(
       { fromYear: 4, toYear: 30, feePercent: 0 },
     ],
     rateAdjustments: [],
-    paidRecords: [],
+    paidRecords: [...VERIFIED_BIDV_PAID_RECORDS],
     prepayments: [],
+    plannedDisbursements: [],
     updatedAt: `${referenceDate}T08:00:00.000Z`,
-  };
-
-  const baseline = generateMortgageSchedule(baseContract, referenceDate);
-  const autoPaidRecords: MortgagePaidInstallmentRecord[] = baseline.rows
-    .filter((row) => row.dueDate < referenceDate)
-    .map((row) => ({
-      period: row.period,
-      paidAt: row.dueDate,
-      paidPrincipal: row.principal,
-      paidInterest: row.interest,
-      appliedRate: row.appliedRate,
-      note: "Khởi tạo lịch sử đã đóng đúng hạn",
-    }));
-
-  return {
-    ...baseContract,
-    paidRecords: autoPaidRecords,
   };
 }
 
@@ -909,4 +991,332 @@ export function buildSkyOneAmortizationChartData(
     },
   };
 }
+
+export interface SkyOneStrategySimulationParams {
+  nextDisbursementAmount: number;
+  nextDisbursementAfterPeriod: number;
+  projectedFloatingRate: number;
+  safeSavingsYieldRate: number;
+  monthlyBufferContribution: number;
+  expectedMonthlyRent: number;
+  monthlyFamilyIncome: number;
+  referenceDate?: string;
+}
+
+export interface SkyOneStrategyTimelinePoint {
+  period: number;
+  label: string;
+  dueDate: string;
+  stage: "FIXED_CURRENT" | "FIXED_DISBURSED" | "FLOATING";
+  paymentNoStrategy: number;
+  paymentWithStrike: number;
+  dtiThreshold30: number;
+  expectedRent: number;
+  balanceNoStrategy: number;
+  balanceWithStrike: number;
+}
+
+export interface SkyOneStrategyAnalysis {
+  monthsRemainingFixed: number;
+  fixedEndPeriod: number;
+  fixedEndDate: string;
+  firstFloatingPeriod: number;
+  firstFloatingDate: string;
+  currentMonthlyPayment: number;
+  postDisbursementMonthlyPayment: number;
+  postResetMonthlyPaymentNoStrike: number;
+  postResetMonthlyPaymentWithStrike: number;
+  monthlyShockIncreaseNoStrike: number;
+  monthlySavingsPostResetWithStrike: number;
+  dtiCurrentPct: number;
+  dtiPostDisbursementPct: number;
+  dtiNoStrikePct: number;
+  dtiWithStrikePct: number;
+  balanceAtResetBeforeStrike: number;
+  balanceAtResetAfterStrike: number;
+  bufferPrincipalSaved: number;
+  bufferInterestEarned: number;
+  totalBufferAtReset: number;
+  penaltyAtResetPct: number;
+  penaltyAtResetAmount: number;
+  earlyPenaltyAvoidedAmount: number;
+  rateCarryGainAmount: number;
+  netStrategyAdvantage: number;
+  lifetimeInterestSavedByStrike: number;
+  positiveCarrySpreadPct: number;
+  rentCoverageCurrentPct: number;
+  rentCoveragePostDisbursementPct: number;
+  rentCoveragePostResetPct: number;
+  netMonthlyCarryWithRent: number;
+  timelinePoints: SkyOneStrategyTimelinePoint[];
+}
+
+export function analyzeSkyOneStrategy(
+  contract: MortgageContract,
+  params: SkyOneStrategySimulationParams
+): SkyOneStrategyAnalysis {
+  const refDate = params.referenceDate || getTodayIsoDate();
+  const baseSchedule = generateMortgageSchedule(contract, refDate);
+  const currentPeriod = baseSchedule.currentReferencePeriod;
+  const fixedEndPeriod = Math.max(currentPeriod, contract.fixedRateMonths);
+  const firstFloatingPeriod = fixedEndPeriod + 1;
+  const monthsRemainingFixed = Math.max(0, fixedEndPeriod - currentPeriod + 1);
+
+  const floatingRate = Math.max(1, params.projectedFloatingRate);
+  const tranchePeriod = Math.max(
+    currentPeriod,
+    Math.min(fixedEndPeriod, params.nextDisbursementAfterPeriod)
+  );
+  const trancheAmount = Math.max(0, params.nextDisbursementAmount);
+
+  const noStrategyContract: MortgageContract = {
+    ...contract,
+    floatingBaseRate: floatingRate,
+    floatingSpread: 0,
+    plannedDisbursements:
+      trancheAmount > 0
+        ? [
+            {
+              id: "sim_tranche_future",
+              afterPeriod: tranchePeriod,
+              date: addMonthsToDay(
+                contract.disbursementDate,
+                tranchePeriod,
+                contract.paymentDayOfMonth
+              ),
+              amount: trancheAmount,
+              note: "Giải ngân bổ sung theo tiến độ dự án",
+            },
+          ]
+        : [],
+  };
+
+  const noStrategySchedule = generateMortgageSchedule(noStrategyContract, refDate);
+
+  // Compound monthly buffer accumulation until Period fixedRateMonths (e.g., 08/2028)
+  const contrib = Math.max(0, params.monthlyBufferContribution);
+  const monthlySaveRate = Math.max(0, params.safeSavingsYieldRate) / 100 / 12;
+  let bufferFund = 0;
+  let immediatePrepayInterestCost = 0;
+  let immediatePenaltySum = 0;
+
+  for (let i = 0; i < monthsRemainingFixed; i++) {
+    bufferFund = (bufferFund + contrib) * (1 + monthlySaveRate);
+
+    // Compare against immediate monthly prepayments losing early-penalty + 5.5% rate
+    const simPeriod = currentPeriod + i;
+    const simYear = Math.max(1, Math.ceil(simPeriod / 12));
+    const earlyPenaltyRate = getPenaltyRateForYear(
+      simYear,
+      contract.prepaymentPenaltyTiers
+    );
+    immediatePenaltySum += Math.round(contrib * (earlyPenaltyRate / 100));
+    const monthsToFixedEnd = Math.max(0, monthsRemainingFixed - i);
+    immediatePrepayInterestCost += Math.round(
+      contrib * (contract.fixedInterestRate / 100 / 12) * monthsToFixedEnd
+    );
+  }
+
+  const bufferPrincipalSaved = contrib * monthsRemainingFixed;
+  const totalBufferAtReset = Math.round(bufferFund);
+  const bufferInterestEarned = Math.max(
+    0,
+    totalBufferAtReset - bufferPrincipalSaved
+  );
+
+  const fixedEndRowNoStrategy =
+    noStrategySchedule.rows.find((r) => r.period === fixedEndPeriod) ||
+    noStrategySchedule.rows[noStrategySchedule.rows.length - 1];
+  const balanceAtResetBeforeStrike = fixedEndRowNoStrategy?.closingBalance || 0;
+
+  const yearAtReset = Math.max(1, Math.ceil(firstFloatingPeriod / 12));
+  const penaltyAtResetPct = getPenaltyRateForYear(
+    yearAtReset,
+    contract.prepaymentPenaltyTiers
+  );
+  const strikePrincipal = Math.min(
+    balanceAtResetBeforeStrike,
+    Math.round(totalBufferAtReset / (1 + penaltyAtResetPct / 100))
+  );
+  const penaltyAtResetAmount = Math.round(
+    strikePrincipal * (penaltyAtResetPct / 100)
+  );
+
+  const strikeContract: MortgageContract = {
+    ...noStrategyContract,
+    prepayments: [
+      ...noStrategyContract.prepayments,
+      ...(strikePrincipal > 0
+        ? [
+            {
+              id: "sim_strike_reset",
+              date: addMonthsToDay(
+                contract.disbursementDate,
+                fixedEndPeriod,
+                contract.paymentDayOfMonth
+              ),
+              afterPeriod: fixedEndPeriod,
+              amount: strikePrincipal,
+              penaltyAmount: penaltyAtResetAmount,
+              feePercent: penaltyAtResetPct,
+              strategy: "REDUCE_MONTHLY" as const,
+              note: "Đánh chặn Quỹ Đệm ngay trước thả nổi",
+            },
+          ]
+        : []),
+    ],
+  };
+
+  const strikeSchedule = generateMortgageSchedule(strikeContract, refDate);
+
+  const currentRow =
+    noStrategySchedule.rows.find((r) => r.period === currentPeriod) ||
+    noStrategySchedule.nextUnpaidInstallment;
+  const currentMonthlyPayment = currentRow?.totalPayment || 0;
+
+  const postTranchePeriod = Math.min(fixedEndPeriod, tranchePeriod + 1);
+  const postDisbursementRow = noStrategySchedule.rows.find(
+    (r) => r.period === postTranchePeriod
+  );
+  const postDisbursementMonthlyPayment =
+    postDisbursementRow?.totalPayment || currentMonthlyPayment;
+
+  const firstFloatNoStrike = noStrategySchedule.rows.find(
+    (r) => r.period === firstFloatingPeriod
+  );
+  const firstFloatWithStrike = strikeSchedule.rows.find(
+    (r) => r.period === firstFloatingPeriod
+  );
+
+  const postResetMonthlyPaymentNoStrike = firstFloatNoStrike?.totalPayment || 0;
+  const postResetMonthlyPaymentWithStrike =
+    firstFloatWithStrike?.totalPayment || 0;
+
+  const monthlyShockIncreaseNoStrike = Math.max(
+    0,
+    postResetMonthlyPaymentNoStrike - currentMonthlyPayment
+  );
+  const monthlySavingsPostResetWithStrike = Math.max(
+    0,
+    postResetMonthlyPaymentNoStrike - postResetMonthlyPaymentWithStrike
+  );
+
+  const income = Math.max(1, params.monthlyFamilyIncome);
+  const dtiCurrentPct = Math.round((currentMonthlyPayment / income) * 1000) / 10;
+  const dtiPostDisbursementPct =
+    Math.round((postDisbursementMonthlyPayment / income) * 1000) / 10;
+  const dtiNoStrikePct =
+    Math.round((postResetMonthlyPaymentNoStrike / income) * 1000) / 10;
+  const dtiWithStrikePct =
+    Math.round((postResetMonthlyPaymentWithStrike / income) * 1000) / 10;
+
+  const balanceAtResetAfterStrike = Math.max(
+    0,
+    balanceAtResetBeforeStrike - strikePrincipal
+  );
+
+  const earlyPenaltyAvoidedAmount = Math.max(
+    0,
+    immediatePenaltySum - penaltyAtResetAmount
+  );
+  const rateCarryGainAmount = bufferInterestEarned - immediatePrepayInterestCost;
+  const netStrategyAdvantage = earlyPenaltyAvoidedAmount + rateCarryGainAmount;
+  const lifetimeInterestSavedByStrike = Math.max(
+    0,
+    noStrategySchedule.totalProjectedInterest -
+      strikeSchedule.totalProjectedInterest -
+      penaltyAtResetAmount
+  );
+
+  const rent = Math.max(0, params.expectedMonthlyRent);
+  const rentCoverageCurrentPct =
+    currentMonthlyPayment > 0
+      ? Math.round((rent / currentMonthlyPayment) * 1000) / 10
+      : 0;
+  const rentCoveragePostDisbursementPct =
+    postDisbursementMonthlyPayment > 0
+      ? Math.round((rent / postDisbursementMonthlyPayment) * 1000) / 10
+      : 0;
+  const rentCoveragePostResetPct =
+    postResetMonthlyPaymentWithStrike > 0
+      ? Math.round((rent / postResetMonthlyPaymentWithStrike) * 1000) / 10
+      : 0;
+
+  const dtiThreshold30 = Math.round(income * 0.3);
+  const timelineEndPeriod = Math.min(
+    contract.termMonths,
+    Math.max(firstFloatingPeriod + 24, currentPeriod + 48)
+  );
+  const strikeMap = new Map(strikeSchedule.rows.map((r) => [r.period, r]));
+
+  const timelinePoints: SkyOneStrategyTimelinePoint[] = noStrategySchedule.rows
+    .filter((r) => r.period >= currentPeriod && r.period <= timelineEndPeriod)
+    .map((r) => {
+      const sRow = strikeMap.get(r.period);
+      const stage: SkyOneStrategyTimelinePoint["stage"] =
+        r.period > fixedEndPeriod
+          ? "FLOATING"
+          : trancheAmount > 0 && r.period > tranchePeriod
+          ? "FIXED_DISBURSED"
+          : "FIXED_CURRENT";
+      return {
+        period: r.period,
+        label: `${r.dueDate.slice(5, 7)}/${r.dueDate.slice(2, 4)}`,
+        dueDate: r.dueDate,
+        stage,
+        paymentNoStrategy: r.totalPayment,
+        paymentWithStrike: sRow?.totalPayment ?? r.totalPayment,
+        dtiThreshold30,
+        expectedRent: rent,
+        balanceNoStrategy: r.closingBalance,
+        balanceWithStrike: sRow?.closingBalance ?? r.closingBalance,
+      };
+    });
+
+  return {
+    monthsRemainingFixed,
+    fixedEndPeriod,
+    fixedEndDate: addMonthsToDay(
+      contract.disbursementDate,
+      fixedEndPeriod,
+      contract.paymentDayOfMonth
+    ),
+    firstFloatingPeriod,
+    firstFloatingDate: addMonthsToDay(
+      contract.disbursementDate,
+      firstFloatingPeriod,
+      contract.paymentDayOfMonth
+    ),
+    currentMonthlyPayment,
+    postDisbursementMonthlyPayment,
+    postResetMonthlyPaymentNoStrike,
+    postResetMonthlyPaymentWithStrike,
+    monthlyShockIncreaseNoStrike,
+    monthlySavingsPostResetWithStrike,
+    dtiCurrentPct,
+    dtiPostDisbursementPct,
+    dtiNoStrikePct,
+    dtiWithStrikePct,
+    balanceAtResetBeforeStrike,
+    balanceAtResetAfterStrike,
+    bufferPrincipalSaved,
+    bufferInterestEarned,
+    totalBufferAtReset,
+    penaltyAtResetPct,
+    penaltyAtResetAmount,
+    earlyPenaltyAvoidedAmount,
+    rateCarryGainAmount,
+    netStrategyAdvantage,
+    lifetimeInterestSavedByStrike,
+    positiveCarrySpreadPct:
+      Math.round((params.safeSavingsYieldRate - contract.fixedInterestRate) * 100) /
+      100,
+    rentCoverageCurrentPct,
+    rentCoveragePostDisbursementPct,
+    rentCoveragePostResetPct,
+    netMonthlyCarryWithRent: postDisbursementMonthlyPayment - rent,
+    timelinePoints,
+  };
+}
+
 

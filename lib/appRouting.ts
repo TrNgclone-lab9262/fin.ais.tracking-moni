@@ -36,6 +36,7 @@ const SEGMENT_TO_FINANCE_TAB: Record<string, FinanceTab> = {
 
 const SKYONE_TAB_TO_SEGMENT: Record<SkyOneRouteTab, string> = {
   OVERVIEW: "overview",
+  ADVISOR: "advisor",
   CASHFLOW: "cashflow",
   SCHEDULE: "schedule",
   PREPAYMENT: "prepayment",
@@ -46,6 +47,7 @@ const SKYONE_TAB_TO_SEGMENT: Record<SkyOneRouteTab, string> = {
 
 const SEGMENT_TO_SKYONE_TAB: Record<string, SkyOneRouteTab> = {
   overview: "OVERVIEW",
+  advisor: "ADVISOR",
   cashflow: "CASHFLOW",
   schedule: "SCHEDULE",
   prepayment: "PREPAYMENT",
@@ -166,6 +168,7 @@ export function getAppDocumentTitle(
   if (app === "SKYONE") {
     const map: Record<SkyOneRouteTab, string> = {
       OVERVIEW: "Tổng quan & Stress-Test · Phú Đông SKYONE",
+      ADVISOR: "Cố vấn Chiến lược · Phú Đông SKYONE",
       CASHFLOW: "Chi tiết Dòng tiền · Phú Đông SKYONE",
       SCHEDULE: "Lịch trả nợ · Phú Đông SKYONE",
       PREPAYMENT: "Trả gốc trước hạn · Phú Đông SKYONE",

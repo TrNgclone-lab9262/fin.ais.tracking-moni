@@ -3,7 +3,7 @@
 import React from "react";
 import {
   TrendingDown,
-  Table2,
+  Compass,
   Calendar,
   Calculator,
   SlidersHorizontal,
@@ -20,7 +20,7 @@ export function SkyOneBottomNavBar() {
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     { id: "OVERVIEW", label: "Tổng quan", icon: TrendingDown },
-    { id: "CASHFLOW", label: "Dòng tiền", icon: Table2 },
+    { id: "ADVISOR", label: "Cố vấn", icon: Compass },
     { id: "SCHEDULE", label: "Lịch trả", icon: Calendar },
     { id: "PREPAYMENT", label: "Trả trước", icon: Calculator },
     { id: "CONTRACT", label: "Hợp đồng", icon: SlidersHorizontal },

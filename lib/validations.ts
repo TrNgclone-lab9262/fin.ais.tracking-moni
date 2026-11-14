@@ -185,14 +185,25 @@ export const MortgagePrepaymentEventSchema = z.object({
   note: z.string().optional(),
 });
 
+export const MortgagePlannedDisbursementSchema = z.object({
+  id: z.string().min(1),
+  afterPeriod: z.number().int().min(0),
+  date: z.string(),
+  amount: z.number().nonnegative(),
+  note: z.string().optional(),
+});
+
 export const MortgageContractSchema = z.object({
   id: z.string().min(1),
   projectName: z.string().min(1),
   unitCode: z.string().min(1),
   bankName: z.string().min(1),
+  accountNumber: z.string().optional(),
+  branchName: z.string().optional(),
   propertyValue: z.number().positive(),
   currentMarketValue: z.number().positive(),
   downPayment: z.number().nonnegative(),
+  creditLimit: z.number().positive().optional(),
   loanAmount: z.number().positive(),
   termMonths: z.number().int().min(1).max(480),
   disbursementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -201,11 +212,14 @@ export const MortgageContractSchema = z.object({
   fixedInterestRate: z.number().min(0).max(50),
   floatingBaseRate: z.number().min(0).max(50),
   floatingSpread: z.number().min(0).max(30),
+  monthlyPrincipalOverride: z.number().nonnegative().optional(),
+  interestBasis: z.enum(["ACTUAL_365", "THIRTY_360"]).optional(),
   prepayStrategyDefault: z.enum(["SHORTEN_TERM", "REDUCE_MONTHLY"]),
   prepaymentPenaltyTiers: z.array(MortgagePrepaymentPenaltyTierSchema),
   rateAdjustments: z.array(MortgageRateAdjustmentSchema),
   paidRecords: z.array(MortgagePaidInstallmentRecordSchema),
   prepayments: z.array(MortgagePrepaymentEventSchema),
+  plannedDisbursements: z.array(MortgagePlannedDisbursementSchema).optional(),
   updatedAt: z.string(),
 });
 

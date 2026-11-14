@@ -22,6 +22,7 @@ interface SkyOneTopBarProps {
 
 const SKYONE_TITLES: Record<SkyOneRouteTab, string> = {
   OVERVIEW: "Tổng quan & Stress-Test Khoản vay",
+  ADVISOR: "Cố vấn Chiến lược Tài chính & BĐS",
   CASHFLOW: "Chi tiết Dòng tiền Trả nợ",
   SCHEDULE: "Lịch trả nợ Hàng tháng",
   PREPAYMENT: "Mô phỏng & Trả gốc trước hạn",

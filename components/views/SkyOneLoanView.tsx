@@ -17,6 +17,7 @@ import {
   Undo2,
   Percent,
   Wallet,
+  Compass,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -30,6 +31,7 @@ import {
 } from "recharts";
 import { SkyOneAmortizationChart } from "@/components/dashboard/SkyOneAmortizationChart";
 import { SkyOneCashflowScheduleTable } from "@/components/dashboard/SkyOneCashflowScheduleTable";
+import { SkyOneAdvisorView } from "@/components/views/SkyOneAdvisorView";
 import { useFinance } from "@/context/FinanceContext";
 import {
   formatVNDMasked,
@@ -44,6 +46,7 @@ import {
   calculateRateStressTest,
   evaluateSkyOneReminders,
   getTodayIsoDate,
+  isRealBidvProfileSynced,
   MortgageScheduleRow,
 } from "@/lib/mortgageEngine";
 import {
@@ -99,6 +102,7 @@ export function SkyOneLoanView() {
   const isDark = themeMode === "dark";
 
   const subTab: SkyOneSubTab =
+    skyoneTab === "ADVISOR" ||
     skyoneTab === "CASHFLOW" ||
     skyoneTab === "SCHEDULE" ||
     skyoneTab === "PREPAYMENT" ||
@@ -493,6 +497,10 @@ export function SkyOneLoanView() {
       ? "text-amber-700 dark:text-amber-300"
       : "text-emerald-700 dark:text-emerald-300";
 
+  if (subTab === "ADVISOR") {
+    return <SkyOneAdvisorView />;
+  }
+
   return (
     <div className="space-y-5 sm:space-y-6 animate-in fade-in duration-200">
       {/* 1. HERO HEADER STRIP */}
@@ -533,12 +541,20 @@ export function SkyOneLoanView() {
           )}
           <button
             type="button"
+            onClick={() => setSubTab("ADVISOR")}
+            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+          >
+            <Compass className="w-4 h-4" />
+            <span>Cố vấn 08/2028</span>
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setContractDraft(skyoneLoan);
               setIsContractDirty(false);
               setSubTab("CONTRACT");
             }}
-            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
           >
             <SlidersHorizontal className="w-4 h-4" />
             <span>Hợp đồng & Lãi suất</span>
@@ -1450,7 +1466,11 @@ export function SkyOneLoanView() {
                 className="min-h-[38px] px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Khôi phục mẫu SKYONE</span>
+                <span>
+                  {isRealBidvProfileSynced(skyoneLoan)
+                    ? "Khôi phục chuẩn BIDV"
+                    : "Nạp hồ sơ BIDV thực tế (662,2tr)"}
+                </span>
               </button>
             </div>
 
@@ -1600,6 +1620,38 @@ export function SkyOneLoanView() {
                   }
                   className="w-full min-h-[40px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 font-bold text-slate-800 dark:text-slate-100 tabular-nums"
                 />
+              </div>
+              <div>
+                <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Gốc đều hợp đồng/tháng (0 = tự chia đều)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={contractDraft.monthlyPrincipalOverride ?? 0}
+                  onChange={(e) =>
+                    updateDraftField("monthlyPrincipalOverride", Number(e.target.value) || 0)
+                  }
+                  className="w-full min-h-[40px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 font-bold text-slate-800 dark:text-slate-100 tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Chuẩn đếm ngày tính lãi
+                </label>
+                <select
+                  value={contractDraft.interestBasis || "ACTUAL_365"}
+                  onChange={(e) =>
+                    updateDraftField(
+                      "interestBasis",
+                      e.target.value === "THIRTY_360" ? "THIRTY_360" : "ACTUAL_365"
+                    )
+                  }
+                  className="w-full min-h-[40px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
+                >
+                  <option value="ACTUAL_365">Actual/365 (Chuẩn BIDV thực tế)</option>
+                  <option value="THIRTY_360">30/360 (Chia đều 12 tháng)</option>
+                </select>
               </div>
             </div>
 
@@ -1889,16 +1941,16 @@ export function SkyOneLoanView() {
 
       <ConfirmDialog
         isOpen={isResetModalOpen}
-        title="Khôi phục hợp đồng mẫu Phú Đông SKYONE?"
-        message="Hệ thống sẽ đặt lại hợp đồng vay Phú Đông SKYONE về thông số mẫu mặc định kèm lịch sử đã đóng tới tháng hiện tại."
-        confirmLabel="Khôi phục mẫu"
+        title="Khôi phục hồ sơ BIDV thực tế Phú Đông SKYONE?"
+        message="Hệ thống sẽ đặt lại hợp đồng vay theo dữ liệu sao kê BIDV PGD Nguyễn Đình Chiểu (662.226.193 VND, lãi 5,5%/năm cố định 36 tháng tới 08/2028, gốc đều 3.056.000đ/tháng, Actual/365) kèm 12 kỳ đã thanh toán."
+        confirmLabel="Khôi phục chuẩn BIDV"
         cancelLabel="Hủy"
         isDanger={false}
         onConfirm={() => {
           resetSkyOneLoan();
           setIsResetModalOpen(false);
           setIsContractDirty(false);
-          showToast("Đã khôi phục hợp đồng mẫu Phú Đông SKYONE.");
+          showToast("Đã khôi phục hồ sơ BIDV thực tế Phú Đông SKYONE.");
         }}
         onCancel={() => setIsResetModalOpen(false)}
       />

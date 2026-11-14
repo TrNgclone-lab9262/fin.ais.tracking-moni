@@ -159,6 +159,8 @@ export type MortgagePrepayStrategy = 'SHORTEN_TERM' | 'REDUCE_MONTHLY';
 
 export type MortgageInstallmentStatus = 'PAID' | 'DUE_SOON' | 'OVERDUE' | 'UPCOMING';
 
+export type MortgageInterestBasis = 'ACTUAL_365' | 'THIRTY_360';
+
 export interface MortgagePrepaymentPenaltyTier {
   fromYear: number;
   toYear: number;
@@ -195,14 +197,25 @@ export interface MortgagePrepaymentEvent {
   note?: string;
 }
 
+export interface MortgagePlannedDisbursement {
+  id: string;
+  afterPeriod: number;
+  date: string;
+  amount: number;
+  note?: string;
+}
+
 export interface MortgageContract {
   id: string;
   projectName: string;
   unitCode: string;
   bankName: string;
+  accountNumber?: string;
+  branchName?: string;
   propertyValue: number;
   currentMarketValue: number;
   downPayment: number;
+  creditLimit?: number;
   loanAmount: number;
   termMonths: number;
   disbursementDate: string;
@@ -211,11 +224,14 @@ export interface MortgageContract {
   fixedInterestRate: number;
   floatingBaseRate: number;
   floatingSpread: number;
+  monthlyPrincipalOverride?: number;
+  interestBasis?: MortgageInterestBasis;
   prepayStrategyDefault: MortgagePrepayStrategy;
   prepaymentPenaltyTiers: MortgagePrepaymentPenaltyTier[];
   rateAdjustments: MortgageRateAdjustment[];
   paidRecords: MortgagePaidInstallmentRecord[];
   prepayments: MortgagePrepaymentEvent[];
+  plannedDisbursements?: MortgagePlannedDisbursement[];
   updatedAt: string;
 }
 
@@ -273,7 +289,7 @@ export type FinanceTab =
   | 'guide'
   | 'settings';
 
-export type SkyOneSubTab = 'OVERVIEW' | 'CASHFLOW' | 'SCHEDULE' | 'PREPAYMENT' | 'CONTRACT';
+export type SkyOneSubTab = 'OVERVIEW' | 'ADVISOR' | 'CASHFLOW' | 'SCHEDULE' | 'PREPAYMENT' | 'CONTRACT';
 
 export type SkyOneRouteTab = SkyOneSubTab | 'DATA_ADMIN' | 'SETTINGS';
 

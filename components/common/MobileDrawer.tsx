@@ -20,6 +20,7 @@ import {
   Calendar,
   Calculator,
   SlidersHorizontal,
+  Compass,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -106,6 +107,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     { id: "OVERVIEW", label: "Tổng quan & Stress-Test", icon: TrendingDown },
+    { id: "ADVISOR", label: "Cố vấn Chiến lược", icon: Compass },
     { id: "CASHFLOW", label: "Chi tiết Dòng tiền", icon: Table2 },
     { id: "SCHEDULE", label: "Lịch trả nợ hàng tháng", icon: Calendar },
     { id: "PREPAYMENT", label: "Trả gốc trước hạn", icon: Calculator },
