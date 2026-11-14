@@ -260,3 +260,27 @@ export interface CategoryExpenseStat {
   totalAmount: number;
   percentage: number;
 }
+
+export type SubAppId = 'FINANCE' | 'SKYONE';
+
+export type FinanceTab =
+  | 'overview'
+  | 'transactions'
+  | 'accounts'
+  | 'planning'
+  | 'debts_invest'
+  | 'data_admin'
+  | 'guide'
+  | 'settings';
+
+export type SkyOneSubTab = 'OVERVIEW' | 'CASHFLOW' | 'SCHEDULE' | 'PREPAYMENT' | 'CONTRACT';
+
+export type SkyOneRouteTab = SkyOneSubTab | 'DATA_ADMIN' | 'SETTINGS';
+
+export interface SkyOneTransactionLink {
+  kind: 'INSTALLMENT' | 'PREPAYMENT';
+  period?: number;
+  prepaymentId?: string;
+  label: string;
+}
+

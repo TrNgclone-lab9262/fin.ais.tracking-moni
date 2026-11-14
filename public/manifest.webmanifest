@@ -35,5 +35,21 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Thu chi tổ ấm",
+      "short_name": "Thu chi",
+      "description": "Mở nhanh quản lý thu chi gia đình HOME MONI",
+      "url": "/finance/overview",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Phú Đông SKYONE",
+      "short_name": "SKYONE",
+      "description": "Mở nhanh quản trị khoản vay căn hộ Phú Đông SKYONE",
+      "url": "/skyone/overview",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

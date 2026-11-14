@@ -74,7 +74,6 @@ export function TopBar({
     accounts: "Tài khoản & Thẻ tín dụng",
     planning: "Kế hoạch & Ngân sách tổ ấm",
     debts_invest: "Nợ & Đầu tư gia đình",
-    skyone: "Phú Đông SKYONE — Vay căn hộ",
     data_admin: "Quản trị Dữ liệu (Data Studio)",
     guide: "Cẩm nang tài chính tổ ấm",
     settings: "Cài đặt & Tùy biến",

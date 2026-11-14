@@ -15,10 +15,17 @@ import {
   ShieldCheck,
   Lock,
   Building2,
+  TrendingDown,
+  Table2,
+  Calendar,
+  Calculator,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
+import { AppSwitcher } from "@/components/common/AppSwitcher";
+import { SkyOneRouteTab } from "@/types/finance";
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -27,8 +34,11 @@ interface MobileDrawerProps {
 
 export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   const {
+    activeApp,
     activeTab,
     setActiveTab,
+    skyoneTab,
+    setSkyoneTab,
     activePerspective,
     setActivePerspective,
     isCloudConnected,
@@ -74,11 +84,6 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       badgeColor: "bg-blue-600 text-white",
     },
     {
-      id: "skyone",
-      label: "Phú Đông SKYONE",
-      icon: Building2,
-    },
-    {
       id: "data_admin",
       label: "Quản trị Dữ liệu",
       icon: Database,
@@ -95,8 +100,27 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     },
   ];
 
+  const skyoneNavItems: {
+    id: SkyOneRouteTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    { id: "OVERVIEW", label: "Tổng quan & Stress-Test", icon: TrendingDown },
+    { id: "CASHFLOW", label: "Chi tiết Dòng tiền", icon: Table2 },
+    { id: "SCHEDULE", label: "Lịch trả nợ hàng tháng", icon: Calendar },
+    { id: "PREPAYMENT", label: "Trả gốc trước hạn", icon: Calculator },
+    { id: "CONTRACT", label: "Hợp đồng & Lãi suất", icon: SlidersHorizontal },
+    { id: "DATA_ADMIN", label: "Quản trị Dữ liệu", icon: Database },
+    { id: "SETTINGS", label: "Cài đặt chung", icon: Settings },
+  ];
+
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
+    onClose();
+  };
+
+  const handleSelectSkyOneTab = (tab: SkyOneRouteTab) => {
+    setSkyoneTab(tab);
     onClose();
   };
 
@@ -110,22 +134,30 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
       {/* Drawer content */}
       <div
-        className="relative w-full max-w-[320px] bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none"
+        className={`relative w-full max-w-[320px] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none ${
+          activeApp === "SKYONE"
+            ? "bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D]"
+            : "bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D]"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="overflow-y-auto">
           {/* Header */}
-          <div className="h-18 flex items-center justify-between px-5 border-b border-blue-800/40">
+          <div className="h-18 flex items-center justify-between px-5 border-b border-white/10">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-amber-400 via-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
-                <Home className="w-5 h-5" />
+                {activeApp === "SKYONE" ? (
+                  <Building2 className="w-5 h-5" />
+                ) : (
+                  <Home className="w-5 h-5" />
+                )}
               </div>
               <div>
                 <span className="font-black text-base tracking-wider block leading-tight">
-                  HOME MONI
+                  {activeApp === "SKYONE" ? "SKYONE LOAN" : "HOME MONI"}
                 </span>
                 <span className="text-[10px] text-blue-200 uppercase tracking-widest font-bold">
-                  🏡 My Home
+                  {activeApp === "SKYONE" ? "Phú Đông SKYONE" : "🏡 My Home"}
                 </span>
               </div>
             </div>
@@ -138,6 +170,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <X className="w-5 h-5" />
             </button>
           </div>
+
+          <AppSwitcher onSwitched={onClose} />
 
           {/* Family Mini Profile */}
           <div className="p-4 mx-3 my-3 rounded-xl bg-blue-950/40 dark:bg-slate-900/60 border border-blue-800/40 dark:border-slate-800 space-y-2.5">
@@ -193,38 +227,63 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
           {/* Navigation Links */}
           <nav className="px-3 py-2 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleSelectTab(item.id)}
-                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
-                      : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  <Icon
-                    className={`w-5 h-5 shrink-0 ${
-                      isActive ? "text-blue-700 dark:text-white" : "text-blue-200 dark:text-slate-400"
-                    }`}
-                  />
-                  <span className="flex-1 text-left">{item.label}</span>
-                  {item.badge && (
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        item.badgeColor || "bg-blue-800 text-white"
+            {activeApp === "SKYONE"
+              ? skyoneNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = skyoneTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelectSkyOneTab(item.id)}
+                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-white dark:bg-indigo-600 text-indigo-950 dark:text-white shadow-md font-black"
+                          : "text-indigo-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
                       }`}
                     >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                      <Icon
+                        className={`w-5 h-5 shrink-0 ${
+                          isActive
+                            ? "text-indigo-700 dark:text-white"
+                            : "text-indigo-200 dark:text-slate-400"
+                        }`}
+                      />
+                      <span className="flex-1 text-left">{item.label}</span>
+                    </button>
+                  );
+                })
+              : navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelectTab(item.id)}
+                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
+                          : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <Icon
+                        className={`w-5 h-5 shrink-0 ${
+                          isActive ? "text-blue-700 dark:text-white" : "text-blue-200 dark:text-slate-400"
+                        }`}
+                      />
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {item.badge && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            item.badgeColor || "bg-blue-800 text-white"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
           </nav>
         </div>
 

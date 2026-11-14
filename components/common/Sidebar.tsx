@@ -14,11 +14,11 @@ import {
   ChevronRight,
   Heart,
   Lock,
-  Building2,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
+import { AppSwitcher } from "@/components/common/AppSwitcher";
 
 interface NavItemDef {
   id: NavTab;
@@ -123,11 +123,6 @@ export function Sidebar() {
               ? { text: `${activeDebtsCount}`, variant: "info" }
               : undefined,
         },
-        {
-          id: "skyone",
-          label: "Phú Đông SKYONE",
-          icon: Building2,
-        },
       ],
     },
     {
@@ -183,6 +178,9 @@ export function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* 2B. Sub-WebApp Switcher */}
+      <AppSwitcher collapsed={isCollapsed} />
 
       {/* 3. Navigation Groups */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">

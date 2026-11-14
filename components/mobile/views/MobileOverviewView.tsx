@@ -52,6 +52,7 @@ export function MobileOverviewView() {
     addTransaction,
     applyAllPendingRecurringRules,
     setActiveTab,
+    switchSubApp,
     deleteTransaction,
   } = useFinance();
 
@@ -294,10 +295,10 @@ export function MobileOverviewView() {
 
           <button
             type="button"
-            onClick={() => setActiveTab("skyone")}
-            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#1E3A8A] dark:bg-blue-600 hover:bg-blue-900 dark:hover:bg-blue-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+            onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
+            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
           >
-            <span>Quản lý</span>
+            <span>Mở SKYONE</span>
             <ArrowRight className="w-3 h-3" />
           </button>
         </div>

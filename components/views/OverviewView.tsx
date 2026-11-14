@@ -37,6 +37,7 @@ export function OverviewView() {
     applyRecurringRule,
     skyoneLoan,
     setActiveTab,
+    switchSubApp,
     isPrivacyMode,
   } = useFinance();
 
@@ -280,14 +281,30 @@ export function OverviewView() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("skyone")}
-            className="min-h-[42px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
-          >
-            <span>Quản lý căn hộ</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {skyoneSchedule.nextUnpaidInstallment && (
+              <button
+                type="button"
+                onClick={() =>
+                  switchSubApp("SKYONE", {
+                    skyoneTab: "SCHEDULE",
+                    highlightPeriod: skyoneSchedule.nextUnpaidInstallment?.period,
+                  })
+                }
+                className="min-h-[42px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <span>Lịch kỳ #{skyoneSchedule.nextUnpaidInstallment.period}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
+              className="min-h-[42px] px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+            >
+              <span>Mở SKYONE</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </section>
 

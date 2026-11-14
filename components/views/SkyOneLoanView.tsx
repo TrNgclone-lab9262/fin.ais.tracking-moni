@@ -1,15 +1,13 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Building2,
   Calendar,
   CheckCircle2,
   AlertTriangle,
   Clock,
-  TrendingDown,
   ShieldCheck,
-  Calculator,
   SlidersHorizontal,
   Plus,
   Trash2,
@@ -19,7 +17,6 @@ import {
   Undo2,
   Percent,
   Wallet,
-  Table2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -53,10 +50,10 @@ import {
   MortgageContract,
   MortgagePrepayStrategy,
   MortgageStage,
+  SkyOneSubTab,
 } from "@/types/finance";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
-type SkyOneSubTab = "OVERVIEW" | "CASHFLOW" | "SCHEDULE" | "PREPAYMENT" | "CONTRACT";
 type ScheduleStatusFilter = "ALL" | "UNPAID" | "PAID" | "DUE_OR_OVERDUE";
 type ScheduleStageFilter = "ALL" | MortgageStage;
 
@@ -81,6 +78,10 @@ function parseNumericInput(val: string): number {
 export function SkyOneLoanView() {
   const {
     skyoneLoan,
+    skyoneTab,
+    setSkyoneTab,
+    skyoneHighlightPeriod,
+    clearSkyoneHighlightPeriod,
     transactions,
     accounts,
     selectedMonth,
@@ -97,7 +98,22 @@ export function SkyOneLoanView() {
   } = useFinance();
   const isDark = themeMode === "dark";
 
-  const [subTab, setSubTab] = useState<SkyOneSubTab>("OVERVIEW");
+  const subTab: SkyOneSubTab =
+    skyoneTab === "CASHFLOW" ||
+    skyoneTab === "SCHEDULE" ||
+    skyoneTab === "PREPAYMENT" ||
+    skyoneTab === "CONTRACT"
+      ? skyoneTab
+      : "OVERVIEW";
+
+  const setSubTab = (tab: SkyOneSubTab) => {
+    if (tab === "CONTRACT") {
+      setContractDraft(skyoneLoan);
+      setIsContractDirty(false);
+    }
+    setSkyoneTab(tab);
+  };
+
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
 
   // Schedule Filters & Batch selection
@@ -119,6 +135,27 @@ export function SkyOneLoanView() {
   // Contract Editing State (Draft synced lazily via button or reset)
   const [contractDraft, setContractDraft] = useState<MortgageContract>(() => skyoneLoan);
   const [isContractDirty, setIsContractDirty] = useState(false);
+
+  useEffect(() => {
+    if (skyoneHighlightPeriod && skyoneHighlightPeriod > 0) {
+      setStatusFilter("ALL");
+      setStageFilter("ALL");
+      setYearFilter("ALL");
+      setHighlightedPeriod(skyoneHighlightPeriod);
+      const scrollTimer = setTimeout(() => {
+        const targetEl = rowRefs.current[skyoneHighlightPeriod];
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        clearSkyoneHighlightPeriod();
+      }, 150);
+      const clearTimer = setTimeout(() => setHighlightedPeriod(null), 3500);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
+    }
+  }, [skyoneHighlightPeriod, clearSkyoneHighlightPeriod]);
 
   // Bank Rate Adjustment Form State
   const [adjFromPeriod, setAdjFromPeriod] = useState<string>(() =>
@@ -656,48 +693,7 @@ export function SkyOneLoanView() {
         </div>
       </section>
 
-      {/* 4. SUB-TAB NAVIGATION BAR */}
-      <nav
-        aria-label="Phân khu quản lý Phú Đông SKYONE"
-        className="flex overflow-x-auto gap-1.5 bg-white dark:bg-slate-900 p-1.5 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs"
-      >
-        {(
-          [
-            { id: "OVERVIEW", label: "Tổng quan & Stress-Test", icon: TrendingDown },
-            { id: "SCHEDULE", label: `Lịch trả nợ (${schedule.totalScheduledMonths} kỳ)`, icon: Calendar },
-            { id: "PREPAYMENT", label: "Trả gốc trước hạn", icon: Calculator },
-            { id: "CONTRACT", label: "Hợp đồng & Lãi suất", icon: SlidersHorizontal },
-            { id: "CASHFLOW", label: "Chi tiết dòng tiền", icon: Table2 },
-          ] as const
-        ).map((tab) => {
-          const Icon = tab.icon;
-          const active = subTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              data-testid={`skyone-subtab-${tab.id.toLowerCase()}`}
-              onClick={() => {
-                if (tab.id === "CONTRACT") {
-                  setContractDraft(skyoneLoan);
-                  setIsContractDirty(false);
-                }
-                setSubTab(tab.id);
-              }}
-              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold inline-flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
-                active
-                  ? "bg-[#1E3A8A] dark:bg-blue-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* 5. SUB-TAB CONTENT */}
+      {/* 4. SUB-TAB CONTENT */}
       {subTab === "OVERVIEW" && (
         <div className="space-y-6">
           {/* Primary Combined Amortization Chart */}

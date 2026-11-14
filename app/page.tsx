@@ -7,6 +7,10 @@ import { Sidebar } from "@/components/common/Sidebar";
 import { TopBar } from "@/components/common/TopBar";
 import { MobileDrawer } from "@/components/common/MobileDrawer";
 import { BottomNavBar } from "@/components/common/BottomNavBar";
+import { SkyOneSidebar } from "@/components/skyone/SkyOneSidebar";
+import { SkyOneTopBar } from "@/components/skyone/SkyOneTopBar";
+import { SkyOneMobileHeader } from "@/components/skyone/SkyOneMobileHeader";
+import { SkyOneBottomNavBar } from "@/components/skyone/SkyOneBottomNavBar";
 
 // 1. Desktop Shell Views
 import { OverviewView } from "@/components/views/OverviewView";
@@ -43,7 +47,9 @@ import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 export default function HomePage() {
   const {
     isLoaded,
+    activeApp,
     activeTab,
+    skyoneTab,
     activePerspective,
     resetToMockData,
     addTransaction,
@@ -106,7 +112,7 @@ export default function HomePage() {
     return <LoginGateView />;
   }
 
-  // Luồng render View cho Desktop
+  // Luồng render View cho Desktop (HOME MONI Thu chi)
   const renderActiveDesktopView = () => {
     switch (activeTab) {
       case "overview":
@@ -124,8 +130,6 @@ export default function HomePage() {
         return <PlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
-      case "skyone":
-        return <SkyOneLoanView />;
       case "data_admin":
         return <DataAdminView />;
       case "guide":
@@ -142,7 +146,7 @@ export default function HomePage() {
     }
   };
 
-  // Luồng render View cho Mobile
+  // Luồng render View cho Mobile (HOME MONI Thu chi)
   const renderActiveMobileView = () => {
     switch (activeTab) {
       case "overview":
@@ -159,8 +163,6 @@ export default function HomePage() {
         return <MobilePlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
-      case "skyone":
-        return <SkyOneLoanView />;
       case "data_admin":
         return <DataAdminView />;
       case "guide":
@@ -174,6 +176,23 @@ export default function HomePage() {
         );
       default:
         return <MobileOverviewView />;
+    }
+  };
+
+  // Luồng render View cho Sub-WebApp Phú Đông SKYONE (Desktop & Mobile)
+  const renderActiveSkyOneView = () => {
+    switch (skyoneTab) {
+      case "DATA_ADMIN":
+        return <DataAdminView />;
+      case "SETTINGS":
+        return (
+          <SettingsView
+            onOpenBackupModal={() => setIsBackupModalOpen(true)}
+            onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
+          />
+        );
+      default:
+        return <SkyOneLoanView />;
     }
   };
 
@@ -207,7 +226,7 @@ export default function HomePage() {
       {showUpdateBanner ? <PWAUpdateBanner /> : <PWAInstallBanner />}
 
       {/* 1. DESKTOP VIEW SHELL (>= 768px) */}
-      {!isMobile && (
+      {!isMobile && activeApp === "FINANCE" && (
         <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
           <Sidebar />
           <div className="flex-1 flex flex-col min-w-0">
@@ -225,8 +244,20 @@ export default function HomePage() {
         </div>
       )}
 
+      {!isMobile && activeApp === "SKYONE" && (
+        <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
+          <SkyOneSidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />
+            <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
+              {renderActiveSkyOneView()}
+            </main>
+          </div>
+        </div>
+      )}
+
       {/* 2. MOBILE VIEW SHELL (< 768px) */}
-      {isMobile && (
+      {isMobile && activeApp === "FINANCE" && (
         <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
           <MobileHeader
             onOpenDrawer={() => setIsMobileMenuOpen(true)}
@@ -239,6 +270,18 @@ export default function HomePage() {
           </main>
 
           <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
+        </div>
+      )}
+
+      {isMobile && activeApp === "SKYONE" && (
+        <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
+          <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
+
+          <main className="p-3.5 space-y-3.5">
+            {renderActiveSkyOneView()}
+          </main>
+
+          <SkyOneBottomNavBar />
         </div>
       )}
 

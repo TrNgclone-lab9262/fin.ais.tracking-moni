@@ -14,6 +14,7 @@ import {
   ChevronRight,
   X,
   AlertCircle,
+  Building2,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatDateVN, getMonthDisplayLabel } from "@/lib/formatters";
@@ -51,6 +52,8 @@ export function TransactionsView({
     deleteTransaction,
     activePerspective,
     isPrivacyMode,
+    getSkyOneLinkForTransaction,
+    switchSubApp,
   } = useFinance();
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -260,6 +263,7 @@ export function TransactionsView({
                     const toAcc = tx.toAccountId ? getAccountById(tx.toAccountId) : undefined;
                     const isExpense = tx.type === "EXPENSE";
                     const isTransfer = tx.type === "TRANSFER";
+                    const skyoneLink = getSkyOneLinkForTransaction(tx.id);
 
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group">
@@ -359,10 +363,28 @@ export function TransactionsView({
 
                         {/* Ghi chú */}
                         <td
-                          className="py-3.5 px-3.5 truncate text-slate-600 dark:text-slate-300 font-medium"
+                          className="py-3.5 px-3.5 text-slate-600 dark:text-slate-300 font-medium"
                           title={tx.note || ""}
                         >
-                          {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                          <div className="truncate">
+                            {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                          </div>
+                          {skyoneLink && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                switchSubApp("SKYONE", {
+                                  skyoneTab:
+                                    skyoneLink.kind === "PREPAYMENT" ? "PREPAYMENT" : "SCHEDULE",
+                                  highlightPeriod: skyoneLink.period ?? null,
+                                })
+                              }
+                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                            >
+                              <Building2 className="w-3 h-3 shrink-0" />
+                              <span>{skyoneLink.label} →</span>
+                            </button>
+                          )}
                         </td>
 
                         {/* Thao tác */}

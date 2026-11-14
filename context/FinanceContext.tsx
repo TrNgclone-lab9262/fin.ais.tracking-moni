@@ -32,6 +32,10 @@ import {
   MortgagePrepayStrategy,
   MortgageRateAdjustment,
   ThemeMode,
+  SubAppId,
+  FinanceTab,
+  SkyOneRouteTab,
+  SkyOneTransactionLink,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -83,17 +87,14 @@ import {
 } from "@/lib/mortgageEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { supabaseService } from "@/lib/supabaseService";
+import {
+  parseAppRoute,
+  buildAppPath,
+  getAppDocumentTitle,
+  saveActiveApp,
+} from "@/lib/appRouting";
 
-export type NavTab =
-  | "overview"
-  | "transactions"
-  | "accounts"
-  | "planning"
-  | "debts_invest"
-  | "skyone"
-  | "data_admin"
-  | "guide"
-  | "settings";
+export type NavTab = FinanceTab;
 
 export type PerspectiveMode = "ALL" | "HUSBAND" | "WIFE";
 
@@ -140,8 +141,22 @@ export type CreditCardInfo = CreditCardCycleStatus;
 
 interface FinanceContextType {
   isLoaded: boolean;
+  activeApp: SubAppId;
   activeTab: NavTab;
   setActiveTab: (tab: NavTab) => void;
+  skyoneTab: SkyOneRouteTab;
+  setSkyoneTab: (tab: SkyOneRouteTab, highlightPeriod?: number | null) => void;
+  skyoneHighlightPeriod: number | null;
+  clearSkyoneHighlightPeriod: () => void;
+  switchSubApp: (
+    app: SubAppId,
+    options?: {
+      financeTab?: FinanceTab;
+      skyoneTab?: SkyOneRouteTab;
+      highlightPeriod?: number | null;
+    }
+  ) => void;
+  getSkyOneLinkForTransaction: (txId: string) => SkyOneTransactionLink | undefined;
 
   // Trạng thái Cloud Database & Realtime
   isCloudConnected: boolean;
@@ -303,7 +318,10 @@ function createTxId(): string {
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<NavTab>("overview");
+  const [activeApp, setActiveApp] = useState<SubAppId>("FINANCE");
+  const [activeTab, setActiveTabState] = useState<NavTab>("overview");
+  const [skyoneTab, setSkyoneTabState] = useState<SkyOneRouteTab>("OVERVIEW");
+  const [skyoneHighlightPeriod, setSkyoneHighlightPeriod] = useState<number | null>(null);
   const [activePerspective, setActivePerspective] = useState<PerspectiveMode>("ALL");
 
   // Supabase Cloud State
@@ -401,8 +419,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const isDirectLoginRoute =
-      typeof window !== "undefined" && window.location.pathname === "/login";
+    const initialRoute =
+      typeof window !== "undefined"
+        ? parseAppRoute(window.location.pathname, window.location.search)
+        : null;
+
+    if (initialRoute) {
+      setActiveApp(initialRoute.app);
+      setActiveTabState(initialRoute.financeTab);
+      setSkyoneTabState(initialRoute.skyoneTab);
+      setSkyoneHighlightPeriod(initialRoute.highlightPeriod);
+      saveActiveApp(initialRoute.app);
+    }
+
+    const isDirectLoginRoute = Boolean(initialRoute?.isLoginRoute);
     if (hasAnyAppPasscode(data.settings) || data.settings.requireAuthOnOpen || isDirectLoginRoute) {
       setIsAppLocked(true);
     }
@@ -416,6 +446,88 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       syncWithCloud();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Đồng bộ URL route, document.title và nút Back/Forward của trình duyệt
+  useEffect(() => {
+    if (!isLoaded || typeof window === "undefined") return;
+
+    const handlePopState = () => {
+      const parsed = parseAppRoute(window.location.pathname, window.location.search);
+      if (parsed.isLoginRoute) {
+        setIsAppLocked(true);
+        return;
+      }
+      setActiveApp(parsed.app);
+      setActiveTabState(parsed.financeTab);
+      setSkyoneTabState(parsed.skyoneTab);
+      setSkyoneHighlightPeriod(parsed.highlightPeriod);
+      saveActiveApp(parsed.app);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded || typeof document === "undefined") return;
+    document.title = getAppDocumentTitle(activeApp, activeTab, skyoneTab);
+  }, [isLoaded, activeApp, activeTab, skyoneTab]);
+
+  const switchSubApp = useCallback(
+    (
+      app: SubAppId,
+      options?: {
+        financeTab?: FinanceTab;
+        skyoneTab?: SkyOneRouteTab;
+        highlightPeriod?: number | null;
+      }
+    ) => {
+      const nextFinanceTab = options?.financeTab ?? activeTab;
+      const nextSkyoneTab = options?.skyoneTab ?? skyoneTab;
+      const nextHighlight =
+        options?.highlightPeriod !== undefined ? options.highlightPeriod : null;
+
+      setActiveApp(app);
+      if (options?.financeTab) {
+        setActiveTabState(options.financeTab);
+      }
+      if (options?.skyoneTab) {
+        setSkyoneTabState(options.skyoneTab);
+      }
+      setSkyoneHighlightPeriod(nextHighlight);
+      saveActiveApp(app);
+
+      if (typeof window !== "undefined") {
+        const targetPath = buildAppPath(app, nextFinanceTab, nextSkyoneTab, nextHighlight);
+        const currentFull = `${window.location.pathname}${window.location.search}`;
+        if (currentFull !== targetPath) {
+          window.history.pushState(null, "", targetPath);
+        }
+      }
+    },
+    [activeTab, skyoneTab]
+  );
+
+  const setActiveTab = useCallback(
+    (tab: NavTab) => {
+      switchSubApp("FINANCE", { financeTab: tab, highlightPeriod: null });
+    },
+    [switchSubApp]
+  );
+
+  const setSkyoneTab = useCallback(
+    (tab: SkyOneRouteTab, highlightPeriod?: number | null) => {
+      switchSubApp("SKYONE", {
+        skyoneTab: tab,
+        highlightPeriod: highlightPeriod ?? null,
+      });
+    },
+    [switchSubApp]
+  );
+
+  const clearSkyoneHighlightPeriod = useCallback(() => {
+    setSkyoneHighlightPeriod(null);
   }, []);
 
   // Tự động lưu vào LocalStorage
@@ -1278,13 +1390,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [skyoneLoan, accounts, addTransactionsBatch]
   );
 
-  const undoSkyOnePeriod = useCallback((period: number) => {
-    setSkyoneLoan((prev) => ({
-      ...prev,
-      paidRecords: prev.paidRecords.filter((r) => r.period !== period),
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const undoSkyOnePeriod = useCallback(
+    (period: number) => {
+      const targetRecord = skyoneLoan.paidRecords.find((r) => r.period === period);
+      if (targetRecord?.linkedTransactionId) {
+        deleteTransaction(targetRecord.linkedTransactionId);
+      }
+      setSkyoneLoan((prev) => ({
+        ...prev,
+        paidRecords: prev.paidRecords.filter((r) => r.period !== period),
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [skyoneLoan.paidRecords, deleteTransaction]
+  );
 
   const addSkyOnePrepayment = useCallback(
     (input: {
@@ -1352,13 +1471,48 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [skyoneLoan, accounts, addTransaction]
   );
 
-  const deleteSkyOnePrepayment = useCallback((id: string) => {
-    setSkyoneLoan((prev) => ({
-      ...prev,
-      prepayments: prev.prepayments.filter((p) => p.id !== id),
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const deleteSkyOnePrepayment = useCallback(
+    (id: string) => {
+      const targetPrepay = skyoneLoan.prepayments.find((p) => p.id === id);
+      if (targetPrepay?.linkedTransactionId) {
+        deleteTransaction(targetPrepay.linkedTransactionId);
+      }
+      setSkyoneLoan((prev) => ({
+        ...prev,
+        prepayments: prev.prepayments.filter((p) => p.id !== id),
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [skyoneLoan.prepayments, deleteTransaction]
+  );
+
+  const skyoneLinkedTxMap = useMemo(() => {
+    const map = new Map<string, SkyOneTransactionLink>();
+    skyoneLoan.paidRecords.forEach((rec) => {
+      if (rec.linkedTransactionId) {
+        map.set(rec.linkedTransactionId, {
+          kind: "INSTALLMENT",
+          period: rec.period,
+          label: `Xem kỳ #${rec.period} trong SKYONE`,
+        });
+      }
+    });
+    skyoneLoan.prepayments.forEach((prep) => {
+      if (prep.linkedTransactionId) {
+        map.set(prep.linkedTransactionId, {
+          kind: "PREPAYMENT",
+          prepaymentId: prep.id,
+          label: "Xem trả trước hạn SKYONE",
+        });
+      }
+    });
+    return map;
+  }, [skyoneLoan.paidRecords, skyoneLoan.prepayments]);
+
+  const getSkyOneLinkForTransaction = useCallback(
+    (txId: string) => skyoneLinkedTxMap.get(txId),
+    [skyoneLinkedTxMap]
+  );
 
   const addSkyOneRateAdjustment = useCallback((adj: Omit<MortgageRateAdjustment, "id">) => {
     setSkyoneLoan((prev) => ({
@@ -2001,8 +2155,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const value: FinanceContextType = {
     isLoaded,
+    activeApp,
     activeTab,
     setActiveTab,
+    skyoneTab,
+    setSkyoneTab,
+    skyoneHighlightPeriod,
+    clearSkyoneHighlightPeriod,
+    switchSubApp,
+    getSkyOneLinkForTransaction,
     isCloudConnected,
     isSyncing,
     lastSyncedAt,

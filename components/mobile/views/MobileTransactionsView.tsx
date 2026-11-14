@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Search, Plus, Sparkles } from "lucide-react";
+import { Search, Plus, Sparkles, Building2 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatDateVN } from "@/lib/formatters";
 import { Transaction } from "@/types/finance";
@@ -25,6 +25,8 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
     deleteTransaction,
     getCategoryById,
     getAccountById,
+    getSkyOneLinkForTransaction,
+    switchSubApp,
   } = useFinance();
 
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("ALL");
@@ -208,6 +210,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
             const acc = getAccountById(tx.accountId);
             const isExpense = tx.type === "EXPENSE";
             const isTransfer = tx.type === "TRANSFER";
+            const skyoneLink = getSkyOneLinkForTransaction(tx.id);
 
             return (
               <div
@@ -282,6 +285,26 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                     {formatVNDMasked(tx.amount, isPrivacyMode)}
                   </span>
                 </div>
+
+                {skyoneLink && (
+                  <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        switchSubApp("SKYONE", {
+                          skyoneTab:
+                            skyoneLink.kind === "PREPAYMENT" ? "PREPAYMENT" : "SCHEDULE",
+                          highlightPeriod: skyoneLink.period ?? null,
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    >
+                      <Building2 className="w-3 h-3" />
+                      <span>{skyoneLink.label} →</span>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
