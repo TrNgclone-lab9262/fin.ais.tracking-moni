@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -87,7 +88,20 @@ import {
   simulatePrepayment,
 } from "@/lib/mortgageEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { supabaseService } from "@/lib/supabaseService";
+import {
+  supabaseService,
+  CloudUser,
+  HouseholdInfo,
+  CloudFullData,
+} from "@/lib/supabaseService";
+import { mergeSharedSettingsWithLocal } from "@/lib/supabaseMappers";
+import {
+  CloudMutation,
+  enqueueOutboxMutation,
+  loadOutboxQueue,
+  saveOutboxQueue,
+  clearOutboxQueue,
+} from "@/lib/offlineOutbox";
 import {
   parseAppRoute,
   buildAppPath,
@@ -160,11 +174,29 @@ interface FinanceContextType {
   openAppLauncher: () => void;
   getSkyOneLinkForTransaction: (txId: string) => SkyOneTransactionLink | undefined;
 
-  // Trạng thái Cloud Database & Realtime
+  // Trạng thái Cloud Database, Tổ ấm & Realtime
+  isSupabaseEnvReady: boolean;
+  cloudUser: CloudUser | null;
+  household: HouseholdInfo | null;
   isCloudConnected: boolean;
   isSyncing: boolean;
   lastSyncedAt: Date | null;
+  pendingOutboxCount: number;
+  cloudError: string | null;
+  clearCloudError: () => void;
   syncWithCloud: () => Promise<void>;
+  signInCloud: (email: string, password: string) => Promise<boolean>;
+  signUpCloud: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; needsEmailConfirm?: boolean }>;
+  sendMagicLinkCloud: (email: string) => Promise<boolean>;
+  signOutCloud: () => Promise<void>;
+  createCloudHousehold: (name: string, memberSlot: AuthMemberId) => Promise<boolean>;
+  joinCloudHousehold: (inviteCode: string, memberSlot: AuthMemberId) => Promise<boolean>;
+  rotateHouseholdInviteCode: () => Promise<string | null>;
+  leaveCloudHousehold: () => Promise<boolean>;
+  pushLocalStateToCloud: () => Promise<boolean>;
 
   // Góc nhìn thành viên (Cả nhà / Chồng / Vợ)
   activePerspective: PerspectiveMode;
@@ -328,10 +360,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [skyoneHighlightPeriod, setSkyoneHighlightPeriod] = useState<number | null>(null);
   const [activePerspective, setActivePerspective] = useState<PerspectiveMode>("ALL");
 
-  // Supabase Cloud State
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(isSupabaseConfigured);
+  // Supabase Cloud, Household & Outbox State
+  const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
+  const [household, setHousehold] = useState<HouseholdInfo | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(0);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+
+  const isCloudConnected = Boolean(isSupabaseConfigured && cloudUser && household);
 
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [accounts, setAccounts] = useState<Account[]>(DEFAULT_ACCOUNTS);
@@ -347,6 +384,52 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
+  const householdRef = useRef<HouseholdInfo | null>(null);
+  const ignoreRealtimeUntilRef = useRef<number>(0);
+  const syncDebounceRef = useRef<number | null>(null);
+  const stateSnapshotRef = useRef<StoredAppStateV3>({
+    categories: DEFAULT_CATEGORIES,
+    accounts: DEFAULT_ACCOUNTS,
+    transactions: [],
+    budgets: DEFAULT_BUDGETS,
+    goals: DEFAULT_SAVINGS_GOALS,
+    debts: DEFAULT_DEBTS,
+    investments: DEFAULT_INVESTMENTS,
+    recurringRules: DEFAULT_RECURRING_RULES,
+    settings: DEFAULT_SETTINGS,
+    skyoneLoan: createDefaultSkyOneLoan(),
+  });
+
+  useEffect(() => {
+    householdRef.current = household;
+  }, [household]);
+
+  useEffect(() => {
+    stateSnapshotRef.current = {
+      categories,
+      accounts,
+      transactions,
+      budgets,
+      goals,
+      debts,
+      investments,
+      recurringRules,
+      settings,
+      skyoneLoan,
+    };
+  }, [
+    categories,
+    accounts,
+    transactions,
+    budgets,
+    goals,
+    debts,
+    investments,
+    recurringRules,
+    settings,
+    skyoneLoan,
+  ]);
+
   // Bộ lọc
   const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentMonthKey());
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -354,45 +437,342 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Hàm đồng bộ dữ liệu từ Supabase Cloud về Local State
+  const clearCloudError = useCallback(() => {
+    setCloudError(null);
+  }, []);
+
+  const applyCloudDataToState = useCallback((cloudData: CloudFullData) => {
+    const hasRemotePayload =
+      cloudData.accounts.length > 0 ||
+      cloudData.transactions.length > 0 ||
+      Boolean(cloudData.skyoneLoan);
+
+    if (!hasRemotePayload) {
+      return;
+    }
+
+    if (cloudData.categories.length > 0) setCategories(cloudData.categories);
+    if (cloudData.budgets.length > 0) setBudgets(cloudData.budgets);
+    if (cloudData.goals.length > 0) setGoals(cloudData.goals);
+    if (cloudData.debts.length > 0) setDebts(cloudData.debts);
+    if (cloudData.investments.length > 0) setInvestments(cloudData.investments);
+    if (cloudData.recurringRules.length > 0) setRecurringRules(cloudData.recurringRules);
+    if (cloudData.skyoneLoan) {
+      setSkyoneLoan(reconcileBidvSkyOneContract(cloudData.skyoneLoan).contract);
+    }
+    if (cloudData.sharedSettings) {
+      const shared = cloudData.sharedSettings;
+      setSettings((prev) => mergeSharedSettingsWithLocal(prev, shared));
+    }
+
+    const nextAccounts =
+      cloudData.accounts.length > 0 ? cloudData.accounts : stateSnapshotRef.current.accounts;
+    const recalcAccounts = recalculateAccountBalances(nextAccounts, cloudData.transactions);
+    setTransactions(cloudData.transactions);
+    setAccounts(recalcAccounts);
+  }, []);
+
+  const flushOutboxQueue = useCallback(async (targetHouseholdId: string): Promise<boolean> => {
+    const queue = loadOutboxQueue();
+    if (queue.length === 0) {
+      setPendingOutboxCount(0);
+      return true;
+    }
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setPendingOutboxCount(queue.length);
+      return false;
+    }
+
+    for (let i = 0; i < queue.length; i++) {
+      try {
+        await supabaseService.executeMutation(targetHouseholdId, queue[i].mutation);
+      } catch (err) {
+        const remaining = queue.slice(i);
+        saveOutboxQueue(remaining);
+        setPendingOutboxCount(remaining.length);
+        setCloudError(
+          err instanceof Error ? err.message : "Chưa thể đẩy hàng đợi đồng bộ lên Cloud."
+        );
+        return false;
+      }
+    }
+
+    clearOutboxQueue();
+    setPendingOutboxCount(0);
+    return true;
+  }, []);
+
+  const queueCloudMutation = useCallback((mutation: CloudMutation) => {
+    ignoreRealtimeUntilRef.current = Date.now() + 2500;
+    const hh = householdRef.current;
+    if (!isSupabaseConfigured || !hh) return;
+
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (isOffline) {
+      const next = enqueueOutboxMutation(mutation);
+      setPendingOutboxCount(next.length);
+      return;
+    }
+
+    void supabaseService
+      .executeMutation(hh.id, mutation)
+      .then(() => {
+        setLastSyncedAt(new Date());
+      })
+      .catch(() => {
+        const next = enqueueOutboxMutation(mutation);
+        setPendingOutboxCount(next.length);
+      });
+  }, []);
+
+  // Hàm đồng bộ dữ liệu 2 chiều (Xả hàng đợi ngoại tuyến -> Kéo trạng thái Cloud)
   const syncWithCloud = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setIsCloudConnected(false);
+    const hh = householdRef.current;
+    if (!isSupabaseConfigured || !hh) {
       return;
     }
 
     setIsSyncing(true);
+    setCloudError(null);
     try {
-      const cloudData = await supabaseService.fetchAllData();
+      await flushOutboxQueue(hh.id);
+      const cloudData = await supabaseService.fetchAllData(hh.id);
       if (cloudData) {
-        setIsCloudConnected(true);
+        applyCloudDataToState(cloudData);
         setLastSyncedAt(new Date());
-
-        if (cloudData.accounts.length > 0 || cloudData.transactions.length > 0) {
-          if (cloudData.categories.length > 0) setCategories(cloudData.categories);
-          if (cloudData.budgets.length > 0) setBudgets(cloudData.budgets);
-          if (cloudData.goals.length > 0) setGoals(cloudData.goals);
-          if (cloudData.debts.length > 0) setDebts(cloudData.debts);
-          if (cloudData.investments.length > 0) setInvestments(cloudData.investments);
-          if (cloudData.settings) setSettings(cloudData.settings);
-
-          const recalcAccounts = recalculateAccountBalances(
-            cloudData.accounts,
-            cloudData.transactions
-          );
-          setTransactions(cloudData.transactions);
-          setAccounts(recalcAccounts);
-        }
-      } else {
-        setIsCloudConnected(false);
       }
     } catch (err) {
       console.error("Cloud sync error:", err);
-      setIsCloudConnected(false);
+      setCloudError(err instanceof Error ? err.message : "Lỗi đồng bộ với Supabase.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [flushOutboxQueue, applyCloudDataToState]);
+
+  const signInCloud = useCallback(async (email: string, password: string): Promise<boolean> => {
+    setCloudError(null);
+    const res = await supabaseService.signInWithPassword(email, password);
+    if (res.error || !res.user) {
+      setCloudError(res.error || "Đăng nhập thất bại.");
+      return false;
+    }
+    setCloudUser(res.user);
+    return true;
+  }, []);
+
+  const signUpCloud = useCallback(
+    async (
+      email: string,
+      password: string
+    ): Promise<{ ok: boolean; needsEmailConfirm?: boolean }> => {
+      setCloudError(null);
+      const res = await supabaseService.signUpWithPassword(email, password);
+      if (res.error) {
+        setCloudError(res.error);
+        return { ok: false };
+      }
+      if (!res.needsEmailConfirm && res.user) {
+        setCloudUser(res.user);
+      }
+      return { ok: true, needsEmailConfirm: res.needsEmailConfirm };
+    },
+    []
+  );
+
+  const sendMagicLinkCloud = useCallback(async (email: string): Promise<boolean> => {
+    setCloudError(null);
+    const res = await supabaseService.sendMagicLink(email);
+    if (!res.success) {
+      setCloudError(res.error || "Không gửi được liên kết đăng nhập.");
+      return false;
+    }
+    return true;
+  }, []);
+
+  const signOutCloud = useCallback(async () => {
+    await supabaseService.signOut();
+    setCloudUser(null);
+    setHousehold(null);
+    setLastSyncedAt(null);
+    setCloudError(null);
+  }, []);
+
+  const pushLocalStateToCloud = useCallback(async (): Promise<boolean> => {
+    const hh = householdRef.current;
+    if (!isSupabaseConfigured || !hh) return false;
+
+    setIsSyncing(true);
+    setCloudError(null);
+    ignoreRealtimeUntilRef.current = Date.now() + 3000;
+    try {
+      await supabaseService.pushFullState(hh.id, stateSnapshotRef.current);
+      clearOutboxQueue();
+      setPendingOutboxCount(0);
+      setLastSyncedAt(new Date());
+      return true;
+    } catch (err) {
+      setCloudError(err instanceof Error ? err.message : "Không thể đẩy dữ liệu lên Cloud.");
+      return false;
     } finally {
       setIsSyncing(false);
     }
   }, []);
+
+  const createCloudHousehold = useCallback(
+    async (name: string, memberSlot: AuthMemberId): Promise<boolean> => {
+      if (!cloudUser) return false;
+      setIsSyncing(true);
+      setCloudError(null);
+      try {
+        const displayName =
+          memberSlot === "HUSBAND"
+            ? stateSnapshotRef.current.settings.husbandName
+            : stateSnapshotRef.current.settings.wifeName;
+        const created = await supabaseService.createHousehold(name, memberSlot, displayName);
+        if (created.error || !created.household) {
+          setCloudError(created.error || "Không tạo được Tổ ấm Cloud.");
+          return false;
+        }
+        ignoreRealtimeUntilRef.current = Date.now() + 3000;
+        await supabaseService.pushFullState(created.household.id, stateSnapshotRef.current);
+        clearOutboxQueue();
+        setPendingOutboxCount(0);
+
+        const refreshed = await supabaseService.fetchMyHousehold(cloudUser.id);
+        setHousehold(refreshed);
+        setLastSyncedAt(new Date());
+        return true;
+      } catch (err) {
+        setCloudError(err instanceof Error ? err.message : "Lỗi khi khởi tạo Tổ ấm Cloud.");
+        return false;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [cloudUser]
+  );
+
+  const joinCloudHousehold = useCallback(
+    async (inviteCode: string, memberSlot: AuthMemberId): Promise<boolean> => {
+      if (!cloudUser) return false;
+      setIsSyncing(true);
+      setCloudError(null);
+      try {
+        const displayName =
+          memberSlot === "HUSBAND"
+            ? stateSnapshotRef.current.settings.husbandName
+            : stateSnapshotRef.current.settings.wifeName;
+        const joined = await supabaseService.joinHouseholdByCode(
+          inviteCode,
+          memberSlot,
+          displayName
+        );
+        if (joined.error || !joined.household) {
+          setCloudError(joined.error || "Mã mời không hợp lệ.");
+          return false;
+        }
+
+        const refreshed = await supabaseService.fetchMyHousehold(cloudUser.id);
+        setHousehold(refreshed);
+
+        const remoteData = await supabaseService.fetchAllData(joined.household.id);
+        if (remoteData) {
+          const hasRemotePayload =
+            remoteData.accounts.length > 0 ||
+            remoteData.transactions.length > 0 ||
+            Boolean(remoteData.skyoneLoan);
+
+          if (hasRemotePayload) {
+            const remoteAsStored: StoredAppStateV3 = {
+              categories:
+                remoteData.categories.length > 0
+                  ? remoteData.categories
+                  : stateSnapshotRef.current.categories,
+              accounts:
+                remoteData.accounts.length > 0
+                  ? remoteData.accounts
+                  : stateSnapshotRef.current.accounts,
+              transactions: remoteData.transactions,
+              budgets: remoteData.budgets,
+              goals: remoteData.goals,
+              debts: remoteData.debts,
+              investments: remoteData.investments,
+              recurringRules: remoteData.recurringRules,
+              settings: remoteData.sharedSettings
+                ? mergeSharedSettingsWithLocal(
+                    stateSnapshotRef.current.settings,
+                    remoteData.sharedSettings
+                  )
+                : stateSnapshotRef.current.settings,
+              skyoneLoan: remoteData.skyoneLoan || stateSnapshotRef.current.skyoneLoan,
+            };
+
+            const merged = mergeFinanceData(remoteAsStored, stateSnapshotRef.current, {
+              mode: "MERGE",
+              keepLocalSecurity: true,
+            });
+
+            setCategories(merged.categories);
+            setAccounts(merged.accounts);
+            setTransactions(merged.transactions);
+            setBudgets(merged.budgets);
+            setGoals(merged.goals);
+            setDebts(merged.debts);
+            setInvestments(merged.investments);
+            setRecurringRules(merged.recurringRules);
+            setSettings(merged.settings);
+            setSkyoneLoan(merged.skyoneLoan);
+            saveStoredDataV3(merged);
+
+            ignoreRealtimeUntilRef.current = Date.now() + 3000;
+            await supabaseService.pushFullState(joined.household.id, merged);
+          } else {
+            ignoreRealtimeUntilRef.current = Date.now() + 3000;
+            await supabaseService.pushFullState(joined.household.id, stateSnapshotRef.current);
+          }
+        }
+
+        clearOutboxQueue();
+        setPendingOutboxCount(0);
+        setLastSyncedAt(new Date());
+        return true;
+      } catch (err) {
+        setCloudError(err instanceof Error ? err.message : "Lỗi ghép đôi Tổ ấm.");
+        return false;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [cloudUser]
+  );
+
+  const rotateHouseholdInviteCode = useCallback(async (): Promise<string | null> => {
+    if (!household) return null;
+    setCloudError(null);
+    const res = await supabaseService.regenerateInviteCode(household.id);
+    if (res.error || !res.inviteCode) {
+      setCloudError(res.error || "Không thể đổi mã mời.");
+      return null;
+    }
+    setHousehold((prev) => (prev ? { ...prev, inviteCode: res.inviteCode! } : null));
+    return res.inviteCode;
+  }, [household]);
+
+  const leaveCloudHousehold = useCallback(async (): Promise<boolean> => {
+    if (!household) return false;
+    setCloudError(null);
+    const res = await supabaseService.leaveHousehold(household.id);
+    if (!res.success) {
+      setCloudError(res.error || "Không thể rời Tổ ấm.");
+      return false;
+    }
+    clearOutboxQueue();
+    setPendingOutboxCount(0);
+    setHousehold(null);
+    setLastSyncedAt(null);
+    return true;
+  }, [household]);
 
   // Khởi tạo từ LocalStorage khi mount (0ms)
   useEffect(() => {
@@ -446,13 +826,92 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const updatedAccounts = recalculateAccountBalances(data.accounts, data.transactions);
     setAccounts(updatedAccounts);
 
+    setPendingOutboxCount(loadOutboxQueue().length);
     setIsLoaded(true);
-
-    if (isSupabaseConfigured) {
-      syncWithCloud();
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Khởi tạo phiên Supabase Auth & theo dõi trạng thái đăng nhập
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    void supabaseService.getCurrentSessionUser().then((user) => {
+      setCloudUser(user);
+    });
+
+    const unsubscribeAuth = supabaseService.onAuthChange((user) => {
+      setCloudUser(user);
+      if (!user) {
+        setHousehold(null);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // Nạp thông tin Tổ ấm ngay khi người dùng đăng nhập Cloud
+  useEffect(() => {
+    if (!isSupabaseConfigured || !cloudUser) {
+      setHousehold(null);
+      return;
+    }
+
+    let cancelled = false;
+    void supabaseService.fetchMyHousehold(cloudUser.id).then((hh) => {
+      if (!cancelled) {
+        setHousehold(hh);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudUser]);
+
+  // Đăng ký Supabase Realtime & tự động xả hàng đợi khi có mạng trở lại
+  useEffect(() => {
+    if (!isSupabaseConfigured || !cloudUser || !household) return;
+
+    void syncWithCloud();
+
+    const unsubscribeRealtime = supabaseService.subscribeHouseholdRealtime(
+      household.id,
+      (changedTable) => {
+        if (changedTable === "household_members" || changedTable === "households") {
+          void supabaseService.fetchMyHousehold(cloudUser.id).then((hh) => {
+            if (hh) setHousehold(hh);
+          });
+          return;
+        }
+
+        if (Date.now() < ignoreRealtimeUntilRef.current) {
+          return;
+        }
+
+        if (syncDebounceRef.current) {
+          window.clearTimeout(syncDebounceRef.current);
+        }
+        syncDebounceRef.current = window.setTimeout(() => {
+          void syncWithCloud();
+        }, 450);
+      }
+    );
+
+    const handleOnline = () => {
+      void syncWithCloud();
+    };
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      unsubscribeRealtime();
+      window.removeEventListener("online", handleOnline);
+      if (syncDebounceRef.current) {
+        window.clearTimeout(syncDebounceRef.current);
+      }
+    };
+  }, [cloudUser, household?.id, syncWithCloud]);
 
   // Đồng bộ URL route, document.title và nút Back/Forward của trình duyệt
   useEffect(() => {
@@ -625,24 +1084,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   }, [themeMode]);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
-    setSettings((prev) => {
-      const next = { ...prev, themeMode: mode };
-      if (isSupabaseConfigured) {
-        supabaseService.updateSettings(next);
-      }
-      return next;
-    });
+    setSettings((prev) => ({ ...prev, themeMode: mode }));
   }, []);
 
   const toggleThemeMode = useCallback(() => {
-    setSettings((prev) => {
-      const nextMode: ThemeMode = prev.themeMode === "dark" ? "light" : "dark";
-      const next = { ...prev, themeMode: nextMode };
-      if (isSupabaseConfigured) {
-        supabaseService.updateSettings(next);
-      }
-      return next;
-    });
+    setSettings((prev) => ({
+      ...prev,
+      themeMode: prev.themeMode === "dark" ? "light" : "dark",
+    }));
   }, []);
 
   // Privacy, /login Route & Multi-Member Security Lock
@@ -847,188 +1296,230 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   ]);
 
   // CRUD Danh mục
-  const addCategory = useCallback((cat: Omit<Category, "id">): Category => {
-    const newCat: Category = {
-      ...cat,
-      id: `cat_${cat.type.toLowerCase()}_${Date.now()}`,
-      isDefault: false,
-    };
-    setCategories((prev) => [...prev, newCat]);
-    return newCat;
-  }, []);
+  const addCategory = useCallback(
+    (cat: Omit<Category, "id">): Category => {
+      const newCat: Category = {
+        ...cat,
+        id: `cat_${cat.type.toLowerCase()}_${Date.now()}`,
+        isDefault: false,
+      };
+      setCategories((prev) => [...prev, newCat]);
+      queueCloudMutation({ type: "UPSERT_CATEGORY", payload: newCat });
+      return newCat;
+    },
+    [queueCloudMutation]
+  );
 
-  const updateCategory = useCallback((id: string, cat: Partial<Category>) => {
-    setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...cat } : c)));
-  }, []);
+  const updateCategory = useCallback(
+    (id: string, cat: Partial<Category>) => {
+      setCategories((prev) => {
+        let updated: Category | undefined;
+        const next = prev.map((c) => {
+          if (c.id !== id) return c;
+          updated = { ...c, ...cat };
+          return updated;
+        });
+        if (updated) {
+          queueCloudMutation({ type: "UPSERT_CATEGORY", payload: updated });
+        }
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteCategory = useCallback((id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-  }, []);
+  const deleteCategory = useCallback(
+    (id: string) => {
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      queueCloudMutation({ type: "DELETE_CATEGORY", id });
+    },
+    [queueCloudMutation]
+  );
 
   // CRUD Giao dịch
-  const addTransaction = useCallback((input: TransactionInput): Transaction => {
-    const now = new Date().toISOString();
-    const newTx: Transaction = {
-      id: createTxId(),
-      amount: Math.abs(input.amount),
-      date: input.date,
-      type: input.type,
-      categoryId: input.categoryId,
-      accountId: input.accountId,
-      toAccountId: input.toAccountId,
-      memberId: input.memberId,
-      scope: input.scope,
-      note: input.note?.trim() || "",
-      tag: input.tag || "NORMAL",
-      createdAt: now,
-      updatedAt: now,
-    };
+  const addTransaction = useCallback(
+    (input: TransactionInput): Transaction => {
+      const now = new Date().toISOString();
+      const newTx: Transaction = {
+        id: createTxId(),
+        amount: Math.abs(input.amount),
+        date: input.date,
+        type: input.type,
+        categoryId: input.categoryId,
+        accountId: input.accountId,
+        toAccountId: input.toAccountId,
+        memberId: input.memberId,
+        scope: input.scope,
+        note: input.note?.trim() || "",
+        tag: input.tag || "NORMAL",
+        createdAt: now,
+        updatedAt: now,
+      };
 
-    setTransactions((prev) => {
-      const next = [newTx, ...prev];
-      setAccounts((prevAccs) => {
-        const recalc = recalculateAccountBalances(prevAccs, next);
-        if (isSupabaseConfigured) {
-          supabaseService.upsertTransaction(newTx);
-          supabaseService.updateAccounts(recalc);
-        }
-        return recalc;
-      });
-      return next;
-    });
-
-    return newTx;
-  }, []);
-
-  const addTransactionsBatch = useCallback((inputs: TransactionInput[]): Transaction[] => {
-    if (inputs.length === 0) return [];
-    const now = new Date().toISOString();
-    const created: Transaction[] = inputs.map((input, idx) => ({
-      id: `${createTxId()}_${idx}`,
-      amount: Math.abs(input.amount),
-      date: input.date,
-      type: input.type,
-      categoryId: input.categoryId,
-      accountId: input.accountId,
-      toAccountId: input.toAccountId,
-      memberId: input.memberId,
-      scope: input.scope,
-      note: input.note?.trim() || "",
-      tag: input.tag || "NORMAL",
-      createdAt: now,
-      updatedAt: now,
-    }));
-
-    setTransactions((prev) => {
-      const next = [...created, ...prev];
-      setAccounts((prevAccs) => recalculateAccountBalances(prevAccs, next));
-      return next;
-    });
-
-    return created;
-  }, []);
-
-  const updateTransaction = useCallback((id: string, input: Partial<TransactionInput>) => {
-    let updatedTx: Transaction | undefined;
-    setTransactions((prev) => {
-      const next = prev.map((tx) => {
-        if (tx.id !== id) return tx;
-        updatedTx = {
-          ...tx,
-          amount: input.amount !== undefined ? Math.abs(input.amount) : tx.amount,
-          date: input.date !== undefined ? input.date : tx.date,
-          type: input.type !== undefined ? input.type : tx.type,
-          categoryId: input.categoryId !== undefined ? input.categoryId : tx.categoryId,
-          accountId: input.accountId !== undefined ? input.accountId : tx.accountId,
-          toAccountId: input.toAccountId !== undefined ? input.toAccountId : tx.toAccountId,
-          memberId: input.memberId !== undefined ? input.memberId : tx.memberId,
-          scope: input.scope !== undefined ? input.scope : tx.scope,
-          note: input.note !== undefined ? input.note.trim() : tx.note,
-          tag: input.tag !== undefined ? input.tag : tx.tag,
-          updatedAt: new Date().toISOString(),
-        };
-        return updatedTx;
+      setTransactions((prev) => {
+        const next = [newTx, ...prev];
+        setAccounts((prevAccs) => {
+          const recalc = recalculateAccountBalances(prevAccs, next);
+          queueCloudMutation({ type: "UPSERT_TRANSACTION", payload: newTx });
+          queueCloudMutation({ type: "UPSERT_ACCOUNTS_BATCH", payload: recalc });
+          return recalc;
+        });
+        return next;
       });
 
-      setAccounts((prevAccs) => {
-        const recalc = recalculateAccountBalances(prevAccs, next);
-        if (isSupabaseConfigured && updatedTx) {
-          supabaseService.upsertTransaction(updatedTx);
-          supabaseService.updateAccounts(recalc);
-        }
-        return recalc;
+      return newTx;
+    },
+    [queueCloudMutation]
+  );
+
+  const addTransactionsBatch = useCallback(
+    (inputs: TransactionInput[]): Transaction[] => {
+      if (inputs.length === 0) return [];
+      const now = new Date().toISOString();
+      const created: Transaction[] = inputs.map((input, idx) => ({
+        id: `${createTxId()}_${idx}`,
+        amount: Math.abs(input.amount),
+        date: input.date,
+        type: input.type,
+        categoryId: input.categoryId,
+        accountId: input.accountId,
+        toAccountId: input.toAccountId,
+        memberId: input.memberId,
+        scope: input.scope,
+        note: input.note?.trim() || "",
+        tag: input.tag || "NORMAL",
+        createdAt: now,
+        updatedAt: now,
+      }));
+
+      setTransactions((prev) => {
+        const next = [...created, ...prev];
+        setAccounts((prevAccs) => {
+          const recalc = recalculateAccountBalances(prevAccs, next);
+          queueCloudMutation({ type: "UPSERT_TRANSACTIONS_BATCH", payload: created });
+          queueCloudMutation({ type: "UPSERT_ACCOUNTS_BATCH", payload: recalc });
+          return recalc;
+        });
+        return next;
       });
 
-      return next;
-    });
-  }, []);
+      return created;
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteTransaction = useCallback((id: string) => {
-    setTransactions((prev) => {
-      const next = prev.filter((tx) => tx.id !== id);
-      setAccounts((prevAccs) => {
-        const recalc = recalculateAccountBalances(prevAccs, next);
-        if (isSupabaseConfigured) {
-          supabaseService.deleteTransaction(id);
-          supabaseService.updateAccounts(recalc);
-        }
-        return recalc;
+  const updateTransaction = useCallback(
+    (id: string, input: Partial<TransactionInput>) => {
+      let updatedTx: Transaction | undefined;
+      setTransactions((prev) => {
+        const next = prev.map((tx) => {
+          if (tx.id !== id) return tx;
+          updatedTx = {
+            ...tx,
+            amount: input.amount !== undefined ? Math.abs(input.amount) : tx.amount,
+            date: input.date !== undefined ? input.date : tx.date,
+            type: input.type !== undefined ? input.type : tx.type,
+            categoryId: input.categoryId !== undefined ? input.categoryId : tx.categoryId,
+            accountId: input.accountId !== undefined ? input.accountId : tx.accountId,
+            toAccountId: input.toAccountId !== undefined ? input.toAccountId : tx.toAccountId,
+            memberId: input.memberId !== undefined ? input.memberId : tx.memberId,
+            scope: input.scope !== undefined ? input.scope : tx.scope,
+            note: input.note !== undefined ? input.note.trim() : tx.note,
+            tag: input.tag !== undefined ? input.tag : tx.tag,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedTx;
+        });
+
+        setAccounts((prevAccs) => {
+          const recalc = recalculateAccountBalances(prevAccs, next);
+          if (updatedTx) {
+            queueCloudMutation({ type: "UPSERT_TRANSACTION", payload: updatedTx });
+            queueCloudMutation({ type: "UPSERT_ACCOUNTS_BATCH", payload: recalc });
+          }
+          return recalc;
+        });
+
+        return next;
       });
-      return next;
-    });
-  }, []);
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteTransactionsBatch = useCallback((ids: string[]) => {
-    if (ids.length === 0) return;
-    const idSet = new Set(ids);
-    setTransactions((prev) => {
-      const next = prev.filter((tx) => !idSet.has(tx.id));
-      setAccounts((prevAccs) => recalculateAccountBalances(prevAccs, next));
-      return next;
-    });
-  }, []);
+  const deleteTransaction = useCallback(
+    (id: string) => {
+      setTransactions((prev) => {
+        const next = prev.filter((tx) => tx.id !== id);
+        setAccounts((prevAccs) => {
+          const recalc = recalculateAccountBalances(prevAccs, next);
+          queueCloudMutation({ type: "DELETE_TRANSACTION", id });
+          queueCloudMutation({ type: "UPSERT_ACCOUNTS_BATCH", payload: recalc });
+          return recalc;
+        });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
+  const deleteTransactionsBatch = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setTransactions((prev) => {
+        const next = prev.filter((tx) => !idSet.has(tx.id));
+        setAccounts((prevAccs) => {
+          const recalc = recalculateAccountBalances(prevAccs, next);
+          queueCloudMutation({ type: "DELETE_TRANSACTIONS_BATCH", ids });
+          queueCloudMutation({ type: "UPSERT_ACCOUNTS_BATCH", payload: recalc });
+          return recalc;
+        });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
   // Quản lý Tài khoản (Ví)
-  const addAccount = useCallback((acc: Omit<Account, "id" | "currentBalance">) => {
-    const newId = `acc_${Date.now()}`;
-    const newAccount: Account = {
-      ...acc,
-      id: newId,
-      currentBalance: acc.initialBalance,
-    };
-    setAccounts((prev) => {
-      const next = [...prev, newAccount];
-      if (isSupabaseConfigured) {
-        supabaseService.upsertAccount(newAccount);
-      }
-      return next;
-    });
-  }, []);
+  const addAccount = useCallback(
+    (acc: Omit<Account, "id" | "currentBalance">) => {
+      const newId = `acc_${Date.now()}`;
+      const newAccount: Account = {
+        ...acc,
+        id: newId,
+        currentBalance: acc.initialBalance,
+      };
+      setAccounts((prev) => {
+        const next = [...prev, newAccount];
+        queueCloudMutation({ type: "UPSERT_ACCOUNT", payload: newAccount });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
   const updateAccount = useCallback(
     (id: string, acc: Partial<Account>) => {
       setAccounts((prev) => {
         const mapped = prev.map((a) => (a.id === id ? { ...a, ...acc } : a));
         const recalc = recalculateAccountBalances(mapped, transactions);
-        if (isSupabaseConfigured) {
-          const target = recalc.find((a) => a.id === id);
-          if (target) supabaseService.upsertAccount(target);
+        const target = recalc.find((a) => a.id === id);
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_ACCOUNT", payload: target });
         }
         return recalc;
       });
     },
-    [transactions]
+    [transactions, queueCloudMutation]
   );
 
-  const deleteAccount = useCallback((id: string) => {
-    setAccounts((prev) => {
-      const next = prev.filter((a) => a.id !== id);
-      if (isSupabaseConfigured) {
-        supabaseService.updateAccounts(next);
-      }
-      return next;
-    });
-  }, []);
+  const deleteAccount = useCallback(
+    (id: string) => {
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
+      queueCloudMutation({ type: "DELETE_ACCOUNT", id });
+    },
+    [queueCloudMutation]
+  );
 
   // Ngân sách
   const setCategoryBudget = useCallback(
@@ -1050,11 +1541,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         return [...prev, targetBudget];
       });
 
-      if (isSupabaseConfigured) {
-        supabaseService.upsertBudget(targetBudget);
-      }
+      queueCloudMutation({ type: "UPSERT_BUDGET", payload: targetBudget });
     },
-    [selectedMonth]
+    [selectedMonth, queueCloudMutation]
   );
 
   const deleteBudget = useCallback(
@@ -1063,62 +1552,74 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setBudgets((prev) =>
         prev.filter((b) => !(b.categoryId === categoryId && b.month === targetMonth))
       );
+      queueCloudMutation({ type: "DELETE_BUDGET", categoryId, month: targetMonth });
     },
-    [selectedMonth]
+    [selectedMonth, queueCloudMutation]
   );
 
-  const copyBudgetsFromMonth = useCallback((fromMonth: string, toMonth: string): number => {
-    let copied = 0;
-    setBudgets((prev) => {
-      const source = prev.filter((b) => b.month === fromMonth);
-      if (source.length === 0) return prev;
-      const existingKeys = new Set(
-        prev.filter((b) => b.month === toMonth).map((b) => b.categoryId)
-      );
-      const additions = source
-        .filter((b) => !existingKeys.has(b.categoryId))
-        .map((b) => ({ ...b, month: toMonth }));
-      copied = additions.length;
-      return [...prev, ...additions];
-    });
-    return copied;
-  }, []);
+  const copyBudgetsFromMonth = useCallback(
+    (fromMonth: string, toMonth: string): number => {
+      let copied = 0;
+      setBudgets((prev) => {
+        const source = prev.filter((b) => b.month === fromMonth);
+        if (source.length === 0) return prev;
+        const existingKeys = new Set(
+          prev.filter((b) => b.month === toMonth).map((b) => b.categoryId)
+        );
+        const additions = source
+          .filter((b) => !existingKeys.has(b.categoryId))
+          .map((b) => ({ ...b, month: toMonth }));
+        copied = additions.length;
+        if (additions.length > 0) {
+          queueCloudMutation({ type: "UPSERT_BUDGETS_BATCH", payload: additions });
+        }
+        return [...prev, ...additions];
+      });
+      return copied;
+    },
+    [queueCloudMutation]
+  );
 
   // Mục tiêu
-  const addGoal = useCallback((goal: Omit<SavingsGoal, "id" | "isCompleted">) => {
-    const newGoal: SavingsGoal = {
-      ...goal,
-      id: `goal_${Date.now()}`,
-      isCompleted: goal.currentAmount >= goal.targetAmount,
-    };
-    setGoals((prev) => [...prev, newGoal]);
-    if (isSupabaseConfigured) {
-      supabaseService.upsertGoal(newGoal);
-    }
-  }, []);
+  const addGoal = useCallback(
+    (goal: Omit<SavingsGoal, "id" | "isCompleted">) => {
+      const newGoal: SavingsGoal = {
+        ...goal,
+        id: `goal_${Date.now()}`,
+        isCompleted: goal.currentAmount >= goal.targetAmount,
+      };
+      setGoals((prev) => [...prev, newGoal]);
+      queueCloudMutation({ type: "UPSERT_GOAL", payload: newGoal });
+    },
+    [queueCloudMutation]
+  );
 
-  const updateGoal = useCallback((id: string, goal: Partial<SavingsGoal>) => {
-    setGoals((prev) => {
-      let target: SavingsGoal | undefined;
-      const next = prev.map((g) => {
-        if (g.id !== id) return g;
-        target = { ...g, ...goal };
-        target.isCompleted = target.currentAmount >= target.targetAmount;
-        return target;
+  const updateGoal = useCallback(
+    (id: string, goal: Partial<SavingsGoal>) => {
+      setGoals((prev) => {
+        let target: SavingsGoal | undefined;
+        const next = prev.map((g) => {
+          if (g.id !== id) return g;
+          target = { ...g, ...goal };
+          target.isCompleted = target.currentAmount >= target.targetAmount;
+          return target;
+        });
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_GOAL", payload: target });
+        }
+        return next;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertGoal(target);
-      }
-      return next;
-    });
-  }, []);
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteGoal = useCallback((id: string) => {
-    setGoals((prev) => prev.filter((g) => g.id !== id));
-    if (isSupabaseConfigured) {
-      supabaseService.deleteGoal(id);
-    }
-  }, []);
+  const deleteGoal = useCallback(
+    (id: string) => {
+      setGoals((prev) => prev.filter((g) => g.id !== id));
+      queueCloudMutation({ type: "DELETE_GOAL", id });
+    },
+    [queueCloudMutation]
+  );
 
   // Event-sourced goal deposit: deducts from sourceAccountId via TRANSFER transaction
   const depositGoal = useCallback(
@@ -1137,8 +1638,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           };
           return target;
         });
-        if (isSupabaseConfigured && target) {
-          supabaseService.upsertGoal(target);
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_GOAL", payload: target });
         }
         return next;
       });
@@ -1159,33 +1660,38 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [accounts, addTransaction]
+    [accounts, addTransaction, queueCloudMutation]
   );
 
   // Nợ & Đầu tư
-  const addDebt = useCallback((debt: Omit<DebtItem, "id">) => {
-    const newDebt: DebtItem = { ...debt, id: `debt_${Date.now()}` };
-    setDebts((prev) => [...prev, newDebt]);
-    if (isSupabaseConfigured) {
-      supabaseService.upsertDebt(newDebt);
-    }
-  }, []);
+  const addDebt = useCallback(
+    (debt: Omit<DebtItem, "id">) => {
+      const newDebt: DebtItem = { ...debt, id: `debt_${Date.now()}` };
+      setDebts((prev) => [...prev, newDebt]);
+      queueCloudMutation({ type: "UPSERT_DEBT", payload: newDebt });
+    },
+    [queueCloudMutation]
+  );
 
-  const updateDebt = useCallback((id: string, debt: Partial<DebtItem>) => {
-    setDebts((prev) => {
-      let target: DebtItem | undefined;
-      const next = prev.map((d) => {
-        if (d.id !== id) return d;
-        target = { ...d, ...debt };
-        target.status = target.paidAmount >= target.totalAmount ? "PAID" : (debt.status || target.status);
-        return target;
+  const updateDebt = useCallback(
+    (id: string, debt: Partial<DebtItem>) => {
+      setDebts((prev) => {
+        let target: DebtItem | undefined;
+        const next = prev.map((d) => {
+          if (d.id !== id) return d;
+          target = { ...d, ...debt };
+          target.status =
+            target.paidAmount >= target.totalAmount ? "PAID" : debt.status || target.status;
+          return target;
+        });
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_DEBT", payload: target });
+        }
+        return next;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertDebt(target);
-      }
-      return next;
-    });
-  }, []);
+    },
+    [queueCloudMutation]
+  );
 
   const payDebt = useCallback(
     (id: string, amount: number, sourceAccountId?: string) => {
@@ -1202,8 +1708,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           };
           return target;
         });
-        if (isSupabaseConfigured && target) {
-          supabaseService.upsertDebt(target);
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_DEBT", payload: target });
         }
         return next;
       });
@@ -1224,61 +1730,89 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [debts, accounts, addTransaction]
+    [debts, accounts, addTransaction, queueCloudMutation]
   );
 
-  const deleteDebt = useCallback((id: string) => {
-    setDebts((prev) => prev.filter((d) => d.id !== id));
-    if (isSupabaseConfigured) {
-      supabaseService.deleteDebt(id);
-    }
-  }, []);
+  const deleteDebt = useCallback(
+    (id: string) => {
+      setDebts((prev) => prev.filter((d) => d.id !== id));
+      queueCloudMutation({ type: "DELETE_DEBT", id });
+    },
+    [queueCloudMutation]
+  );
 
-  const addInvestment = useCallback((inv: Omit<InvestmentItem, "id">) => {
-    const newInv: InvestmentItem = { ...inv, id: `inv_${Date.now()}` };
-    setInvestments((prev) => [...prev, newInv]);
-    if (isSupabaseConfigured) {
-      supabaseService.upsertInvestment(newInv);
-    }
-  }, []);
+  const addInvestment = useCallback(
+    (inv: Omit<InvestmentItem, "id">) => {
+      const newInv: InvestmentItem = { ...inv, id: `inv_${Date.now()}` };
+      setInvestments((prev) => [...prev, newInv]);
+      queueCloudMutation({ type: "UPSERT_INVESTMENT", payload: newInv });
+    },
+    [queueCloudMutation]
+  );
 
-  const updateInvestment = useCallback((id: string, inv: Partial<InvestmentItem>) => {
-    setInvestments((prev) => {
-      let target: InvestmentItem | undefined;
-      const next = prev.map((i) => {
-        if (i.id === id) {
-          target = { ...i, ...inv };
-          return target;
+  const updateInvestment = useCallback(
+    (id: string, inv: Partial<InvestmentItem>) => {
+      setInvestments((prev) => {
+        let target: InvestmentItem | undefined;
+        const next = prev.map((i) => {
+          if (i.id === id) {
+            target = { ...i, ...inv };
+            return target;
+          }
+          return i;
+        });
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_INVESTMENT", payload: target });
         }
-        return i;
+        return next;
       });
-      if (isSupabaseConfigured && target) {
-        supabaseService.upsertInvestment(target);
-      }
-      return next;
-    });
-  }, []);
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteInvestment = useCallback((id: string) => {
-    setInvestments((prev) => prev.filter((i) => i.id !== id));
-    if (isSupabaseConfigured) {
-      supabaseService.deleteInvestment(id);
-    }
-  }, []);
+  const deleteInvestment = useCallback(
+    (id: string) => {
+      setInvestments((prev) => prev.filter((i) => i.id !== id));
+      queueCloudMutation({ type: "DELETE_INVESTMENT", id });
+    },
+    [queueCloudMutation]
+  );
 
   // Giao dịch Định kỳ (Recurring Rules)
-  const addRecurringRule = useCallback((rule: Omit<RecurringRule, "id">) => {
-    const newRule: RecurringRule = { ...rule, id: `rec_${Date.now()}` };
-    setRecurringRules((prev) => [...prev, newRule]);
-  }, []);
+  const addRecurringRule = useCallback(
+    (rule: Omit<RecurringRule, "id">) => {
+      const newRule: RecurringRule = { ...rule, id: `rec_${Date.now()}` };
+      setRecurringRules((prev) => [...prev, newRule]);
+      queueCloudMutation({ type: "UPSERT_RECURRING_RULE", payload: newRule });
+    },
+    [queueCloudMutation]
+  );
 
-  const updateRecurringRule = useCallback((id: string, rule: Partial<RecurringRule>) => {
-    setRecurringRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...rule } : r)));
-  }, []);
+  const updateRecurringRule = useCallback(
+    (id: string, rule: Partial<RecurringRule>) => {
+      setRecurringRules((prev) => {
+        let target: RecurringRule | undefined;
+        const next = prev.map((r) => {
+          if (r.id !== id) return r;
+          target = { ...r, ...rule };
+          return target;
+        });
+        if (target) {
+          queueCloudMutation({ type: "UPSERT_RECURRING_RULE", payload: target });
+        }
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteRecurringRule = useCallback((id: string) => {
-    setRecurringRules((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+  const deleteRecurringRule = useCallback(
+    (id: string) => {
+      setRecurringRules((prev) => prev.filter((r) => r.id !== id));
+      queueCloudMutation({ type: "DELETE_RECURRING_RULE", id });
+    },
+    [queueCloudMutation]
+  );
 
   const applyRecurringRule = useCallback(
     (id: string, targetMonth?: string): Transaction | null => {
@@ -1304,13 +1838,22 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         note: rule.note ? `${rule.name} (${rule.note})` : rule.name,
       });
 
-      setRecurringRules((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, lastAppliedMonth: month } : r))
-      );
+      setRecurringRules((prev) => {
+        let updated: RecurringRule | undefined;
+        const next = prev.map((r) => {
+          if (r.id !== id) return r;
+          updated = { ...r, lastAppliedMonth: month };
+          return updated;
+        });
+        if (updated) {
+          queueCloudMutation({ type: "UPSERT_RECURRING_RULE", payload: updated });
+        }
+        return next;
+      });
 
       return created;
     },
-    [recurringRules, selectedMonth, addTransaction]
+    [recurringRules, selectedMonth, addTransaction, queueCloudMutation]
   );
 
   const applyAllPendingRecurringRules = useCallback(
@@ -1342,22 +1885,42 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       addTransactionsBatch(batchInputs);
 
       const pendingIds = new Set(pending.map((p) => p.id));
-      setRecurringRules((prev) =>
-        prev.map((r) => (pendingIds.has(r.id) ? { ...r, lastAppliedMonth: month } : r))
-      );
+      setRecurringRules((prev) => {
+        const updatedList: RecurringRule[] = [];
+        const next = prev.map((r) => {
+          if (!pendingIds.has(r.id)) return r;
+          const updated = { ...r, lastAppliedMonth: month };
+          updatedList.push(updated);
+          return updated;
+        });
+        if (updatedList.length > 0) {
+          queueCloudMutation({
+            type: "UPSERT_RECURRING_RULES_BATCH",
+            payload: updatedList,
+          });
+        }
+        return next;
+      });
 
       return pending.length;
     },
-    [recurringRules, selectedMonth, addTransactionsBatch]
+    [recurringRules, selectedMonth, addTransactionsBatch, queueCloudMutation]
   );
 
-  const updateSkyOneContract = useCallback((patch: Partial<MortgageContract>) => {
-    setSkyoneLoan((prev) => ({
-      ...prev,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const updateSkyOneContract = useCallback(
+    (patch: Partial<MortgageContract>) => {
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
   const confirmSkyOnePeriods = useCallback(
     (
@@ -1411,16 +1974,18 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           ...prev.paidRecords,
           ...newRecords.filter((r) => !existingPeriods.has(r.period)),
         ].sort((a, b) => a.period - b.period);
-        return {
+        const next: MortgageContract = {
           ...prev,
           paidRecords: merged,
           updatedAt: new Date().toISOString(),
         };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
       });
 
       return newRecords.length;
     },
-    [skyoneLoan, accounts, addTransactionsBatch]
+    [skyoneLoan, accounts, addTransactionsBatch, queueCloudMutation]
   );
 
   const undoSkyOnePeriod = useCallback(
@@ -1429,13 +1994,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (targetRecord?.linkedTransactionId) {
         deleteTransaction(targetRecord.linkedTransactionId);
       }
-      setSkyoneLoan((prev) => ({
-        ...prev,
-        paidRecords: prev.paidRecords.filter((r) => r.period !== period),
-        updatedAt: new Date().toISOString(),
-      }));
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          paidRecords: prev.paidRecords.filter((r) => r.period !== period),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
     },
-    [skyoneLoan.paidRecords, deleteTransaction]
+    [skyoneLoan.paidRecords, deleteTransaction, queueCloudMutation]
   );
 
   const addSkyOnePrepayment = useCallback(
@@ -1482,26 +2051,30 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         linkedTransactionId = tx.id;
       }
 
-      setSkyoneLoan((prev) => ({
-        ...prev,
-        prepayments: [
-          ...prev.prepayments,
-          {
-            id: `prepay_${Date.now()}`,
-            date: input.date,
-            afterPeriod: sim.appliedAfterPeriod,
-            amount: appliedAmount,
-            penaltyAmount: sim.penaltyAmount,
-            feePercent: sim.penaltyFeePercent,
-            strategy: input.strategy,
-            linkedTransactionId,
-            note: input.note?.trim() || undefined,
-          },
-        ].sort((a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date)),
-        updatedAt: new Date().toISOString(),
-      }));
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          prepayments: [
+            ...prev.prepayments,
+            {
+              id: `prepay_${Date.now()}`,
+              date: input.date,
+              afterPeriod: sim.appliedAfterPeriod,
+              amount: appliedAmount,
+              penaltyAmount: sim.penaltyAmount,
+              feePercent: sim.penaltyFeePercent,
+              strategy: input.strategy,
+              linkedTransactionId,
+              note: input.note?.trim() || undefined,
+            },
+          ].sort((a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date)),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
     },
-    [skyoneLoan, accounts, addTransaction]
+    [skyoneLoan, accounts, addTransaction, queueCloudMutation]
   );
 
   const deleteSkyOnePrepayment = useCallback(
@@ -1510,13 +2083,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (targetPrepay?.linkedTransactionId) {
         deleteTransaction(targetPrepay.linkedTransactionId);
       }
-      setSkyoneLoan((prev) => ({
-        ...prev,
-        prepayments: prev.prepayments.filter((p) => p.id !== id),
-        updatedAt: new Date().toISOString(),
-      }));
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          prepayments: prev.prepayments.filter((p) => p.id !== id),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
     },
-    [skyoneLoan.prepayments, deleteTransaction]
+    [skyoneLoan.prepayments, deleteTransaction, queueCloudMutation]
   );
 
   const skyoneLinkedTxMap = useMemo(() => {
@@ -1547,41 +2124,67 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [skyoneLinkedTxMap]
   );
 
-  const addSkyOneRateAdjustment = useCallback((adj: Omit<MortgageRateAdjustment, "id">) => {
-    setSkyoneLoan((prev) => ({
-      ...prev,
-      rateAdjustments: [
-        ...prev.rateAdjustments,
-        {
-          ...adj,
-          id: `rate_adj_${Date.now()}`,
-        },
-      ].sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod),
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const addSkyOneRateAdjustment = useCallback(
+    (adj: Omit<MortgageRateAdjustment, "id">) => {
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          rateAdjustments: [
+            ...prev.rateAdjustments,
+            {
+              ...adj,
+              id: `rate_adj_${Date.now()}`,
+            },
+          ].sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
-  const deleteSkyOneRateAdjustment = useCallback((id: string) => {
-    setSkyoneLoan((prev) => ({
-      ...prev,
-      rateAdjustments: prev.rateAdjustments.filter((r) => r.id !== id),
-      updatedAt: new Date().toISOString(),
-    }));
-  }, []);
+  const deleteSkyOneRateAdjustment = useCallback(
+    (id: string) => {
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          rateAdjustments: prev.rateAdjustments.filter((r) => r.id !== id),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
   const resetSkyOneLoan = useCallback(() => {
-    setSkyoneLoan(createDefaultSkyOneLoan());
-  }, []);
+    const next = createDefaultSkyOneLoan();
+    setSkyoneLoan(next);
+    queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+  }, [queueCloudMutation]);
 
-  const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...newSettings };
-      if (isSupabaseConfigured) {
-        supabaseService.updateSettings(next);
-      }
-      return next;
-    });
-  }, []);
+  const updateSettings = useCallback(
+    (newSettings: Partial<AppSettings>) => {
+      setSettings((prev) => {
+        const next = { ...prev, ...newSettings };
+        const touchesShared =
+          newSettings.themeColor !== undefined ||
+          newSettings.notificationsEnabled !== undefined ||
+          newSettings.husbandName !== undefined ||
+          newSettings.wifeName !== undefined ||
+          newSettings.sharedSplitRatioHusband !== undefined;
+
+        if (touchesShared) {
+          queueCloudMutation({ type: "UPSERT_SETTINGS", payload: next });
+        }
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
 
   const resetToMockData = useCallback(() => {
     const seeded = seedInitialDataV3();
@@ -1598,6 +2201,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setSelectedMonth("2026-10");
     setActivePerspective("ALL");
     setIsAppLocked(false);
+
+    if (isSupabaseConfigured && householdRef.current) {
+      ignoreRealtimeUntilRef.current = Date.now() + 3000;
+      void supabaseService.pushFullState(householdRef.current.id, seeded);
+    }
   }, []);
 
   const exportBackup = useCallback(() => {
@@ -1653,14 +2261,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setSkyoneLoan(reconcileBidvSkyOneContract(res.data.skyoneLoan).contract);
         saveStoredDataV3(res.data);
 
-        if (isSupabaseConfigured) {
-          res.data.accounts.forEach((a) => supabaseService.upsertAccount(a));
-          res.data.transactions.forEach((t) => supabaseService.upsertTransaction(t));
-          res.data.budgets.forEach((b) => supabaseService.upsertBudget(b));
-          res.data.goals.forEach((g) => supabaseService.upsertGoal(g));
-          res.data.debts.forEach((d) => supabaseService.upsertDebt(d));
-          res.data.investments.forEach((i) => supabaseService.upsertInvestment(i));
-          supabaseService.updateSettings(res.data.settings);
+        if (isSupabaseConfigured && householdRef.current) {
+          ignoreRealtimeUntilRef.current = Date.now() + 3000;
+          void supabaseService.pushFullState(householdRef.current.id, res.data);
         }
 
         return { success: true };
@@ -1762,14 +2365,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setSkyoneLoan(nextState.skyoneLoan);
       saveStoredDataV3(nextState);
 
-      if (isSupabaseConfigured) {
-        nextState.accounts.forEach((a) => supabaseService.upsertAccount(a));
-        nextState.transactions.forEach((t) => supabaseService.upsertTransaction(t));
-        nextState.budgets.forEach((b) => supabaseService.upsertBudget(b));
-        nextState.goals.forEach((g) => supabaseService.upsertGoal(g));
-        nextState.debts.forEach((d) => supabaseService.upsertDebt(d));
-        nextState.investments.forEach((i) => supabaseService.upsertInvestment(i));
-        supabaseService.updateSettings(nextState.settings);
+      if (isSupabaseConfigured && householdRef.current) {
+        ignoreRealtimeUntilRef.current = Date.now() + 3000;
+        void supabaseService.pushFullState(householdRef.current.id, nextState);
       }
 
       return { success: true, diff };
@@ -2198,10 +2796,25 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     switchSubApp,
     openAppLauncher,
     getSkyOneLinkForTransaction,
+    isSupabaseEnvReady: isSupabaseConfigured,
+    cloudUser,
+    household,
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
+    pendingOutboxCount,
+    cloudError,
+    clearCloudError,
     syncWithCloud,
+    signInCloud,
+    signUpCloud,
+    sendMagicLinkCloud,
+    signOutCloud,
+    createCloudHousehold,
+    joinCloudHousehold,
+    rotateHouseholdInviteCode,
+    leaveCloudHousehold,
+    pushLocalStateToCloud,
     activePerspective,
     setActivePerspective,
     themeMode,

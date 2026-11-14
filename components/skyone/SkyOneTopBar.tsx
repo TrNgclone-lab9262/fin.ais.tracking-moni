@@ -38,6 +38,7 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
+    pendingOutboxCount,
     syncWithCloud,
     themeMode,
     toggleThemeMode,
@@ -76,7 +77,13 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
                       isSyncing ? "animate-spin" : ""
                     }`}
                   />
-                  <span>{isSyncing ? "Đang đồng bộ..." : "Cloud Realtime"}</span>
+                  <span>
+                    {isSyncing
+                      ? "Đang đồng bộ..."
+                      : pendingOutboxCount > 0
+                      ? `Chờ đẩy (${pendingOutboxCount})`
+                      : "Cloud Realtime"}
+                  </span>
                 </button>
               ) : (
                 <span

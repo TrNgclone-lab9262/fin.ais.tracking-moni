@@ -48,6 +48,7 @@ export function TopBar({
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
+    pendingOutboxCount,
     syncWithCloud,
     themeMode,
     toggleThemeMode,
@@ -103,7 +104,13 @@ export function TopBar({
                     <RefreshCw
                       className={`w-3 h-3 text-emerald-600 dark:text-emerald-400 ${isSyncing ? "animate-spin" : ""}`}
                     />
-                    <span>{isSyncing ? "Đang đồng bộ..." : "🟢 Cloud Realtime"}</span>
+                    <span>
+                      {isSyncing
+                        ? "Đang đồng bộ..."
+                        : pendingOutboxCount > 0
+                        ? `Chờ đẩy (${pendingOutboxCount})`
+                        : "Cloud Realtime"}
+                    </span>
                   </button>
                 ) : (
                   <span

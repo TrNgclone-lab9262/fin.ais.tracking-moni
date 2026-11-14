@@ -46,6 +46,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
+    pendingOutboxCount,
     syncWithCloud,
     hasPasscodeProtection,
     lockApp,
@@ -102,7 +103,13 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                 className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                <span>{isSyncing ? "Đang đồng bộ..." : "Cloud Sync"}</span>
+                <span>
+                  {isSyncing
+                    ? "Đang đồng bộ..."
+                    : pendingOutboxCount > 0
+                    ? `Chờ đẩy (${pendingOutboxCount})`
+                    : "Cloud Sync"}
+                </span>
               </button>
             ) : (
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 whitespace-nowrap shrink-0">

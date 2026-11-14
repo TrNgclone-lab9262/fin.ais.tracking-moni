@@ -22,6 +22,7 @@ export function MobileHeader({
     setActivePerspective,
     isCloudConnected,
     isSyncing,
+    pendingOutboxCount,
     themeMode,
     toggleThemeMode,
     isPrivacyMode,
@@ -170,6 +171,11 @@ export function MobileHeader({
         <div className="hidden min-[410px]:flex items-center pl-0.5">
           {isSyncing ? (
             <RefreshCw className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-spin" />
+          ) : isCloudConnected && pendingOutboxCount > 0 ? (
+            <span
+              className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-100 dark:ring-amber-900"
+              title={`Đang chờ đẩy ${pendingOutboxCount} thay đổi lên Cloud`}
+            />
           ) : isCloudConnected ? (
             <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-100 dark:ring-emerald-900" title="Cloud Sync Hoạt động" />
           ) : (
