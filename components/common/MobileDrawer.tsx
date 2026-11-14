@@ -14,6 +14,7 @@ import {
   Heart,
   ShieldCheck,
   Lock,
+  Building2,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -73,6 +74,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
       badgeColor: "bg-blue-600 text-white",
     },
     {
+      id: "skyone",
+      label: "Phú Đông SKYONE",
+      icon: Building2,
+    },
+    {
       id: "data_admin",
       label: "Quản trị Dữ liệu",
       icon: Database,
@@ -104,7 +110,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
       {/* Drawer content */}
       <div
-        className="relative w-full max-w-[320px] bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none"
+        className="relative w-full max-w-[320px] bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="overflow-y-auto">
@@ -134,7 +140,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
           </div>
 
           {/* Family Mini Profile */}
-          <div className="p-4 mx-3 my-3 rounded-xl bg-blue-950/40 border border-blue-800/40 space-y-2.5">
+          <div className="p-4 mx-3 my-3 rounded-xl bg-blue-950/40 dark:bg-slate-900/60 border border-blue-800/40 dark:border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                 <span>👨 {settings.husbandName}</span>
@@ -148,14 +154,14 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             </div>
 
             {/* Quick Perspective Filter */}
-            <div className="grid grid-cols-3 gap-1 bg-blue-900/40 p-1 rounded-lg text-xs font-bold">
+            <div className="grid grid-cols-3 gap-1 bg-blue-900/40 dark:bg-slate-800/80 p-1 rounded-lg text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setActivePerspective("ALL")}
                 className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "ALL"
-                    ? "bg-white text-blue-900 shadow-xs"
-                    : "text-blue-200 hover:text-white"
+                    ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
+                    : "text-blue-200 dark:text-slate-300 hover:text-white"
                 }`}
               >
                 🏡 Chung
@@ -165,8 +171,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                 onClick={() => setActivePerspective("HUSBAND")}
                 className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "HUSBAND"
-                    ? "bg-white text-blue-900 shadow-xs"
-                    : "text-blue-200 hover:text-white"
+                    ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
+                    : "text-blue-200 dark:text-slate-300 hover:text-white"
                 }`}
               >
                 👨 Chuột
@@ -176,8 +182,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                 onClick={() => setActivePerspective("WIFE")}
                 className={`py-1 rounded-md transition-all cursor-pointer ${
                   activePerspective === "WIFE"
-                    ? "bg-white text-blue-900 shadow-xs"
-                    : "text-blue-200 hover:text-white"
+                    ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
+                    : "text-blue-200 dark:text-slate-300 hover:text-white"
                 }`}
               >
                 👩 Mèo
@@ -197,13 +203,13 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                   onClick={() => handleSelectTab(item.id)}
                   className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? "bg-white text-blue-900 shadow-md font-black"
-                      : "text-blue-100 hover:bg-white/10 hover:text-white"
+                      ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
+                      : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   <Icon
                     className={`w-5 h-5 shrink-0 ${
-                      isActive ? "text-blue-700" : "text-blue-200"
+                      isActive ? "text-blue-700 dark:text-white" : "text-blue-200 dark:text-slate-400"
                     }`}
                   />
                   <span className="flex-1 text-left">{item.label}</span>

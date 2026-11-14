@@ -30,7 +30,7 @@ export function ReleaseNotesModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="release-notes-title"
-        className="w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-[#DCE4EE] overflow-hidden max-h-[88vh] flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        className="w-full sm:max-w-lg bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-[#DCE4EE] dark:border-slate-800 overflow-hidden max-h-[88vh] flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -63,14 +63,14 @@ export function ReleaseNotesModal() {
         <div className="p-5 overflow-y-auto space-y-4">
           {/* Ghi chú phiên bản nổi bật */}
           {featured && (
-            <div className="p-4 rounded-xl bg-[#F6F8FB] border border-[#DCE4EE] space-y-2.5">
-              <div className="text-xs font-extrabold text-[#1E3A8A]">
+            <div className="p-4 rounded-xl bg-[#F6F8FB] dark:bg-slate-800/80 border border-[#DCE4EE] dark:border-slate-700 space-y-2.5">
+              <div className="text-xs font-extrabold text-[#1E3A8A] dark:text-blue-300">
                 v{featured.version} · {featured.title}
               </div>
               <ul className="space-y-2">
                 {featured.highlights.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-xs text-slate-700 leading-relaxed">
-                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <li key={idx} className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -81,23 +81,23 @@ export function ReleaseNotesModal() {
           {/* Các phiên bản trước đó */}
           {changelog.length > 1 && (
             <div className="space-y-2.5">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Các bản phát hành trước
               </h4>
               <div className="space-y-2.5">
                 {changelog.slice(1).map((entry) => (
                   <div
                     key={entry.version}
-                    className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5"
+                    className="p-3.5 rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-1.5"
                   >
-                    <div className="text-xs font-bold text-slate-800">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-100">
                       v{entry.version} · {entry.releasedAt}
                     </div>
-                    <p className="text-xs font-semibold text-slate-600">{entry.title}</p>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{entry.title}</p>
                     <ul className="space-y-1 pt-0.5">
                       {entry.highlights.map((h, i) => (
-                        <li key={i} className="text-[11px] text-slate-500 leading-relaxed flex items-start gap-1.5">
-                          <span className="text-blue-600 font-bold">•</span>
+                        <li key={i} className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed flex items-start gap-1.5">
+                          <span className="text-blue-600 dark:text-blue-400 font-bold">•</span>
                           <span>{h}</span>
                         </li>
                       ))}
@@ -109,8 +109,8 @@ export function ReleaseNotesModal() {
           )}
 
           {/* Cam kết an toàn dữ liệu offline */}
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center gap-2.5 text-xs text-emerald-800 font-semibold">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200/80 dark:border-emerald-500/30 flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
               Cập nhật chỉ làm mới giao diện ứng dụng, toàn bộ dữ liệu giao dịch & mã PIN trên máy được giữ nguyên 100%.
             </span>
@@ -118,11 +118,11 @@ export function ReleaseNotesModal() {
         </div>
 
         {/* Footer actions */}
-        <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+        <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/70 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
           <button
             type="button"
             onClick={closeReleaseNotes}
-            className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold cursor-pointer"
+            className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold cursor-pointer"
           >
             Đóng
           </button>

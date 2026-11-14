@@ -1,9 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
-import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2, Building2 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVNDMasked, getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
+import {
+  formatVNDMasked,
+  formatShortVNDMasked,
+  formatDateVN,
+  getCurrentMonthKey,
+  getMonthDisplayLabel,
+} from "@/lib/formatters";
+import {
+  generateMortgageSchedule,
+  calculateRealEstateMetrics,
+} from "@/lib/mortgageEngine";
 import { generateMonthlyDigest, MonthlyAIDigest } from "@/lib/geminiReceiptService";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { DualCreditCardsWidget } from "@/components/dashboard/DualCreditCardsWidget";
@@ -25,9 +35,22 @@ export function OverviewView() {
     budgetSummary,
     recurringRules,
     applyRecurringRule,
+    skyoneLoan,
     setActiveTab,
     isPrivacyMode,
   } = useFinance();
+
+  const skyoneSchedule = useMemo(() => generateMortgageSchedule(skyoneLoan), [skyoneLoan]);
+  const skyoneMetrics = useMemo(
+    () =>
+      calculateRealEstateMetrics(
+        skyoneLoan,
+        skyoneSchedule,
+        summary.monthlyIncome || 50_000_000,
+        "Thu nhập tháng"
+      ),
+    [skyoneLoan, skyoneSchedule, summary.monthlyIncome]
+  );
 
   const [digest, setDigest] = useState<MonthlyAIDigest | null>(null);
   const [isGeneratingDigest, setIsGeneratingDigest] = useState(false);
@@ -92,17 +115,17 @@ export function OverviewView() {
 
       {/* 1B. Trợ lý AI Phân Tích Kỳ & Giao Dịch Định Kỳ Chờ Ghi Sổ */}
       <section aria-label="Phân tích AI và định kỳ" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between gap-3">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                 <Sparkles className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#172B4D]">
+                <h3 className="text-sm font-bold text-[#172B4D] dark:text-slate-100">
                   Tổng Kết Thông Minh · {monthLabel}
                 </h3>
-                <p className="text-[11px] text-slate-500 font-medium">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                   Phân tích sức khỏe dòng tiền, tỷ lệ tiết kiệm và cảnh báo thẻ tín dụng BIDV
                 </p>
               </div>
@@ -129,42 +152,42 @@ export function OverviewView() {
           </div>
 
           {digest ? (
-            <div className="bg-slate-50 border border-[#E9EEF5] rounded-xl p-4 space-y-2.5">
+            <div className="bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700 rounded-xl p-4 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs sm:text-sm font-bold text-[#1E3A8A]">{digest.headline}</p>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">
+                <p className="text-xs sm:text-sm font-bold text-[#1E3A8A] dark:text-blue-300">{digest.headline}</p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 shrink-0">
                   {digest.source === "gemini" ? "Gemini AI" : "Phân tích nội bộ"}
                 </span>
               </div>
-              <ul className="space-y-1 text-xs text-slate-600">
+              <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
                 {digest.highlights.map((h, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-blue-600 font-bold">•</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-bold">•</span>
                     <span>{h}</span>
                   </li>
                 ))}
               </ul>
-              <div className="pt-2 border-t border-slate-200 text-xs font-semibold text-emerald-700">
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                 💡 Gợi ý hành động: {digest.actionTip}
               </div>
             </div>
           ) : (
-            <div className="bg-slate-50/70 border border-dashed border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-500">
+            <div className="bg-slate-50/70 dark:bg-slate-800/60 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
               Nhấn <strong>&ldquo;Phân tích AI kỳ này&rdquo;</strong> để nhận bản tóm tắt tài chính cho {monthLabel} (hoạt động ngay cả khi offline).
             </div>
           )}
         </div>
 
         {/* Recurring Quick Strip */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between gap-3">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                 <Repeat className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#172B4D]">Định Kỳ ({activeMonthKey})</h3>
-                <p className="text-[11px] text-slate-500">
+                <h3 className="text-sm font-bold text-[#172B4D] dark:text-slate-100">Định Kỳ ({activeMonthKey})</h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {pendingRecurring.length > 0
                     ? `${pendingRecurring.length} khoản chờ ghi sổ`
                     : "Đã ghi đủ kỳ này"}
@@ -173,7 +196,7 @@ export function OverviewView() {
             </div>
             <button
               onClick={() => setActiveTab("planning")}
-              className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>Quản lý</span>
               <ArrowRight className="w-3 h-3" />
@@ -182,7 +205,7 @@ export function OverviewView() {
 
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {pendingRecurring.length === 0 ? (
-              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-2">
+              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>Tất cả thu/chi định kỳ đã được ghi nhận cho kỳ {activeMonthKey}.</span>
               </div>
@@ -190,13 +213,13 @@ export function OverviewView() {
               pendingRecurring.slice(0, 3).map((rule) => (
                 <div
                   key={rule.id}
-                  className="p-2.5 rounded-lg bg-slate-50 border border-[#E9EEF5] flex items-center justify-between gap-2"
+                  className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#E9EEF5] dark:border-slate-700 flex items-center justify-between gap-2"
                 >
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{rule.name}</p>
-                    <p className="text-[10px] text-slate-500 font-medium">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{rule.name}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                       Ngày {rule.dayOfMonth} ·{" "}
-                      <span className={rule.type === "INCOME" ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                      <span className={rule.type === "INCOME" ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-600 dark:text-rose-400 font-bold"}>
                         {formatVNDMasked(rule.amount, isPrivacyMode)}
                       </span>
                     </p>
@@ -212,6 +235,59 @@ export function OverviewView() {
               ))
             )}
           </div>
+        </div>
+      </section>
+
+      {/* 1C. Thẻ truy cập nhanh Căn hộ Phú Đông SKYONE */}
+      <section aria-label="Theo dõi căn hộ Phú Đông SKYONE">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0F172A] dark:bg-blue-600 text-white flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] dark:text-slate-100">
+                  {skyoneLoan.projectName}
+                </h3>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                  {skyoneLoan.unitCode} · {skyoneSchedule.paidCount}/{skyoneSchedule.totalScheduledMonths} kỳ
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-400 tabular-nums">
+                <span>
+                  Dư nợ còn:{" "}
+                  <strong className="text-[#0F172A] dark:text-slate-100">
+                    {formatVNDMasked(skyoneSchedule.remainingBalance, isPrivacyMode)}
+                  </strong>
+                </span>
+                <span>
+                  Vốn chủ (Equity):{" "}
+                  <strong className="text-emerald-700 dark:text-emerald-400">{skyoneMetrics.equityContractPct}%</strong>
+                </span>
+                {skyoneSchedule.nextUnpaidInstallment && (
+                  <span>
+                    Kỳ tới ({formatDateVN(skyoneSchedule.nextUnpaidInstallment.dueDate)}):{" "}
+                    <strong className="text-[#1E3A8A] dark:text-blue-400">
+                      {formatShortVNDMasked(
+                        skyoneSchedule.nextUnpaidInstallment.totalPayment,
+                        isPrivacyMode
+                      )}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("skyone")}
+            className="min-h-[42px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+          >
+            <span>Quản lý căn hộ</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </section>
 

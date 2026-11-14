@@ -34,7 +34,7 @@ export function FilterBar() {
   });
 
   return (
-    <div className="bg-white rounded-xl p-4 sm:p-5 border border-[#DCE4EE] shadow-xs space-y-4">
+    <div className="bg-white dark:bg-slate-900 rounded-xl p-4 sm:p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Quick Tabs lọc theo tháng */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
@@ -43,7 +43,7 @@ export function FilterBar() {
             className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
               selectedMonth === "ALL"
                 ? "bg-blue-600 text-white shadow-xs"
-                : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
             }`}
           >
             Tất cả thời gian
@@ -57,7 +57,7 @@ export function FilterBar() {
                 className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
                   isSelected
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
                 }`}
               >
                 {getMonthDisplayLabel(m)}
@@ -70,7 +70,7 @@ export function FilterBar() {
         {hasActiveFilters && (
           <button
             onClick={handleClearFilters}
-            className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700 font-semibold self-start md:self-auto bg-rose-50 px-2.5 py-1.5 rounded-md border border-rose-200/50 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-semibold self-start md:self-auto bg-rose-50 dark:bg-rose-500/15 px-2.5 py-1.5 rounded-md border border-rose-200/50 dark:border-rose-500/30 transition-colors cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
             <span>Xóa bộ lọc</span>
@@ -82,17 +82,17 @@ export function FilterBar() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* 1. Lọc theo Loại */}
         <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
             Loại giao dịch
           </label>
-          <div className="flex bg-slate-100 p-1 rounded-lg">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
             <button
               type="button"
               onClick={() => setSelectedType("ALL")}
               className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 selectedType === "ALL"
-                  ? "bg-white text-slate-800 shadow-xs"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-xs"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
             >
               Tất cả
@@ -103,7 +103,7 @@ export function FilterBar() {
               className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 selectedType === "INCOME"
                   ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-slate-500 hover:text-emerald-700"
+                  : "text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400"
               }`}
             >
               Thu nhập
@@ -114,7 +114,7 @@ export function FilterBar() {
               className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 selectedType === "EXPENSE"
                   ? "bg-rose-600 text-white shadow-xs"
-                  : "text-slate-500 hover:text-rose-700"
+                  : "text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
               }`}
             >
               Chi tiêu
@@ -124,14 +124,14 @@ export function FilterBar() {
 
         {/* 2. Dropdown Lọc Danh mục */}
         <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
             Danh mục
           </label>
           <div className="relative">
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm font-medium rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100 text-xs sm:text-sm font-medium rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
             >
               <option value="ALL">Tất cả danh mục</option>
               {filteredCategoryOptions.map((cat) => (
@@ -146,7 +146,7 @@ export function FilterBar() {
 
         {/* 3. Ô tìm kiếm ghi chú / từ khóa */}
         <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
             Tìm kiếm
           </label>
           <div className="relative">
@@ -156,12 +156,12 @@ export function FilterBar() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm theo ghi chú hoặc số tiền..."
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm rounded-lg pl-9 pr-8 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100 text-xs sm:text-sm rounded-lg pl-9 pr-8 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>

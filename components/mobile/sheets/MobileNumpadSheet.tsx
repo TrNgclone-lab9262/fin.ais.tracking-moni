@@ -162,22 +162,22 @@ export function MobileNumpadSheet({
 
       {/* Bottom Sheet Container */}
       <div
-        className="w-full max-w-lg mx-auto bg-white rounded-t-[32px] shadow-2xl border-t border-slate-200 p-4 space-y-2.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col select-none"
+        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-4 space-y-2.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto -mt-0.5 cursor-grab" />
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-0.5 cursor-grab" />
 
         {/* Header Bar */}
         <div className="flex items-center justify-between pb-1">
           <button
             onClick={onClose}
-            className="text-xs font-bold text-slate-500 hover:text-slate-700 px-2 py-1 cursor-pointer"
+            className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-2 py-1 cursor-pointer"
           >
             Hủy
           </button>
           <div className="flex items-center gap-1.5">
-            <h3 className="text-sm sm:text-base font-bold text-[#0F172A] flex items-center gap-1">
+            <h3 className="text-sm sm:text-base font-bold text-[#0F172A] dark:text-slate-100 flex items-center gap-1">
               <span>⚡</span>
               <span>Ghi Chép 3 Giây</span>
             </h3>
@@ -200,7 +200,7 @@ export function MobileNumpadSheet({
         </div>
 
         {error && (
-          <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-1.5">
+          <div className="p-2 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-lg flex items-center gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -213,8 +213,8 @@ export function MobileNumpadSheet({
             onClick={() => setMemberId("HUSBAND")}
             className={`py-1.5 rounded-lg font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
               memberId === "HUSBAND"
-                ? "bg-blue-50 border-blue-600 text-blue-700"
-                : "bg-slate-50 border-slate-200 text-slate-600"
+                ? "bg-blue-50 dark:bg-blue-500/15 border-blue-600 text-blue-700 dark:text-blue-300"
+                : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
             }`}
           >
             <span>👨</span>
@@ -226,8 +226,8 @@ export function MobileNumpadSheet({
             onClick={() => setMemberId("WIFE")}
             className={`py-1.5 rounded-lg font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
               memberId === "WIFE"
-                ? "bg-rose-50 border-rose-500 text-rose-700"
-                : "bg-slate-50 border-slate-200 text-slate-600"
+                ? "bg-rose-50 dark:bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300"
+                : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
             }`}
           >
             <span>👩</span>
@@ -239,8 +239,8 @@ export function MobileNumpadSheet({
             onClick={() => setScope(scope === "FAMILY" ? "PERSONAL" : "FAMILY")}
             className={`py-1.5 rounded-lg font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
               scope === "FAMILY"
-                ? "bg-emerald-50 border-emerald-600 text-emerald-700"
-                : "bg-purple-50 border-purple-500 text-purple-700"
+                ? "bg-emerald-50 dark:bg-emerald-500/15 border-emerald-600 text-emerald-700 dark:text-emerald-300"
+                : "bg-purple-50 dark:bg-purple-500/15 border-purple-500 text-purple-700 dark:text-purple-300"
             }`}
           >
             <span>{scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}</span>
@@ -248,12 +248,12 @@ export function MobileNumpadSheet({
         </div>
 
         {/* Type Switcher */}
-        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg text-xs font-bold">
+        <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg text-xs font-bold">
           <button
             type="button"
             onClick={() => setType("EXPENSE")}
             className={`py-1 rounded-md transition-all cursor-pointer ${
-              type === "EXPENSE" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600"
+              type === "EXPENSE" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-300"
             }`}
           >
             Chi tiêu
@@ -262,7 +262,7 @@ export function MobileNumpadSheet({
             type="button"
             onClick={() => setType("INCOME")}
             className={`py-1 rounded-md transition-all cursor-pointer ${
-              type === "INCOME" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600"
+              type === "INCOME" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-300"
             }`}
           >
             Thu nhập
@@ -271,7 +271,7 @@ export function MobileNumpadSheet({
             type="button"
             onClick={() => setType("TRANSFER")}
             className={`py-1 rounded-md transition-all cursor-pointer ${
-              type === "TRANSFER" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600"
+              type === "TRANSFER" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-300"
             }`}
           >
             Chuyển ví
@@ -279,13 +279,13 @@ export function MobileNumpadSheet({
         </div>
 
         {/* Large Amount Display */}
-        <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 text-center">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+        <div className="bg-[#F8FAFC] dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-slate-700 rounded-xl p-3 text-center">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-widest block mb-0.5">
             SỐ TIỀN GIAO DỊCH
           </span>
           <div
             className={`text-3xl font-black tracking-tight ${
-              isExpense ? "text-[#BE123C]" : "text-[#047857]"
+              isExpense ? "text-[#BE123C] dark:text-rose-400" : "text-[#047857] dark:text-emerald-400"
             }`}
           >
             {numericAmount > 0 ? (
@@ -293,7 +293,7 @@ export function MobileNumpadSheet({
                 {isExpense ? "-" : "+"} {numericAmount.toLocaleString("vi-VN")} ₫
               </>
             ) : (
-              <span className="text-slate-300">0 ₫</span>
+              <span className="text-slate-300 dark:text-slate-600">0 ₫</span>
             )}
           </div>
         </div>
@@ -304,7 +304,7 @@ export function MobileNumpadSheet({
             <select
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
-              className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 font-bold text-slate-800 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+              className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold text-slate-800 dark:text-slate-100 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
             >
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -318,7 +318,7 @@ export function MobileNumpadSheet({
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 font-bold text-slate-800 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
+              className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold text-slate-800 dark:text-slate-100 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
             >
               {availableCategories.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -336,7 +336,7 @@ export function MobileNumpadSheet({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Ghi chú nhanh (VD: Cafe 55k bằng ACB)..."
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+            className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
           />
           <button
             type="button"
@@ -353,7 +353,7 @@ export function MobileNumpadSheet({
                 setScope(first.scope);
               }
             }}
-            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>AI</span>
@@ -365,35 +365,35 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={handleAppendZeros}
-            className="h-8 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-black border border-blue-200 transition-colors cursor-pointer"
+            className="h-8 rounded-lg bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-700 dark:text-blue-300 text-xs font-black border border-blue-200 dark:border-blue-500/30 transition-colors cursor-pointer"
           >
             +000
           </button>
           <button
             type="button"
             onClick={() => handleAddQuick(50000)}
-            className="h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+            className="h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             +50k
           </button>
           <button
             type="button"
             onClick={() => handleAddQuick(100000)}
-            className="h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+            className="h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             +100k
           </button>
           <button
             type="button"
             onClick={() => handleAddQuick(200000)}
-            className="h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+            className="h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             +200k
           </button>
           <button
             type="button"
             onClick={() => handleAddQuick(500000)}
-            className="h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+            className="h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             +500k
           </button>
@@ -406,7 +406,7 @@ export function MobileNumpadSheet({
               key={digit}
               type="button"
               onClick={() => handleDigit(digit)}
-              className="h-11 rounded-xl bg-slate-50 hover:bg-slate-100 active:bg-slate-200 border border-slate-200/80 text-lg font-black text-[#172B4D] shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
+              className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
             >
               {digit}
             </button>
@@ -416,7 +416,7 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={handleClear}
-            className="h-11 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-sm font-bold text-slate-600 border border-slate-200 transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center cursor-pointer"
           >
             C
           </button>
@@ -424,7 +424,7 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={() => handleDigit("0")}
-            className="h-11 rounded-xl bg-slate-50 hover:bg-slate-100 active:bg-slate-200 border border-slate-200/80 text-lg font-black text-[#172B4D] shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
           >
             0
           </button>
@@ -432,14 +432,14 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={handleBackspace}
-            className="h-11 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 border border-slate-200 transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center cursor-pointer"
           >
             <Delete className="w-5 h-5" />
           </button>
         </div>
 
         {/* Home Indicator */}
-        <div className="w-32 h-1 rounded-full bg-slate-800 mx-auto mt-1" />
+        <div className="w-32 h-1 rounded-full bg-slate-800 dark:bg-slate-600 mx-auto mt-1" />
       </div>
 
       {/* Modal Quét Hóa Đơn Bằng Gemini AI */}

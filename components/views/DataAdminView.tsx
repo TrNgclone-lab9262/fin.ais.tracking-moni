@@ -36,6 +36,7 @@ import {
 import { formatVNDMasked, formatDateVN, getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
 import { calculateLedgerIntegrity, shiftMonthKey } from "@/lib/financeEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { GoalDepositSheet } from "@/components/mobile/sheets/GoalDepositSheet";
 
@@ -72,6 +73,7 @@ export function DataAdminView() {
     selectedMonth,
     isPrivacyMode,
     settings,
+    hasPasscodeProtection,
     exportBackup,
     setCategoryBudget,
     deleteBudget,
@@ -121,7 +123,13 @@ export function DataAdminView() {
 
   const [pendingDelete, setPendingDelete] = useState<{
     label: string;
+    requireStepUp?: boolean;
     onConfirm: () => void;
+  } | null>(null);
+  const [pendingStepUpAction, setPendingStepUpAction] = useState<{
+    title: string;
+    description: string;
+    onVerified: () => void;
   } | null>(null);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -495,7 +503,7 @@ export function DataAdminView() {
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
       {/* 1. Data Studio Header & Ledger Integrity Audit */}
-      <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#1E3A8A] text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -503,22 +511,22 @@ export function DataAdminView() {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-[#172B4D]">
+                <h2 className="text-base sm:text-lg font-black text-[#172B4D] dark:text-slate-100">
                   Data Studio — Quản Trị Cơ Sở Dữ Liệu
                 </h2>
                 {integrity.isValid ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     Toàn vẹn Event Sourcing 100% ({integrity.checkedAccounts} ví)
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     Lệch {integrity.mismatches.length} ví
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                 Thêm, sửa, xóa trực tiếp mọi bảng dữ liệu thực tế và đồng bộ xuyên suốt toàn bộ Dashboard
               </p>
             </div>
@@ -528,7 +536,7 @@ export function DataAdminView() {
             <button
               type="button"
               onClick={exportBackup}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Xuất JSON</span>
@@ -545,7 +553,7 @@ export function DataAdminView() {
         </div>
 
         {toastMsg && (
-          <div className="px-3.5 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-2">
+          <div className="px-3.5 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{toastMsg}</span>
           </div>
@@ -555,7 +563,7 @@ export function DataAdminView() {
         <div
           role="tablist"
           aria-label="Bảng dữ liệu hệ thống"
-          className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#E9EEF5]"
+          className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#E9EEF5] dark:border-slate-800"
         >
           {collections.map((col) => {
             const active = activeCollection === col.key;
@@ -570,14 +578,14 @@ export function DataAdminView() {
                 }}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-xs font-bold whitespace-nowrap border-b-2 transition-all cursor-pointer ${
                   active
-                    ? "border-blue-600 text-blue-700 bg-blue-50/70"
-                    : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                    ? "border-blue-600 text-blue-700 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-500/15"
+                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <span>{col.label}</span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
-                    active ? "bg-blue-600 text-white" : "bg-slate-200/80 text-slate-600"
+                    active ? "bg-blue-600 text-white" : "bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                   }`}
                 >
                   {col.count}
@@ -596,7 +604,7 @@ export function DataAdminView() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Tìm kiếm trong bảng ${collections.find((c) => c.key === activeCollection)?.label}...`}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-[#DCE4EE] rounded-lg text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
             />
           </div>
 
@@ -606,7 +614,7 @@ export function DataAdminView() {
                 type="month"
                 value={budgetMonthFilter}
                 onChange={(e) => setBudgetMonthFilter(e.target.value)}
-                className="bg-slate-50 border border-[#DCE4EE] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+                className="bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100"
               />
               <button
                 type="button"
@@ -619,7 +627,7 @@ export function DataAdminView() {
                       : `Không có mục mới cần sao chép từ ${getMonthDisplayLabel(prev)}.`
                   );
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-700 dark:text-blue-300 text-xs font-bold cursor-pointer"
               >
                 <Copy className="w-3.5 h-3.5" />
                 <span>Copy tháng trước</span>
@@ -632,7 +640,7 @@ export function DataAdminView() {
               <select
                 value={txTypeFilter}
                 onChange={(e) => setTxTypeFilter(e.target.value as "ALL" | TransactionType)}
-                className="bg-slate-50 border border-[#DCE4EE] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700"
+                className="bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200"
               >
                 <option value="ALL">Tất cả loại</option>
                 <option value="EXPENSE">Chi tiêu</option>
@@ -645,6 +653,7 @@ export function DataAdminView() {
                   onClick={() =>
                     setPendingDelete({
                       label: `Xóa ${selectedTxIds.length} giao dịch đã chọn?`,
+                      requireStepUp: true,
                       onConfirm: () => {
                         deleteTransactionsBatch(selectedTxIds);
                         setSelectedTxIds([]);
@@ -664,12 +673,12 @@ export function DataAdminView() {
       </div>
 
       {/* 2. Collection Data Grid */}
-      <div className="bg-white rounded-xl border border-[#DCE4EE] shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           {/* TABLE 1: BUDGETS */}
           {activeCollection === "budgets" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Danh mục</th>
                   <th className="py-3 px-4">Kỳ ngân sách</th>
@@ -679,14 +688,14 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredBudgets.map((b) => {
                   const cat = getCategoryById(b.categoryId);
                   const spent = spentByCatInMonth.get(b.categoryId) || 0;
                   const pct = b.limitAmount > 0 ? Math.round((spent / b.limitAmount) * 100) : 0;
                   return (
-                    <tr key={`${b.month}_${b.categoryId}`} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-bold text-slate-800">
+                    <tr key={`${b.month}_${b.categoryId}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                      <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">
                         <div className="flex items-center gap-2">
                           <span
                             className="w-3 h-3 rounded-full shrink-0"
@@ -695,22 +704,22 @@ export function DataAdminView() {
                           <span>{cat?.name || b.categoryId}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{b.month}</td>
-                      <td className="py-3 px-4 font-black text-slate-800">
+                      <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">{b.month}</td>
+                      <td className="py-3 px-4 font-black text-slate-800 dark:text-slate-100">
                         {formatVNDMasked(b.limitAmount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-bold text-rose-600">
+                      <td className="py-3 px-4 font-bold text-rose-600 dark:text-rose-400">
                         {formatVNDMasked(spent, isPrivacyMode)}
                       </td>
                       <td className="py-3 px-4 min-w-[140px]">
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${pct >= 100 ? "bg-rose-500" : "bg-blue-600"}`}
                               style={{ width: `${Math.min(100, pct)}%` }}
                             />
                           </div>
-                          <span className={`font-bold ${pct >= 100 ? "text-rose-600" : "text-slate-600"}`}>
+                          <span className={`font-bold ${pct >= 100 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-300"}`}>
                             {pct}%
                           </span>
                         </div>
@@ -719,7 +728,7 @@ export function DataAdminView() {
                         <button
                           onClick={() => openModal({ kind: "budget", item: b })}
                           aria-label={`Sửa ngân sách ${cat?.name || b.categoryId}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -734,7 +743,7 @@ export function DataAdminView() {
                             })
                           }
                           aria-label={`Xóa ngân sách ${cat?.name || b.categoryId}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -744,7 +753,7 @@ export function DataAdminView() {
                 })}
                 {filteredBudgets.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                    <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500">
                       Chưa có ngân sách cho kỳ {budgetMonthFilter}
                     </td>
                   </tr>
@@ -756,7 +765,7 @@ export function DataAdminView() {
           {/* TABLE 2: GOALS */}
           {activeCollection === "goals" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Tên mục tiêu</th>
                   <th className="py-3 px-4">Đã tích lũy</th>
@@ -767,25 +776,25 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredGoals.map((g) => {
                   const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100)) : 0;
                   return (
-                    <tr key={g.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-bold text-slate-800">{g.name}</td>
-                      <td className="py-3 px-4 font-bold text-blue-600">
+                    <tr key={g.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                      <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{g.name}</td>
+                      <td className="py-3 px-4 font-bold text-blue-600 dark:text-blue-400">
                         {formatVNDMasked(g.currentAmount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-bold text-slate-700">
+                      <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
                         {formatVNDMasked(g.targetAmount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-black text-slate-700">{pct}%</td>
-                      <td className="py-3 px-4 text-slate-500">{g.deadline ? formatDateVN(g.deadline) : "—"}</td>
+                      <td className="py-3 px-4 font-black text-slate-700 dark:text-slate-200">{pct}%</td>
+                      <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{g.deadline ? formatDateVN(g.deadline) : "—"}</td>
                       <td className="py-3 px-4">
                         <button
                           onClick={() => updateGoal(g.id, { isCompleted: !g.isCompleted })}
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
-                            g.isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-blue-50 text-blue-700"
+                            g.isCompleted ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
                           }`}
                         >
                           {g.isCompleted ? "Hoàn thành" : "Đang tích lũy"}
@@ -794,14 +803,14 @@ export function DataAdminView() {
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => setDepositGoal(g)}
-                          className="px-2 py-1 mr-1 rounded bg-emerald-50 text-emerald-700 font-bold text-[11px] cursor-pointer"
+                          className="px-2 py-1 mr-1 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] cursor-pointer"
                         >
                           +Nạp
                         </button>
                         <button
                           onClick={() => openModal({ kind: "goal", item: g })}
                           aria-label={`Sửa mục tiêu ${g.name}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -816,7 +825,7 @@ export function DataAdminView() {
                             })
                           }
                           aria-label={`Xóa mục tiêu ${g.name}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -831,7 +840,7 @@ export function DataAdminView() {
           {/* TABLE 3: DEBTS */}
           {activeCollection === "debts" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Loại</th>
                   <th className="py-3 px-4">Tên khoản nợ</th>
@@ -842,31 +851,31 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredDebts.map((d) => {
                   const rem = Math.max(0, d.totalAmount - d.paidAmount);
                   return (
-                    <tr key={d.id} className="hover:bg-slate-50">
+                    <tr key={d.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                       <td className="py-3 px-4">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            d.type === "LEND" ? "bg-blue-50 text-blue-700" : "bg-rose-50 text-rose-700"
+                            d.type === "LEND" ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300" : "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300"
                           }`}
                         >
                           {d.type === "LEND" ? "Cho vay" : "Đi vay"}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-bold text-slate-800">{d.name}</td>
-                      <td className="py-3 px-4 font-bold text-slate-700">
+                      <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{d.name}</td>
+                      <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
                         {formatVNDMasked(d.totalAmount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-bold text-emerald-600">
+                      <td className="py-3 px-4 font-bold text-emerald-600 dark:text-emerald-400">
                         {formatVNDMasked(d.paidAmount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-black text-rose-600">
+                      <td className="py-3 px-4 font-black text-rose-600 dark:text-rose-400">
                         {formatVNDMasked(rem, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 text-slate-500">{formatDateVN(d.dueDate)}</td>
+                      <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{formatDateVN(d.dueDate)}</td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         {rem > 0 && (
                           <button
@@ -875,7 +884,7 @@ export function DataAdminView() {
                               setPayDebtAmt("");
                               setPayDebtAccId(accounts[0]?.id || "");
                             }}
-                            className="px-2 py-1 mr-1 rounded bg-emerald-50 text-emerald-700 font-bold text-[11px] cursor-pointer"
+                            className="px-2 py-1 mr-1 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] cursor-pointer"
                           >
                             {d.type === "LEND" ? "Thu" : "Trả"}
                           </button>
@@ -883,7 +892,7 @@ export function DataAdminView() {
                         <button
                           onClick={() => openModal({ kind: "debt", item: d })}
                           aria-label={`Sửa nợ ${d.name}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -898,7 +907,7 @@ export function DataAdminView() {
                             })
                           }
                           aria-label={`Xóa nợ ${d.name}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -913,7 +922,7 @@ export function DataAdminView() {
           {/* TABLE 4: INVESTMENTS */}
           {activeCollection === "investments" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Tên tài sản</th>
                   <th className="py-3 px-4">Loại</th>
@@ -924,21 +933,21 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredInvestments.map((inv) => {
                   const cur = inv.currentValue || inv.amount;
                   const roi = inv.amount > 0 ? Math.round(((cur - inv.amount) / inv.amount) * 1000) / 10 : 0;
                   return (
-                    <tr key={inv.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-bold text-slate-800">{inv.name}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-500">{inv.type}</td>
-                      <td className="py-3 px-4 font-bold text-slate-700">
+                    <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                      <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{inv.name}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-500 dark:text-slate-400">{inv.type}</td>
+                      <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
                         {formatVNDMasked(inv.amount, isPrivacyMode)}
                       </td>
-                      <td className="py-3 px-4 font-black text-blue-700">
+                      <td className="py-3 px-4 font-black text-blue-700 dark:text-blue-400">
                         {formatVNDMasked(cur, isPrivacyMode)}
                       </td>
-                      <td className={`py-3 px-4 font-bold ${roi >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                      <td className={`py-3 px-4 font-bold ${roi >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                         {roi >= 0 ? "+" : ""}
                         {roi}%
                       </td>
@@ -951,8 +960,8 @@ export function DataAdminView() {
                           }
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
                             inv.status === "ACTIVE"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
+                              ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                           }`}
                         >
                           {inv.status}
@@ -962,7 +971,7 @@ export function DataAdminView() {
                         <button
                           onClick={() => openModal({ kind: "investment", item: inv })}
                           aria-label={`Sửa đầu tư ${inv.name}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -977,7 +986,7 @@ export function DataAdminView() {
                             })
                           }
                           aria-label={`Xóa đầu tư ${inv.name}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -992,7 +1001,7 @@ export function DataAdminView() {
           {/* TABLE 5: TRANSACTIONS */}
           {activeCollection === "transactions" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-3 w-8">
                     <input
@@ -1017,13 +1026,13 @@ export function DataAdminView() {
                   <th className="py-3 px-3 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredTxRows.map((tx) => {
                   const cat = getCategoryById(tx.categoryId);
                   const acc = getAccountById(tx.accountId);
                   const checked = selectedTxIds.includes(tx.id);
                   return (
-                    <tr key={tx.id} className="hover:bg-slate-50">
+                    <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                       <td className="py-2.5 px-3">
                         <input
                           type="checkbox"
@@ -1036,30 +1045,30 @@ export function DataAdminView() {
                           }
                         />
                       </td>
-                      <td className="py-2.5 px-3 whitespace-nowrap font-medium">{formatDateVN(tx.date)}</td>
+                      <td className="py-2.5 px-3 whitespace-nowrap font-medium text-slate-700 dark:text-slate-300">{formatDateVN(tx.date)}</td>
                       <td className="py-2.5 px-3">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             tx.type === "EXPENSE"
-                              ? "bg-rose-50 text-rose-700"
+                              ? "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300"
                               : tx.type === "INCOME"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-blue-50 text-blue-700"
+                              ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              : "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
                           }`}
                         >
                           {tx.type}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-semibold">{cat?.name || tx.categoryId}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{acc?.name || tx.accountId}</td>
-                      <td className="py-2.5 px-3 text-slate-600 max-w-[200px] truncate">{tx.note || "—"}</td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-100">{cat?.name || tx.categoryId}</td>
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">{acc?.name || tx.accountId}</td>
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 max-w-[200px] truncate">{tx.note || "—"}</td>
                       <td
                         className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${
                           tx.type === "EXPENSE"
-                            ? "text-rose-600"
+                            ? "text-rose-600 dark:text-rose-400"
                             : tx.type === "INCOME"
-                            ? "text-emerald-600"
-                            : "text-blue-600"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-blue-600 dark:text-blue-400"
                         }`}
                       >
                         {formatVNDMasked(tx.amount, isPrivacyMode)}
@@ -1071,7 +1080,7 @@ export function DataAdminView() {
                             setIsTxModalOpen(true);
                           }}
                           aria-label={`Sửa giao dịch ${tx.id}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -1086,7 +1095,7 @@ export function DataAdminView() {
                             })
                           }
                           aria-label={`Xóa giao dịch ${tx.id}`}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1101,7 +1110,7 @@ export function DataAdminView() {
           {/* TABLE 6: ACCOUNTS */}
           {activeCollection === "accounts" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Tên tài khoản</th>
                   <th className="py-3 px-4">Loại</th>
@@ -1112,19 +1121,19 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredAccounts.map((acc) => (
-                  <tr key={acc.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-bold text-slate-800">{acc.name}</td>
-                    <td className="py-3 px-4 font-mono text-slate-500">{acc.type}</td>
-                    <td className="py-3 px-4 font-semibold">{acc.owner}</td>
-                    <td className="py-3 px-4 text-slate-600">
+                  <tr key={acc.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{acc.name}</td>
+                    <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">{acc.type}</td>
+                    <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">{acc.owner}</td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                       {formatVNDMasked(acc.initialBalance, isPrivacyMode)}
                     </td>
-                    <td className="py-3 px-4 font-black text-blue-600">
+                    <td className="py-3 px-4 font-black text-blue-600 dark:text-blue-400">
                       {formatVNDMasked(acc.currentBalance, isPrivacyMode)}
                     </td>
-                    <td className="py-3 px-4 text-slate-500">
+                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
                       {acc.type === "CREDIT_CARD"
                         ? `${formatVNDMasked(acc.creditLimit || 0, isPrivacyMode)} (SK ${acc.statementDay || 20} / Hạn ${acc.dueDay || 6})`
                         : "—"}
@@ -1133,7 +1142,7 @@ export function DataAdminView() {
                       <button
                         onClick={() => openModal({ kind: "account", item: acc })}
                         aria-label={`Sửa ví ${acc.name}`}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -1148,7 +1157,7 @@ export function DataAdminView() {
                           })
                         }
                         aria-label={`Xóa ví ${acc.name}`}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1162,7 +1171,7 @@ export function DataAdminView() {
           {/* TABLE 7: CATEGORIES */}
           {activeCollection === "categories" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Màu</th>
                   <th className="py-3 px-4">ID</th>
@@ -1171,21 +1180,21 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredCategories.map((cat) => (
-                  <tr key={cat.id} className="hover:bg-slate-50">
+                  <tr key={cat.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="py-3 px-4">
                       <span
-                        className="inline-block w-4 h-4 rounded-full border border-slate-200"
+                        className="inline-block w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700"
                         style={{ backgroundColor: cat.color }}
                       />
                     </td>
-                    <td className="py-3 px-4 font-mono text-slate-400">{cat.id}</td>
-                    <td className="py-3 px-4 font-bold text-slate-800">{cat.name}</td>
+                    <td className="py-3 px-4 font-mono text-slate-400 dark:text-slate-500">{cat.id}</td>
+                    <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{cat.name}</td>
                     <td className="py-3 px-4">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          cat.type === "EXPENSE" ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"
+                          cat.type === "EXPENSE" ? "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300" : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                         }`}
                       >
                         {cat.type}
@@ -1195,7 +1204,7 @@ export function DataAdminView() {
                       <button
                         onClick={() => openModal({ kind: "category", item: cat })}
                         aria-label={`Sửa danh mục ${cat.name}`}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -1210,7 +1219,7 @@ export function DataAdminView() {
                           })
                         }
                         aria-label={`Xóa danh mục ${cat.name}`}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1224,7 +1233,7 @@ export function DataAdminView() {
           {/* TABLE 8: RECURRING RULES */}
           {activeCollection === "recurringRules" && (
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Tên quy tắc</th>
                   <th className="py-3 px-4">Loại</th>
@@ -1235,21 +1244,21 @@ export function DataAdminView() {
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredRules.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-bold text-slate-800">{r.name}</td>
-                    <td className="py-3 px-4 font-bold text-slate-600">{r.type}</td>
-                    <td className="py-3 px-4 font-black text-slate-800">
+                  <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">{r.name}</td>
+                    <td className="py-3 px-4 font-bold text-slate-600 dark:text-slate-300">{r.type}</td>
+                    <td className="py-3 px-4 font-black text-slate-800 dark:text-slate-100">
                       {formatVNDMasked(r.amount, isPrivacyMode)}
                     </td>
-                    <td className="py-3 px-4">Ngày {r.dayOfMonth}</td>
-                    <td className="py-3 px-4 font-mono text-slate-500">{r.lastAppliedMonth || "—"}</td>
+                    <td className="py-3 px-4 text-slate-700 dark:text-slate-300">Ngày {r.dayOfMonth}</td>
+                    <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">{r.lastAppliedMonth || "—"}</td>
                     <td className="py-3 px-4">
                       <button
                         onClick={() => updateRecurringRule(r.id, { isActive: !r.isActive })}
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer ${
-                          r.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                          r.isActive ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                         }`}
                       >
                         {r.isActive ? "ACTIVE" : "PAUSED"}
@@ -1261,7 +1270,7 @@ export function DataAdminView() {
                           applyRecurringRule(r.id, budgetMonthFilter);
                           flashToast(`Đã ghi sổ "${r.name}" vào kỳ ${budgetMonthFilter}.`);
                         }}
-                        className="px-2 py-1 mr-1 rounded bg-blue-50 text-blue-700 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                        className="px-2 py-1 mr-1 rounded bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                       >
                         <Repeat className="w-3 h-3" />
                         Ghi sổ
@@ -1269,7 +1278,7 @@ export function DataAdminView() {
                       <button
                         onClick={() => openModal({ kind: "recurring", item: r })}
                         aria-label={`Sửa quy tắc ${r.name}`}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -1284,7 +1293,7 @@ export function DataAdminView() {
                           })
                         }
                         aria-label={`Xóa quy tắc ${r.name}`}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1304,14 +1313,14 @@ export function DataAdminView() {
           onClick={() => setModal(null)}
         >
           <div
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-[#DCE4EE] space-y-4"
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 border border-[#DCE4EE] dark:border-slate-800 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-base font-bold text-[#172B4D]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                 {modal.item ? "Chỉnh sửa bản ghi" : "Thêm bản ghi mới"}
               </h3>
-              <button onClick={() => setModal(null)} className="text-slate-400 p-1 cursor-pointer">
+              <button onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1320,12 +1329,12 @@ export function DataAdminView() {
               {modal.kind === "budget" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Danh mục chi</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Danh mục chi</label>
                     <select
                       disabled={Boolean(modal.item)}
                       value={fCategoryId}
                       onChange={(e) => setFCategoryId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                     >
                       {categories
                         .filter((c) => c.type === "EXPENSE")
@@ -1337,23 +1346,23 @@ export function DataAdminView() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tháng áp dụng</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tháng áp dụng</label>
                     <input
                       type="month"
                       disabled={Boolean(modal.item)}
                       value={fMonth}
                       onChange={(e) => setFMonth(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mức (VND)</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Hạn mức (VND)</label>
                     <input
                       type="text"
                       required
                       value={fAmount}
                       onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-black"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-black text-slate-800 dark:text-slate-100"
                     />
                   </div>
                 </>
@@ -1362,43 +1371,43 @@ export function DataAdminView() {
               {modal.kind === "goal" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên mục tiêu</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên mục tiêu</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Số tiền mục tiêu</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Số tiền mục tiêu</label>
                       <input
                         type="text"
                         required
                         value={fAmount}
                         onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Đã tích lũy</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Đã tích lũy</label>
                       <input
                         type="text"
                         value={fAmount2}
                         onChange={(e) => setFAmount2(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mục tiêu</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Hạn mục tiêu</label>
                     <input
                       type="date"
                       value={fDate1}
                       onChange={(e) => setFDate1(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                 </>
@@ -1411,7 +1420,7 @@ export function DataAdminView() {
                       type="button"
                       onClick={() => setFType("BORROW")}
                       className={`py-2 rounded-lg text-xs font-bold border cursor-pointer ${
-                        fType === "BORROW" ? "bg-rose-600 text-white border-rose-600" : "bg-slate-50 text-slate-600 border-slate-200"
+                        fType === "BORROW" ? "bg-rose-600 text-white border-rose-600" : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                       }`}
                     >
                       Đi vay
@@ -1420,70 +1429,70 @@ export function DataAdminView() {
                       type="button"
                       onClick={() => setFType("LEND")}
                       className={`py-2 rounded-lg text-xs font-bold border cursor-pointer ${
-                        fType === "LEND" ? "bg-blue-600 text-white border-blue-600" : "bg-slate-50 text-slate-600 border-slate-200"
+                        fType === "LEND" ? "bg-blue-600 text-white border-blue-600" : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                       }`}
                     >
                       Cho vay
                     </button>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên khoản nợ</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên khoản nợ</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Tổng gốc (VND)</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tổng gốc (VND)</label>
                       <input
                         type="text"
                         required
                         value={fAmount}
                         onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Đã trả/thu</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Đã trả/thu</label>
                       <input
                         type="text"
                         value={fAmount2}
                         onChange={(e) => setFAmount2(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Lãi %</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Lãi %</label>
                       <input
                         type="number"
                         step="0.1"
                         value={fNumber1}
                         onChange={(e) => setFNumber1(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Ngày vay</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Ngày vay</label>
                       <input
                         type="date"
                         value={fDate1}
                         onChange={(e) => setFDate1(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Đáo hạn</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Đáo hạn</label>
                       <input
                         type="date"
                         value={fDate2}
                         onChange={(e) => setFDate2(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
@@ -1493,22 +1502,22 @@ export function DataAdminView() {
               {modal.kind === "investment" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên tài sản đầu tư</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên tài sản đầu tư</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Loại</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Loại</label>
                       <select
                         value={fType}
                         onChange={(e) => setFType(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         <option value="GOLD">Vàng</option>
                         <option value="SAVINGS">Tiết kiệm</option>
@@ -1517,33 +1526,33 @@ export function DataAdminView() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Ngày bắt đầu</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Ngày bắt đầu</label>
                       <input
                         type="date"
                         value={fDate1}
                         onChange={(e) => setFDate1(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Vốn gốc (VND)</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Vốn gốc (VND)</label>
                       <input
                         type="text"
                         required
                         value={fAmount}
                         onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Giá trị hiện tại</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Giá trị hiện tại</label>
                       <input
                         type="text"
                         value={fAmount2}
                         onChange={(e) => setFAmount2(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-blue-700"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-blue-700 dark:text-blue-400"
                       />
                     </div>
                   </div>
@@ -1553,23 +1562,23 @@ export function DataAdminView() {
               {modal.kind === "account" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên tài khoản / Ví</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên tài khoản / Ví</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Loại</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Loại</label>
                       <select
                         disabled={Boolean(modal.item)}
                         value={fType}
                         onChange={(e) => setFType(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         <option value="BANK">BANK</option>
                         <option value="CREDIT_CARD">CREDIT_CARD</option>
@@ -1578,11 +1587,11 @@ export function DataAdminView() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Chủ sở hữu</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Chủ sở hữu</label>
                       <select
                         value={fMemberId}
                         onChange={(e) => setFMemberId(e.target.value as FamilyMember)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         <option value="HUSBAND">👨 {settings.husbandName}</option>
                         <option value="WIFE">👩 {settings.wifeName}</option>
@@ -1591,45 +1600,45 @@ export function DataAdminView() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Số dư đầu kỳ (VND)</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Số dư đầu kỳ (VND)</label>
                     <input
                       type="text"
                       value={fAmount}
                       onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   {fType === "CREDIT_CARD" && (
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mức</label>
+                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Hạn mức</label>
                         <input
                           type="text"
                           value={fAmount2}
                           onChange={(e) => setFAmount2(formatMoneyInput(e.target.value))}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold"
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-600 mb-1">Sao kê</label>
+                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Sao kê</label>
                         <input
                           type="number"
                           min={1}
                           max={28}
                           value={fNumber1}
                           onChange={(e) => setFNumber1(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold"
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-600 mb-1">Đáo hạn</label>
+                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Đáo hạn</label>
                         <input
                           type="number"
                           min={1}
                           max={28}
                           value={fNumber2}
                           onChange={(e) => setFNumber2(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold"
+                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                         />
                       </div>
                     </div>
@@ -1640,34 +1649,34 @@ export function DataAdminView() {
               {modal.kind === "category" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên danh mục</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên danh mục</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Loại</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Loại</label>
                       <select
                         value={fType}
                         onChange={(e) => setFType(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         <option value="EXPENSE">EXPENSE</option>
                         <option value="INCOME">INCOME</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Màu hiển thị</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Màu hiển thị</label>
                       <input
                         type="color"
                         value={fColor}
                         onChange={(e) => setFColor(e.target.value)}
-                        className="w-full h-9 rounded-lg border border-slate-200 cursor-pointer"
+                        className="w-full h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent cursor-pointer"
                       />
                     </div>
                   </div>
@@ -1677,56 +1686,56 @@ export function DataAdminView() {
               {modal.kind === "recurring" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Tên quy tắc</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên quy tắc</label>
                     <input
                       type="text"
                       required
                       value={fName}
                       onChange={(e) => setFName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Số tiền</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Số tiền</label>
                       <input
                         type="text"
                         required
                         value={fAmount}
                         onChange={(e) => setFAmount(formatMoneyInput(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Ngày trong tháng</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Ngày trong tháng</label>
                       <input
                         type="number"
                         min={1}
                         max={28}
                         value={fNumber1}
                         onChange={(e) => setFNumber1(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Loại</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Loại</label>
                       <select
                         value={fType}
                         onChange={(e) => setFType(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         <option value="EXPENSE">EXPENSE</option>
                         <option value="INCOME">INCOME</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Tài khoản</label>
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tài khoản</label>
                       <select
                         value={fAccountId}
                         onChange={(e) => setFAccountId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                       >
                         {accounts.map((a) => (
                           <option key={a.id} value={a.id}>
@@ -1743,7 +1752,7 @@ export function DataAdminView() {
                 <button
                   type="button"
                   onClick={() => setModal(null)}
-                  className="flex-1 py-2.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer"
+                  className="flex-1 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold cursor-pointer"
                 >
                   Hủy
                 </button>
@@ -1766,11 +1775,11 @@ export function DataAdminView() {
           onClick={() => setPayDebtTarget(null)}
         >
           <div
-            className="w-full max-w-sm bg-white rounded-2xl p-6 border border-[#DCE4EE] space-y-3"
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-6 border border-[#DCE4EE] dark:border-slate-800 space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <Coins className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+              <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>{payDebtTarget.type === "LEND" ? "Thu nợ" : "Trả nợ"}: {payDebtTarget.name}</span>
             </h3>
             <form
@@ -1792,12 +1801,12 @@ export function DataAdminView() {
                 value={payDebtAmt}
                 onChange={(e) => setPayDebtAmt(formatMoneyInput(e.target.value))}
                 placeholder="Số tiền VND"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 dark:text-slate-100"
               />
               <select
                 value={payDebtAccId}
                 onChange={(e) => setPayDebtAccId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
               >
                 <option value="">Chỉ cập nhật sổ nợ</option>
                 {accounts
@@ -1812,13 +1821,13 @@ export function DataAdminView() {
                 <button
                   type="button"
                   onClick={() => setPayDebtTarget(null)}
-                  className="flex-1 py-2 rounded-lg bg-slate-100 text-xs font-bold text-slate-600 cursor-pointer"
+                  className="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-xs font-bold text-white cursor-pointer"
+                  className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white cursor-pointer"
                 >
                   Xác nhận
                 </button>
@@ -1851,10 +1860,36 @@ export function DataAdminView() {
         cancelLabel="Hủy"
         isDanger={true}
         onConfirm={() => {
-          pendingDelete?.onConfirm();
+          const target = pendingDelete;
           setPendingDelete(null);
+          if (!target) return;
+          if (
+            target.requireStepUp &&
+            settings.requireAuthForDangerActions &&
+            hasPasscodeProtection
+          ) {
+            setPendingStepUpAction({
+              title: "Xác thực xóa hàng loạt",
+              description: target.label,
+              onVerified: target.onConfirm,
+            });
+          } else {
+            target.onConfirm();
+          }
         }}
         onCancel={() => setPendingDelete(null)}
+      />
+
+      <StepUpAuthModal
+        isOpen={pendingStepUpAction !== null}
+        title={pendingStepUpAction?.title || "Xác thực thao tác"}
+        description={pendingStepUpAction?.description || ""}
+        onVerified={() => {
+          const act = pendingStepUpAction;
+          setPendingStepUpAction(null);
+          act?.onVerified();
+        }}
+        onCancel={() => setPendingStepUpAction(null)}
       />
     </div>
   );

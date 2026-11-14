@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Heart,
   Lock,
+  Building2,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -122,6 +123,11 @@ export function Sidebar() {
               ? { text: `${activeDebtsCount}`, variant: "info" }
               : undefined,
         },
+        {
+          id: "skyone",
+          label: "Phú Đông SKYONE",
+          icon: Building2,
+        },
       ],
     },
     {
@@ -145,7 +151,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-blue-900/40 shadow-xl shadow-blue-950/20 sticky top-0 h-screen select-none ${
+      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-blue-900/40 dark:border-slate-800 shadow-xl shadow-blue-950/20 sticky top-0 h-screen select-none ${
         isCollapsed ? "w-20" : "w-64"
       }`}
     >
@@ -154,7 +160,7 @@ export function Sidebar() {
         onClick={toggleCollapse}
         aria-label={isCollapsed ? "Mở rộng menu" : "Thu gọn menu"}
         title={isCollapsed ? "Mở rộng menu" : "Thu gọn menu"}
-        className="absolute -right-3.5 top-7 z-40 w-7 h-7 rounded-full bg-blue-600 border-2 border-white text-white flex items-center justify-center shadow-lg hover:bg-blue-500 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+        className="absolute -right-3.5 top-7 z-40 w-7 h-7 rounded-full bg-blue-600 border-2 border-white dark:border-slate-900 text-white flex items-center justify-center shadow-lg hover:bg-blue-500 hover:scale-110 active:scale-95 transition-all cursor-pointer"
       >
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -198,15 +204,15 @@ export function Sidebar() {
                     onClick={() => setActiveTab(item.id)}
                     className={`w-full flex items-center gap-3.5 px-3 py-2.5 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
                       isActive
-                        ? "bg-white text-blue-900 shadow-md shadow-blue-950/25 font-black"
-                        : "text-blue-100 hover:bg-white/10 hover:text-white hover:translate-x-1"
+                        ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md shadow-blue-950/25 font-black"
+                        : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white hover:translate-x-1"
                     } ${isCollapsed ? "justify-center px-0 hover:translate-x-0" : ""}`}
                   >
                     <Icon
                       className={`w-5 h-5 shrink-0 transition-transform ${
                         isActive
-                          ? "text-blue-700 scale-110"
-                          : "text-blue-200 group-hover:text-white"
+                          ? "text-blue-700 dark:text-white scale-110"
+                          : "text-blue-200 dark:text-slate-400 group-hover:text-white"
                       }`}
                     />
 

@@ -27,6 +27,11 @@ import {
   RecurringRule,
   AuthMemberId,
   MemberAuthConfig,
+  MortgageContract,
+  MortgagePaidInstallmentRecord,
+  MortgagePrepayStrategy,
+  MortgageRateAdjustment,
+  ThemeMode,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -36,6 +41,13 @@ import {
   exportTransactionsToCsv,
   importDataFromJsonV3,
   recalculateAccountBalances,
+  buildSyncBundleJson,
+  parseSyncBundleText,
+  previewMergeDiff,
+  mergeFinanceData,
+  MergeDiffPreview,
+  MergeOptions,
+  StoredAppStateV3,
 } from "@/lib/storage";
 import { getCurrentMonthKey } from "@/lib/formatters";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
@@ -63,6 +75,12 @@ import {
   hasAnyAppPasscode,
   getMemberAuthConfig,
 } from "@/lib/authSecurity";
+import {
+  createDefaultSkyOneLoan,
+  generateMortgageSchedule,
+  getTodayIsoDate,
+  simulatePrepayment,
+} from "@/lib/mortgageEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { supabaseService } from "@/lib/supabaseService";
 
@@ -72,6 +90,7 @@ export type NavTab =
   | "accounts"
   | "planning"
   | "debts_invest"
+  | "skyone"
   | "data_admin"
   | "guide"
   | "settings";
@@ -134,7 +153,10 @@ interface FinanceContextType {
   activePerspective: PerspectiveMode;
   setActivePerspective: (mode: PerspectiveMode) => void;
 
-  // Chế độ riêng tư, /login & Khóa bảo mật đa thành viên
+  // Chế độ sáng/tối & Riêng tư, /login & Khóa bảo mật đa thành viên
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+  toggleThemeMode: () => void;
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
   isAppLocked: boolean;
@@ -214,6 +236,27 @@ interface FinanceContextType {
   applyRecurringRule: (id: string, targetMonth?: string) => Transaction | null;
   applyAllPendingRecurringRules: (targetMonth?: string) => number;
 
+  // Quản lý Vay căn hộ Phú Đông SKYONE
+  skyoneLoan: MortgageContract;
+  updateSkyOneContract: (patch: Partial<MortgageContract>) => void;
+  confirmSkyOnePeriods: (
+    periods: number[],
+    options?: { linkAccountId?: string; paidAt?: string; note?: string }
+  ) => number;
+  undoSkyOnePeriod: (period: number) => void;
+  addSkyOnePrepayment: (input: {
+    amount: number;
+    afterPeriod?: number;
+    strategy: MortgagePrepayStrategy;
+    date: string;
+    note?: string;
+    linkAccountId?: string;
+  }) => void;
+  deleteSkyOnePrepayment: (id: string) => void;
+  addSkyOneRateAdjustment: (adj: Omit<MortgageRateAdjustment, "id">) => void;
+  deleteSkyOneRateAdjustment: (id: string) => void;
+  resetSkyOneLoan: () => void;
+
   // Cài đặt & Sao lưu
   updateSettings: (settings: Partial<AppSettings>) => void;
   markNotificationRead: (id: string) => void;
@@ -221,6 +264,17 @@ interface FinanceContextType {
   exportBackup: () => void;
   exportCsvReport: () => void;
   importBackup: (file: File) => Promise<{ success: boolean; error?: string }>;
+  getSyncBundleJson: () => string;
+  previewSyncBundle: (rawText: string) => {
+    success: boolean;
+    preview?: MergeDiffPreview;
+    parsedState?: StoredAppStateV3;
+    error?: string;
+  };
+  importSyncBundle: (
+    incoming: StoredAppStateV3,
+    options: MergeOptions
+  ) => { success: boolean; diff: MergeDiffPreview };
 
   // Dữ liệu tính toán & Helpers
   availableMonths: string[];
@@ -266,6 +320,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [investments, setInvestments] = useState<InvestmentItem[]>(DEFAULT_INVESTMENTS);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEFAULT_RECURRING_RULES);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [skyoneLoan, setSkyoneLoan] = useState<MortgageContract>(() => createDefaultSkyOneLoan());
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
@@ -327,6 +382,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setInvestments(data.investments);
     setRecurringRules(data.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(data.settings);
+    setSkyoneLoan(data.skyoneLoan || createDefaultSkyOneLoan());
 
     // Chọn tháng mặc định thông minh: ưu tiên tháng hiện tại nếu có dữ liệu, ngược lại dùng tháng gần nhất có giao dịch
     const currentKey = getCurrentMonthKey();
@@ -375,6 +431,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       investments,
       recurringRules,
       settings,
+      skyoneLoan,
     });
   }, [
     categories,
@@ -386,6 +443,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     investments,
     recurringRules,
     settings,
+    skyoneLoan,
     isLoaded,
   ]);
 
@@ -413,6 +471,40 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     (id: string) => accounts.find((a) => a.id === id),
     [accounts]
   );
+
+  // Light / Dark Mode synchronization (mặc định Light Mode)
+  const themeMode: ThemeMode = settings.themeMode === "dark" ? "dark" : "light";
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const isDark = themeMode === "dark";
+    document.documentElement.classList.toggle("dark", isDark);
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute("content", isDark ? "#0F172A" : "#1E3A8A");
+    }
+  }, [themeMode]);
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setSettings((prev) => {
+      const next = { ...prev, themeMode: mode };
+      if (isSupabaseConfigured) {
+        supabaseService.updateSettings(next);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleThemeMode = useCallback(() => {
+    setSettings((prev) => {
+      const nextMode: ThemeMode = prev.themeMode === "dark" ? "light" : "dark";
+      const next = { ...prev, themeMode: nextMode };
+      if (isSupabaseConfigured) {
+        supabaseService.updateSettings(next);
+      }
+      return next;
+    });
+  }, []);
 
   // Privacy, /login Route & Multi-Member Security Lock
   const isPrivacyMode = Boolean(settings.privacyMode);
@@ -1114,6 +1206,186 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [recurringRules, selectedMonth, addTransactionsBatch]
   );
 
+  const updateSkyOneContract = useCallback((patch: Partial<MortgageContract>) => {
+    setSkyoneLoan((prev) => ({
+      ...prev,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const confirmSkyOnePeriods = useCallback(
+    (
+      periods: number[],
+      options?: { linkAccountId?: string; paidAt?: string; note?: string }
+    ): number => {
+      if (periods.length === 0) return 0;
+      const periodSet = new Set(periods);
+      const schedule = generateMortgageSchedule(skyoneLoan);
+      const targets = schedule.rows.filter(
+        (r) => periodSet.has(r.period) && r.status !== "PAID"
+      );
+      if (targets.length === 0) return 0;
+
+      const paidDate = options?.paidAt || getTodayIsoDate();
+      let createdTxs: Transaction[] = [];
+
+      if (options?.linkAccountId) {
+        const srcAcc = accounts.find((a) => a.id === options.linkAccountId);
+        const ownerMember: FamilyMember =
+          srcAcc?.owner && srcAcc.owner !== "SHARED" ? srcAcc.owner : "HUSBAND";
+        const txInputs: TransactionInput[] = targets.map((row) => ({
+          amount: row.totalPayment,
+          date: paidDate,
+          type: "EXPENSE",
+          categoryId: "cat_expense_rent",
+          accountId: options.linkAccountId!,
+          memberId: ownerMember,
+          scope: "FAMILY",
+          tag: "DEBT",
+          note: `${skyoneLoan.projectName} · Kỳ #${row.period} (Gốc ${row.principal.toLocaleString(
+            "vi-VN"
+          )}đ + Lãi ${row.interest.toLocaleString("vi-VN")}đ)`,
+        }));
+        createdTxs = addTransactionsBatch(txInputs);
+      }
+
+      const newRecords: MortgagePaidInstallmentRecord[] = targets.map((row, idx) => ({
+        period: row.period,
+        paidAt: paidDate,
+        paidPrincipal: row.principal,
+        paidInterest: row.interest,
+        appliedRate: row.appliedRate,
+        linkedTransactionId: createdTxs[idx]?.id,
+        note: options?.note,
+      }));
+
+      setSkyoneLoan((prev) => {
+        const existingPeriods = new Set(prev.paidRecords.map((r) => r.period));
+        const merged = [
+          ...prev.paidRecords,
+          ...newRecords.filter((r) => !existingPeriods.has(r.period)),
+        ].sort((a, b) => a.period - b.period);
+        return {
+          ...prev,
+          paidRecords: merged,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      return newRecords.length;
+    },
+    [skyoneLoan, accounts, addTransactionsBatch]
+  );
+
+  const undoSkyOnePeriod = useCallback((period: number) => {
+    setSkyoneLoan((prev) => ({
+      ...prev,
+      paidRecords: prev.paidRecords.filter((r) => r.period !== period),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const addSkyOnePrepayment = useCallback(
+    (input: {
+      amount: number;
+      afterPeriod?: number;
+      strategy: MortgagePrepayStrategy;
+      date: string;
+      note?: string;
+      linkAccountId?: string;
+    }) => {
+      const sim = simulatePrepayment(skyoneLoan, {
+        amount: input.amount,
+        afterPeriod: input.afterPeriod,
+        strategy: input.strategy,
+        referenceDate: input.date,
+      });
+
+      const appliedAmount = Math.min(
+        Math.max(0, Math.round(input.amount)),
+        sim.remainingBalanceBefore
+      );
+      if (appliedAmount <= 0) return;
+
+      let linkedTransactionId: string | undefined;
+      if (input.linkAccountId) {
+        const srcAcc = accounts.find((a) => a.id === input.linkAccountId);
+        const totalOutflow = appliedAmount + sim.penaltyAmount;
+        const tx = addTransaction({
+          amount: totalOutflow,
+          date: input.date,
+          type: "EXPENSE",
+          categoryId: "cat_expense_rent",
+          accountId: input.linkAccountId,
+          memberId: srcAcc?.owner && srcAcc.owner !== "SHARED" ? srcAcc.owner : "HUSBAND",
+          scope: "FAMILY",
+          tag: "DEBT",
+          note: `Trả gốc trước hạn ${skyoneLoan.projectName}${
+            sim.penaltyAmount > 0
+              ? ` (gồm phí phạt ${sim.penaltyAmount.toLocaleString("vi-VN")}đ)`
+              : ""
+          }${input.note ? ` · ${input.note}` : ""}`,
+        });
+        linkedTransactionId = tx.id;
+      }
+
+      setSkyoneLoan((prev) => ({
+        ...prev,
+        prepayments: [
+          ...prev.prepayments,
+          {
+            id: `prepay_${Date.now()}`,
+            date: input.date,
+            afterPeriod: sim.appliedAfterPeriod,
+            amount: appliedAmount,
+            penaltyAmount: sim.penaltyAmount,
+            feePercent: sim.penaltyFeePercent,
+            strategy: input.strategy,
+            linkedTransactionId,
+            note: input.note?.trim() || undefined,
+          },
+        ].sort((a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date)),
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [skyoneLoan, accounts, addTransaction]
+  );
+
+  const deleteSkyOnePrepayment = useCallback((id: string) => {
+    setSkyoneLoan((prev) => ({
+      ...prev,
+      prepayments: prev.prepayments.filter((p) => p.id !== id),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const addSkyOneRateAdjustment = useCallback((adj: Omit<MortgageRateAdjustment, "id">) => {
+    setSkyoneLoan((prev) => ({
+      ...prev,
+      rateAdjustments: [
+        ...prev.rateAdjustments,
+        {
+          ...adj,
+          id: `rate_adj_${Date.now()}`,
+        },
+      ].sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const deleteSkyOneRateAdjustment = useCallback((id: string) => {
+    setSkyoneLoan((prev) => ({
+      ...prev,
+      rateAdjustments: prev.rateAdjustments.filter((r) => r.id !== id),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const resetSkyOneLoan = useCallback(() => {
+    setSkyoneLoan(createDefaultSkyOneLoan());
+  }, []);
+
   const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...newSettings };
@@ -1135,6 +1407,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setInvestments(seeded.investments);
     setRecurringRules(seeded.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(seeded.settings);
+    setSkyoneLoan(seeded.skyoneLoan);
     setSelectedMonth("2026-10");
     setActivePerspective("ALL");
     setIsAppLocked(false);
@@ -1151,8 +1424,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       investments,
       recurringRules,
       settings,
+      skyoneLoan,
     });
-  }, [categories, accounts, transactions, budgets, goals, debts, investments, recurringRules, settings]);
+  }, [
+    categories,
+    accounts,
+    transactions,
+    budgets,
+    goals,
+    debts,
+    investments,
+    recurringRules,
+    settings,
+    skyoneLoan,
+  ]);
 
   const exportCsvReport = useCallback(() => {
     exportTransactionsToCsv(
@@ -1178,6 +1463,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setInvestments(res.data.investments);
         setRecurringRules(res.data.recurringRules || DEFAULT_RECURRING_RULES);
         setSettings(res.data.settings);
+        setSkyoneLoan(res.data.skyoneLoan || createDefaultSkyOneLoan());
         saveStoredDataV3(res.data);
 
         if (isSupabaseConfigured) {
@@ -1195,6 +1481,124 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return { success: false, error: res.error || "Nhập file thất bại" };
     },
     []
+  );
+
+  const getSyncBundleJson = useCallback(() => {
+    return buildSyncBundleJson({
+      categories,
+      accounts,
+      transactions,
+      budgets,
+      goals,
+      debts,
+      investments,
+      recurringRules,
+      settings,
+      skyoneLoan,
+    });
+  }, [
+    categories,
+    accounts,
+    transactions,
+    budgets,
+    goals,
+    debts,
+    investments,
+    recurringRules,
+    settings,
+    skyoneLoan,
+  ]);
+
+  const previewSyncBundle = useCallback(
+    (rawText: string) => {
+      const parsed = parseSyncBundleText(rawText);
+      if (!parsed.success || !parsed.data) {
+        return { success: false, error: parsed.error || "Gói đồng bộ không hợp lệ." };
+      }
+      const preview = previewMergeDiff(
+        {
+          categories,
+          accounts,
+          transactions,
+          budgets,
+          goals,
+          debts,
+          investments,
+          recurringRules,
+          settings,
+          skyoneLoan,
+        },
+        parsed.data
+      );
+      return { success: true, preview, parsedState: parsed.data };
+    },
+    [
+      categories,
+      accounts,
+      transactions,
+      budgets,
+      goals,
+      debts,
+      investments,
+      recurringRules,
+      settings,
+      skyoneLoan,
+    ]
+  );
+
+  const importSyncBundle = useCallback(
+    (incoming: StoredAppStateV3, options: MergeOptions) => {
+      const currentState: StoredAppStateV3 = {
+        categories,
+        accounts,
+        transactions,
+        budgets,
+        goals,
+        debts,
+        investments,
+        recurringRules,
+        settings,
+        skyoneLoan,
+      };
+      const diff = previewMergeDiff(currentState, incoming);
+      const nextState = mergeFinanceData(currentState, incoming, options);
+
+      setCategories(nextState.categories);
+      setAccounts(nextState.accounts);
+      setTransactions(nextState.transactions);
+      setBudgets(nextState.budgets);
+      setGoals(nextState.goals);
+      setDebts(nextState.debts);
+      setInvestments(nextState.investments);
+      setRecurringRules(nextState.recurringRules);
+      setSettings(nextState.settings);
+      setSkyoneLoan(nextState.skyoneLoan);
+      saveStoredDataV3(nextState);
+
+      if (isSupabaseConfigured) {
+        nextState.accounts.forEach((a) => supabaseService.upsertAccount(a));
+        nextState.transactions.forEach((t) => supabaseService.upsertTransaction(t));
+        nextState.budgets.forEach((b) => supabaseService.upsertBudget(b));
+        nextState.goals.forEach((g) => supabaseService.upsertGoal(g));
+        nextState.debts.forEach((d) => supabaseService.upsertDebt(d));
+        nextState.investments.forEach((i) => supabaseService.upsertInvestment(i));
+        supabaseService.updateSettings(nextState.settings);
+      }
+
+      return { success: true, diff };
+    },
+    [
+      categories,
+      accounts,
+      transactions,
+      budgets,
+      goals,
+      debts,
+      investments,
+      recurringRules,
+      settings,
+      skyoneLoan,
+    ]
   );
 
   // Thông tin 2 thẻ BIDV Credit (chuẩn hóa theo 30% guardrail & ngày sao kê/đáo hạn cấu hình)
@@ -1605,6 +2009,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     syncWithCloud,
     activePerspective,
     setActivePerspective,
+    themeMode,
+    setThemeMode,
+    toggleThemeMode,
     isPrivacyMode,
     togglePrivacyMode,
     isAppLocked,
@@ -1666,12 +2073,24 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     deleteRecurringRule,
     applyRecurringRule,
     applyAllPendingRecurringRules,
+    skyoneLoan,
+    updateSkyOneContract,
+    confirmSkyOnePeriods,
+    undoSkyOnePeriod,
+    addSkyOnePrepayment,
+    deleteSkyOnePrepayment,
+    addSkyOneRateAdjustment,
+    deleteSkyOneRateAdjustment,
+    resetSkyOneLoan,
     updateSettings,
     markNotificationRead,
     resetToMockData,
     exportBackup,
     exportCsvReport,
     importBackup,
+    getSyncBundleJson,
+    previewSyncBundle,
+    importSyncBundle,
     availableMonths,
     summary,
     budgetSummary,

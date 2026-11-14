@@ -38,6 +38,13 @@ export function formatShortVND(amount: number): string {
   return `${amount}`;
 }
 
+export function formatShortVNDMasked(amount: number, isPrivacyMode: boolean): string {
+  if (isPrivacyMode) {
+    return "••••";
+  }
+  return formatShortVND(amount);
+}
+
 /**
  * Định dạng ngày ISO (YYYY-MM-DD) sang hiển thị người dùng (DD/MM/YYYY)
  */

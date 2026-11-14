@@ -26,6 +26,8 @@ import {
   ScanFace,
   ImagePlus,
   KeyRound,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -60,6 +62,8 @@ export function SettingsView({
     syncWithCloud,
     settings,
     updateSettings,
+    themeMode,
+    setThemeMode,
     isPrivacyMode,
     togglePrivacyMode,
     categories,
@@ -261,26 +265,100 @@ export function SettingsView({
   return (
     <div className="max-w-3xl mx-auto space-y-5 animate-in fade-in duration-200">
       {savedToast && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-2">
+        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
           <Check className="w-4 h-4 shrink-0" />
           <span>{savedToast}</span>
         </div>
       )}
 
+      {/* 0. Giao diện Sáng / Tối */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4 transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+              {themeMode === "dark" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
+                Giao Diện Hiển Thị (Light / Dark Mode)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Đồng bộ màu sắc toàn trang, biểu đồ và sổ vay Phú Đông SKYONE theo lựa chọn của bạn
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+            {themeMode === "dark" ? "Đang bật Dark Mode" : "Đang bật Light Mode"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            data-testid="settings-theme-light"
+            onClick={() => {
+              setThemeMode("light");
+              flashSaved("Đã chuyển sang Light Mode (Nền sáng mặc định).");
+            }}
+            className={`min-h-[48px] p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
+              themeMode === "light"
+                ? "bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-[#1E3A8A] dark:text-blue-200 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-800/70 border-[#DCE4EE] dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-amber-500 shrink-0">
+                <Sun className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-extrabold">Light Mode (Sáng)</p>
+                <p className="text-[11px] opacity-80">Mặc định · Tương phản cao ban ngày</p>
+              </div>
+            </div>
+            {themeMode === "light" && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+          </button>
+
+          <button
+            type="button"
+            data-testid="settings-theme-dark"
+            onClick={() => {
+              setThemeMode("dark");
+              flashSaved("Đã chuyển sang Dark Mode (Dịu mắt ban đêm).");
+            }}
+            className={`min-h-[48px] p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
+              themeMode === "dark"
+                ? "bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-[#1E3A8A] dark:text-blue-200 shadow-xs"
+                : "bg-slate-50 dark:bg-slate-800/70 border-[#DCE4EE] dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-amber-300 shrink-0">
+                <Moon className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-extrabold">Dark Mode (Tối)</p>
+                <p className="text-[11px] opacity-80">Nền Slate dịu mắt buổi tối</p>
+              </div>
+            </div>
+            {themeMode === "dark" && <Check className="w-4 h-4 text-blue-400 shrink-0" />}
+          </button>
+        </div>
+      </div>
+
       {/* 1. Hồ sơ Gia đình & Tỷ lệ Quỹ Chung */}
       <form
         onSubmit={handleSaveProfile}
-        className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4"
+        className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4"
       >
-        <div className="flex items-center gap-2.5 pb-3 border-b border-[#E9EEF5]">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <Users className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+            <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
               Thành Viên Tổ Ấm & Tỷ Lệ Quỹ Chung
             </h3>
-            <p className="text-[11px] text-slate-500 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
               Tùy biến tên gọi hiển thị và tỷ lệ chia khoản chi chung hàng tháng
             </p>
           </div>
@@ -288,29 +366,29 @@ export function SettingsView({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Tên thành viên 1 (Chồng)</label>
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên thành viên 1 (Chồng)</label>
             <input
               type="text"
               value={husbandName}
               onChange={(e) => setHusbandName(e.target.value)}
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-sm font-semibold text-slate-800"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1">Tên thành viên 2 (Vợ)</label>
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên thành viên 2 (Vợ)</label>
             <input
               type="text"
               value={wifeName}
               onChange={(e) => setWifeName(e.target.value)}
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-sm font-semibold text-slate-800"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100"
             />
           </div>
         </div>
 
-        <div className="p-3.5 bg-slate-50 border border-[#E9EEF5] rounded-xl space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 rounded-xl space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
             <span>Tỷ lệ chia chi tiêu chung (My Home)</span>
-            <span className="text-blue-600">
+            <span className="text-blue-600 dark:text-blue-400">
               {husbandName}: {splitRatio}% · {wifeName}: {100 - splitRatio}%
             </span>
           </div>
@@ -336,17 +414,17 @@ export function SettingsView({
       </form>
 
       {/* 2. Phiên bản & Cập nhật PWA Di động */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E9EEF5]">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
               <Smartphone className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Phiên Bản & Cập Nhật Ứng Dụng
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 v{currentVersion} · Phát hành {currentReleaseDate} ·{" "}
                 {isStandalone ? "Chế độ PWA đã cài đặt" : "Trình duyệt Web"}
               </p>
@@ -356,12 +434,12 @@ export function SettingsView({
           <span
             className={`text-xs font-bold ${
               hasUpdate
-                ? "text-blue-600"
+                ? "text-blue-600 dark:text-blue-400"
                 : !isOnline || pwaStatus === "OFFLINE"
-                ? "text-amber-600"
+                ? "text-amber-600 dark:text-amber-400"
                 : pwaStatus === "ERROR"
-                ? "text-rose-600"
-                : "text-emerald-600"
+                ? "text-rose-600 dark:text-rose-400"
+                : "text-emerald-600 dark:text-emerald-400"
             }`}
           >
             {hasUpdate
@@ -376,18 +454,18 @@ export function SettingsView({
 
         {/* Thẻ trạng thái bản mới hoặc kiểm tra gần nhất */}
         {hasUpdate && latestRelease ? (
-          <div className="p-3.5 rounded-xl bg-blue-50/90 border border-blue-200 space-y-2.5">
+          <div className="p-3.5 rounded-xl bg-blue-50/90 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 space-y-2.5">
             <div className="flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div className="space-y-1 min-w-0">
-                <div className="text-xs font-extrabold text-[#1E3A8A]">
+                <div className="text-xs font-extrabold text-[#1E3A8A] dark:text-blue-200">
                   Phiên bản v{latestRelease.version} đã sẵn sàng cài đặt
                 </div>
-                <p className="text-xs text-slate-700 font-medium">{latestRelease.title}</p>
+                <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">{latestRelease.title}</p>
                 <ul className="space-y-1 pt-0.5">
                   {latestRelease.highlights.slice(0, 3).map((item, idx) => (
-                    <li key={idx} className="text-[11px] text-slate-600 flex items-start gap-1.5">
-                      <span className="text-blue-600 font-bold">•</span>
+                    <li key={idx} className="text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-1.5">
+                      <span className="text-blue-600 dark:text-blue-400 font-bold">•</span>
                       <span>{item}</span>
                     </li>
                   ))}
@@ -396,19 +474,19 @@ export function SettingsView({
             </div>
           </div>
         ) : (
-          <div className="p-3 rounded-xl bg-slate-50 border border-[#E9EEF5] flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-slate-600 font-medium">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-medium">
               {!isOnline || pwaStatus === "OFFLINE" ? (
-                <WifiOff className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               ) : (
-                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               )}
               <span>
                 {errorMessage ||
                   "Ứng dụng tự kiểm tra bản mới mỗi khi bạn mở lại từ màn hình chính."}
               </span>
             </div>
-            <span className="text-[11px] text-slate-500 font-semibold">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
               Kiểm tra: {formatCheckTimestamp(lastCheckedAt)}
             </span>
           </div>
@@ -436,28 +514,28 @@ export function SettingsView({
             type="button"
             onClick={() => void checkForUpdate({ silent: false })}
             disabled={isChecking || pwaStatus === "UPDATING"}
-            className="min-h-[44px] flex-1 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-[#DCE4EE] text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            className="min-h-[44px] flex-1 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
-            <RefreshCw className={`w-4 h-4 text-blue-600 ${isChecking ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 text-blue-600 dark:text-blue-400 ${isChecking ? "animate-spin" : ""}`} />
             <span>{isChecking ? "Đang dò bản mới..." : "Kiểm tra cập nhật"}</span>
           </button>
 
           <button
             type="button"
             onClick={openReleaseNotes}
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-[#DCE4EE] text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
           >
-            <FileText className="w-4 h-4 text-slate-500" />
+            <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Xem thay đổi</span>
           </button>
         </div>
 
         {/* Hướng dẫn nhận cập nhật trên điện thoại Android & iPhone */}
-        <div className="border-t border-[#E9EEF5] pt-3">
+        <div className="border-t border-[#E9EEF5] dark:border-slate-800 pt-3">
           <button
             type="button"
             onClick={() => setShowMobileUpdateGuide((prev) => !prev)}
-            className="w-full flex items-center justify-between text-xs font-bold text-slate-700 hover:text-blue-600 cursor-pointer py-1"
+            className="w-full flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer py-1"
           >
             <span>
               Hướng dẫn nhận thông báo & cài bản mới trên{" "}
@@ -471,7 +549,7 @@ export function SettingsView({
           </button>
 
           {showMobileUpdateGuide && (
-            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50 border border-[#E9EEF5] space-y-2 text-xs text-slate-600 leading-relaxed">
+            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 space-y-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               <p>
                 <strong>1. Tự động khi mở app:</strong> Mỗi lần bạn mở HOME MONI từ biểu tượng màn hình chính (hoặc quay lại từ đa nhiệm), ứng dụng âm thầm đối chiếu phiên bản mới nhất trên máy chủ.
               </p>
@@ -487,17 +565,17 @@ export function SettingsView({
       </div>
 
       {/* 3. Trang /login, Bảo mật 2 Vợ Chồng, Face ID & Hình Nền Cá Nhân */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[#E9EEF5]">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Màn Hình Khóa /login, Face ID & Ảnh Nền Riêng
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Thiết lập mã Code 4–6 số, Face ID và hình nền màn hình khóa riêng cho từng người
               </p>
             </div>
@@ -509,8 +587,8 @@ export function SettingsView({
               onClick={togglePrivacyMode}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
                 isPrivacyMode
-                  ? "bg-amber-50 border-amber-200 text-amber-800"
-                  : "bg-slate-100 border-slate-200 text-slate-600"
+                  ? "bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+                  : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
               }`}
             >
               {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -529,7 +607,7 @@ export function SettingsView({
         </div>
 
         {/* Bộ chọn hồ sơ cần tùy chỉnh */}
-        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-[#E9EEF5]">
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-[#E9EEF5] dark:border-slate-700">
           {(
             [
               { id: "HUSBAND" as AuthMemberId, emoji: "👨", label: settings.husbandName },
@@ -549,15 +627,15 @@ export function SettingsView({
                 }}
                 className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   isActive
-                    ? "bg-white text-[#1E3A8A] shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-white dark:bg-slate-900 text-[#1E3A8A] dark:text-blue-300 shadow-xs"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                 }`}
               >
                 <span>{item.emoji}</span>
                 <span className="truncate">{item.label}</span>
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
-                    configured ? "bg-emerald-500" : "bg-slate-300"
+                    configured ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"
                   }`}
                   title={configured ? "Đã đặt mã Code" : "Chưa đặt mã Code"}
                 />
@@ -568,15 +646,15 @@ export function SettingsView({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Cột trái: Mã Code 4-6 số & Face ID */}
-          <div className="p-4 rounded-xl bg-slate-50/80 border border-[#E9EEF5] space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-[#E9EEF5] dark:border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-blue-600" />
+              <span className="text-xs font-bold text-[#172B4D] dark:text-slate-100 flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 Mã Code ({activeSecurityName})
               </span>
               <span
                 className={`text-[11px] font-bold ${
-                  activeMemberHasCode ? "text-emerald-600" : "text-amber-600"
+                  activeMemberHasCode ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
                 }`}
               >
                 {activeMemberHasCode ? "Đã mã hóa SHA-256" : "Chưa đặt mã"}
@@ -593,7 +671,7 @@ export function SettingsView({
                   setPasscodeInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
                 }
                 placeholder="Nhập mã Code mới (4–6 số)"
-                className="w-full bg-white border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-bold tracking-[0.25em] outline-none focus:border-blue-600"
+                className="w-full bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 tracking-[0.25em] outline-none focus:border-blue-600"
               />
               <input
                 type="password"
@@ -604,7 +682,7 @@ export function SettingsView({
                   setPasscodeConfirm(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
                 }
                 placeholder="Xác nhận lại mã Code"
-                className="w-full bg-white border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-bold tracking-[0.25em] outline-none focus:border-blue-600"
+                className="w-full bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 tracking-[0.25em] outline-none focus:border-blue-600"
               />
               <div className="flex gap-2">
                 <button
@@ -617,7 +695,7 @@ export function SettingsView({
                   <button
                     type="button"
                     onClick={handleClearMemberPasscode}
-                    className="min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-[#DCE4EE] text-xs font-bold cursor-pointer"
+                    className="min-h-[40px] px-3 py-2 rounded-lg bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold cursor-pointer"
                   >
                     Gỡ mã
                   </button>
@@ -626,13 +704,13 @@ export function SettingsView({
             </form>
 
             {/* Face ID / WebAuthn */}
-            <div className="pt-3 border-t border-[#E9EEF5] space-y-2">
+            <div className="pt-3 border-t border-[#E9EEF5] dark:border-slate-700 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
-                  <ScanFace className="w-4 h-4 text-emerald-600" />
+                <span className="text-xs font-bold text-[#172B4D] dark:text-slate-100 flex items-center gap-1.5">
+                  <ScanFace className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   Face ID / Sinh trắc học
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                   {activeSecurityConfig.webauthnCredentialId
                     ? activeSecurityConfig.webauthnDeviceLabel || "Đã liên kết"
                     : "Chưa liên kết"}
@@ -645,8 +723,8 @@ export function SettingsView({
                 disabled={isBioBusy || (!bioAvailability.supported && !activeSecurityConfig.webauthnCredentialId)}
                 className={`w-full min-h-[40px] px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 ${
                   activeSecurityConfig.webauthnCredentialId
-                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
-                    : "bg-white hover:bg-slate-100 text-slate-800 border border-[#DCE4EE]"
+                    ? "bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                    : "bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-[#DCE4EE] dark:border-slate-700"
                 }`}
               >
                 <ScanFace className="w-4 h-4" />
@@ -660,7 +738,7 @@ export function SettingsView({
               </button>
 
               {!bioAvailability.platformAuthenticatorAvailable && (
-                <p className="text-[11px] text-slate-500 leading-relaxed">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   {bioAvailability.reason ||
                     "Thiết bị này sẽ tự dùng mã Code dự phòng 4–6 số khi mở khóa."}
                 </p>
@@ -669,18 +747,18 @@ export function SettingsView({
           </div>
 
           {/* Cột phải: Hình nền màn hình khóa cá nhân */}
-          <div className="p-4 rounded-xl bg-slate-50/80 border border-[#E9EEF5] space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-[#E9EEF5] dark:border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#172B4D] flex items-center gap-1.5">
-                <ImagePlus className="w-4 h-4 text-indigo-600" />
+              <span className="text-xs font-bold text-[#172B4D] dark:text-slate-100 flex items-center gap-1.5">
+                <ImagePlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 Hình Nền Khóa ({activeSecurityName})
               </span>
-              <span className="text-[11px] font-semibold text-slate-500">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                 {activeMemberWallpaper ? "Ảnh cá nhân" : "Mặc định"}
               </span>
             </div>
 
-            <div className="relative h-32 rounded-xl overflow-hidden border border-[#DCE4EE] bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8]">
+            <div className="relative h-32 rounded-xl overflow-hidden border border-[#DCE4EE] dark:border-slate-700 bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8]">
               {activeMemberWallpaper && (
                 <img
                   src={activeMemberWallpaper}
@@ -718,9 +796,9 @@ export function SettingsView({
                 type="button"
                 onClick={() => wallpaperInputRef.current?.click()}
                 disabled={isUploadingWallpaper}
-                className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-slate-100 border border-[#DCE4EE] text-xs font-bold text-slate-800 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 inline-flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <ImagePlus className="w-4 h-4 text-blue-600" />
+                <ImagePlus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span>{isUploadingWallpaper ? "Đang tối ưu..." : "Chọn ảnh từ máy"}</span>
               </button>
 
@@ -728,7 +806,7 @@ export function SettingsView({
                 <button
                   type="button"
                   onClick={handleRemoveWallpaper}
-                  className="min-h-[40px] px-3 py-2 rounded-lg bg-white hover:bg-rose-50 border border-[#DCE4EE] text-xs font-bold text-rose-600 cursor-pointer"
+                  className="min-h-[40px] px-3 py-2 rounded-lg bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold text-rose-600 dark:text-rose-400 cursor-pointer"
                 >
                   Xóa ảnh
                 </button>
@@ -737,7 +815,7 @@ export function SettingsView({
 
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div>
-                <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                <div className="flex justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
                   <span>Độ mờ</span>
                   <span>{activeSecurityConfig.wallpaperBlur ?? 6}px</span>
                 </div>
@@ -755,7 +833,7 @@ export function SettingsView({
                 />
               </div>
               <div>
-                <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                <div className="flex justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
                   <span>Độ tối phủ</span>
                   <span>{activeSecurityConfig.wallpaperDim ?? 45}%</span>
                 </div>
@@ -777,9 +855,9 @@ export function SettingsView({
           </div>
         </div>
 
-        {/* Tùy chọn tự động khóa phiên */}
-        <div className="p-3.5 rounded-xl bg-slate-50 border border-[#E9EEF5] grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700">
+        {/* Tùy chọn tự động khóa phiên & bảo vệ thao tác nhạy cảm */}
+        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
               checked={Boolean(settings.requireAuthOnOpen ?? hasPasscodeProtection)}
@@ -789,7 +867,7 @@ export function SettingsView({
             <span>Hỏi mã khi vừa mở app</span>
           </label>
 
-          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700">
+          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
               checked={Boolean(settings.lockOnBackground)}
@@ -799,14 +877,26 @@ export function SettingsView({
             <span>Khóa khi thu gọn nền</span>
           </label>
 
+          <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.requireAuthForDangerActions)}
+              onChange={(e) =>
+                updateSettings({ requireAuthForDangerActions: e.target.checked })
+              }
+              className="w-4 h-4 accent-blue-600 rounded"
+            />
+            <span>Hỏi mã Code / Face ID khi xóa hàng loạt, Reset hoặc ghi đè</span>
+          </label>
+
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-slate-700">Tự khóa khi rảnh:</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">Tự khóa khi rảnh:</span>
             <select
               value={settings.autoLockMinutes ?? 5}
               onChange={(e) =>
                 updateSettings({ autoLockMinutes: parseInt(e.target.value, 10) })
               }
-              className="bg-white border border-[#DCE4EE] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800"
+              className="bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100"
             >
               <option value={0}>Không tự khóa</option>
               <option value={1}>1 phút</option>
@@ -818,17 +908,17 @@ export function SettingsView({
       </div>
 
       {/* 3. Quản lý Danh mục nhanh */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <Tags className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Danh Mục Thu / Chi ({categories.length})
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Thêm nhanh danh mục mới hoặc mở Data Studio để chỉnh sửa chuyên sâu
               </p>
             </div>
@@ -837,7 +927,7 @@ export function SettingsView({
           <button
             type="button"
             onClick={() => setActiveTab("data_admin")}
-            className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
           >
             <span>Mở Quản trị Dữ liệu</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -850,12 +940,12 @@ export function SettingsView({
             value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)}
             placeholder="Tên danh mục mới..."
-            className="flex-1 min-w-[160px] bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+            className="flex-1 min-w-[160px] bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
           />
           <select
             value={newCatType}
             onChange={(e) => setNewCatType(e.target.value as "EXPENSE" | "INCOME")}
-            className="bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+            className="bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
           >
             <option value="EXPENSE">Chi tiêu</option>
             <option value="INCOME">Thu nhập</option>
@@ -864,7 +954,7 @@ export function SettingsView({
             type="color"
             value={newCatColor}
             onChange={(e) => setNewCatColor(e.target.value)}
-            className="w-10 h-9 rounded-lg border border-[#DCE4EE] cursor-pointer"
+            className="w-10 h-9 rounded-lg border border-[#DCE4EE] dark:border-slate-700 bg-transparent cursor-pointer"
           />
           <button
             type="submit"
@@ -879,7 +969,7 @@ export function SettingsView({
           {categories.map((cat) => (
             <span
               key={cat.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200"
             >
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
               <span>{cat.name}</span>
@@ -888,7 +978,7 @@ export function SettingsView({
                   type="button"
                   onClick={() => deleteCategory(cat.id)}
                   title="Xóa danh mục"
-                  className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -899,18 +989,18 @@ export function SettingsView({
       </div>
 
       {/* 4. Trạng thái Lưu trữ, AI Server & Sao lưu */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center">
               <Database className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Lưu Trữ & Kết Nối Hệ Thống
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Offline-First LocalStorage (<code className="font-mono text-blue-600">HOME_MONI_DATA_V4</code>)
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Offline-First LocalStorage (<code className="font-mono text-blue-600 dark:text-blue-400">HOME_MONI_DATA_V4</code>)
               </p>
             </div>
           </div>
@@ -918,8 +1008,8 @@ export function SettingsView({
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${
               isCloudConnected
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : "bg-slate-100 text-slate-700 border-slate-200"
+                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700"
             }`}
           >
             {isCloudConnected ? "Cloud Sync Active" : "Local-First Active"}
@@ -927,11 +1017,11 @@ export function SettingsView({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="p-3 bg-slate-50 border border-[#E9EEF5] rounded-lg flex items-center justify-between">
-            <span className="font-semibold text-slate-600">Dịch vụ AI Server (/api/ai)</span>
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 rounded-lg flex items-center justify-between">
+            <span className="font-semibold text-slate-600 dark:text-slate-300">Dịch vụ AI Server (/api/ai)</span>
             <span
               className={`font-bold ${
-                aiServerReady ? "text-emerald-600" : "text-amber-600"
+                aiServerReady ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
               }`}
             >
               {aiServerReady === null
@@ -942,20 +1032,20 @@ export function SettingsView({
             </span>
           </div>
 
-          <div className="p-3 bg-slate-50 border border-[#E9EEF5] rounded-lg flex items-center justify-between">
-            <span className="font-semibold text-slate-600">Đồng bộ đám mây</span>
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 rounded-lg flex items-center justify-between">
+            <span className="font-semibold text-slate-600 dark:text-slate-300">Đồng bộ đám mây</span>
             {isCloudConnected ? (
               <button
                 type="button"
                 onClick={() => syncWithCloud()}
                 disabled={isSyncing}
-                className="inline-flex items-center gap-1 text-emerald-700 font-bold cursor-pointer"
+                className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-bold cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
                 <span>{lastSyncedAt ? lastSyncedAt.toLocaleTimeString("vi-VN") : "Đồng bộ"}</span>
               </button>
             ) : (
-              <span className="text-slate-500 font-semibold">Lưu cục bộ an toàn</span>
+              <span className="text-slate-500 dark:text-slate-400 font-semibold">Lưu cục bộ an toàn</span>
             )}
           </div>
         </div>
@@ -963,22 +1053,22 @@ export function SettingsView({
         <div className="flex flex-col sm:flex-row gap-3 pt-1">
           <button
             onClick={onOpenBackupModal}
-            className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Download className="w-4 h-4 text-blue-600" />
+            <Download className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             <span>Sao lưu / Phục hồi JSON</span>
           </button>
 
           <button
             onClick={onOpenResetConfirm}
-            className="flex-1 py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-1 py-2.5 px-4 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
-            <RotateCcw className="w-4 h-4 text-rose-600" />
+            <RotateCcw className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             <span>Nạp lại dữ liệu mẫu Demo</span>
           </button>
         </div>
 
-        <div className="pt-2 border-t border-[#E9EEF5] flex items-center gap-2 text-[11px] text-slate-500">
+        <div className="pt-2 border-t border-[#E9EEF5] dark:border-slate-800 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
           <HardDrive className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <Shield className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           <span>

@@ -8,7 +8,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { CreditCardInfo, useFinance } from "@/context/FinanceContext";
-import { formatVND } from "@/lib/formatters";
+import { formatVNDMasked } from "@/lib/formatters";
 
 interface CreditCardRepaymentSheetProps {
   cardInfo: CreditCardInfo | null;
@@ -23,7 +23,7 @@ export function CreditCardRepaymentSheet({
   onClose,
   onSuccess,
 }: CreditCardRepaymentSheetProps) {
-  const { accounts, addTransaction } = useFinance();
+  const { accounts, addTransaction, isPrivacyMode } = useFinance();
 
   const [paymentOption, setPaymentOption] = useState<"FULL" | "MINIMUM">("FULL");
   const [sourceAccountId, setSourceAccountId] = useState<string>("");
@@ -68,9 +68,10 @@ export function CreditCardRepaymentSheet({
 
     if (selectedSourceAccount.currentBalance < selectedAmount) {
       setError(
-        `Số dư ${selectedSourceAccount.name} (${formatVND(
-          selectedSourceAccount.currentBalance
-        )}) không đủ để thanh toán ${formatVND(selectedAmount)}!`
+        `Số dư ${selectedSourceAccount.name} (${formatVNDMasked(
+          selectedSourceAccount.currentBalance,
+          isPrivacyMode
+        )}) không đủ để thanh toán ${formatVNDMasked(selectedAmount, isPrivacyMode)}!`
       );
       return;
     }
@@ -116,27 +117,27 @@ export function CreditCardRepaymentSheet({
 
       {/* Bottom Sheet Container */}
       <div
-        className="w-full max-w-lg mx-auto bg-white rounded-t-[32px] shadow-2xl border-t border-slate-200 p-5 space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[88vh]"
+        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-5 space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto -mt-1 cursor-grab" />
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 cursor-grab" />
 
         {/* Header Bar */}
         <div className="flex items-center justify-between pb-1">
-          <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
+          <h3 className="text-base sm:text-lg font-bold text-[#0F172A] dark:text-slate-100">
             Thanh Toán Dư Nợ Tín Dụng
           </h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-2">
+          <div className="p-3 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-lg flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -162,27 +163,30 @@ export function CreditCardRepaymentSheet({
           {/* Card Mid: Due Amount */}
           <div>
             <span className="text-[11px] text-blue-200/90 block">
-              Dư nợ chốt sao kê kỳ 20/10:
+              Dư nợ chốt sao kê ngày {cardInfo.statementDay} hàng tháng:
             </span>
             <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {formatVND(cardInfo.usedAmount)}
+              {formatVNDMasked(cardInfo.usedAmount, isPrivacyMode)}
             </span>
           </div>
 
           {/* Card Bottom: Limit & Grace status */}
           <div className="flex items-center justify-between pt-1 border-t border-white/15 text-[11px]">
             <span className="text-slate-300">
-              Khả dụng: <strong className="text-white">{formatVND(cardInfo.availableAmount)}</strong>
+              Khả dụng:{" "}
+              <strong className="text-white">
+                {formatVNDMasked(cardInfo.availableAmount, isPrivacyMode)}
+              </strong>
             </span>
             <span className="px-2 py-0.5 rounded-md bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-              Hạn trả: 25/10 (Miễn lãi)
+              Hạn trả: {cardInfo.dueDateDisplay} (Miễn lãi)
             </span>
           </div>
         </div>
 
         {/* Repayment Options Selector */}
-        <div className="rounded-xl p-3 bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
-          <span className="text-[11px] font-bold text-[#475569] uppercase tracking-wider block">
+        <div className="rounded-xl p-3 bg-[#F8FAFC] dark:bg-slate-800/70 border border-[#E2E8F0] dark:border-slate-700 space-y-2">
+          <span className="text-[11px] font-bold text-[#475569] dark:text-slate-400 uppercase tracking-wider block">
             CHỌN SỐ TIỀN THANH TOÁN KỲ NÀY:
           </span>
 
@@ -191,29 +195,29 @@ export function CreditCardRepaymentSheet({
             onClick={() => setPaymentOption("FULL")}
             className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
               paymentOption === "FULL"
-                ? "bg-[#EFF6FF] border-[#3B82F6] ring-1 ring-blue-500/30 shadow-xs"
-                : "bg-white border-[#E2E8F0] hover:bg-slate-50"
+                ? "bg-[#EFF6FF] dark:bg-blue-500/15 border-[#3B82F6] ring-1 ring-blue-500/30 shadow-xs"
+                : "bg-white dark:bg-slate-900 border-[#E2E8F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}
           >
             <div className="flex items-center gap-2.5">
               <div
                 className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                  paymentOption === "FULL" ? "border-blue-600 bg-blue-600" : "border-slate-300"
+                  paymentOption === "FULL" ? "border-blue-600 bg-blue-600" : "border-slate-300 dark:border-slate-600"
                 }`}
               >
                 {paymentOption === "FULL" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
               </div>
               <div>
-                <span className="text-xs font-bold text-[#1D4ED8] block">
+                <span className="text-xs font-bold text-[#1D4ED8] dark:text-blue-400 block">
                   Toàn bộ dư nợ (Khuyên dùng)
                 </span>
-                <span className="text-[10px] text-[#047857] font-semibold block">
+                <span className="text-[10px] text-[#047857] dark:text-emerald-400 font-semibold block">
                   Miễn lãi 100% · Bảo vệ CIC tổ ấm
                 </span>
               </div>
             </div>
-            <span className="text-xs sm:text-sm font-extrabold text-[#1D4ED8]">
-              {formatVND(fullAmount)}
+            <span className="text-xs sm:text-sm font-extrabold text-[#1D4ED8] dark:text-blue-400">
+              {formatVNDMasked(fullAmount, isPrivacyMode)}
             </span>
           </div>
 
@@ -222,47 +226,47 @@ export function CreditCardRepaymentSheet({
             onClick={() => setPaymentOption("MINIMUM")}
             className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
               paymentOption === "MINIMUM"
-                ? "bg-[#EFF6FF] border-[#3B82F6] ring-1 ring-blue-500/30 shadow-xs"
-                : "bg-white border-[#E2E8F0] hover:bg-slate-50"
+                ? "bg-[#EFF6FF] dark:bg-blue-500/15 border-[#3B82F6] ring-1 ring-blue-500/30 shadow-xs"
+                : "bg-white dark:bg-slate-900 border-[#E2E8F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}
           >
             <div className="flex items-center gap-2.5">
               <div
                 className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                  paymentOption === "MINIMUM" ? "border-blue-600 bg-blue-600" : "border-slate-300"
+                  paymentOption === "MINIMUM" ? "border-blue-600 bg-blue-600" : "border-slate-300 dark:border-slate-600"
                 }`}
               >
                 {paymentOption === "MINIMUM" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
               </div>
               <div>
-                <span className="text-xs font-medium text-[#334155] block">
+                <span className="text-xs font-medium text-[#334155] dark:text-slate-200 block">
                   Thanh toán tối thiểu (5%)
                 </span>
-                <span className="text-[10px] text-[#475569] block">
+                <span className="text-[10px] text-[#475569] dark:text-slate-400 block">
                   Phát sinh lãi suất thẻ
                 </span>
               </div>
             </div>
-            <span className="text-xs sm:text-sm font-bold text-[#334155]">
-              {formatVND(minimumAmount)}
+            <span className="text-xs sm:text-sm font-bold text-[#334155] dark:text-slate-200">
+              {formatVNDMasked(minimumAmount, isPrivacyMode)}
             </span>
           </div>
         </div>
 
         {/* Source Account Selector */}
-        <div className="rounded-xl p-3 bg-[#F1F5F9] border border-[#E2E8F0] space-y-1.5">
-          <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wider block">
+        <div className="rounded-xl p-3 bg-[#F1F5F9] dark:bg-slate-800/70 border border-[#E2E8F0] dark:border-slate-700 space-y-1.5">
+          <label className="text-[11px] font-bold text-[#475569] dark:text-slate-400 uppercase tracking-wider block">
             Nguồn trích tiền thanh toán:
           </label>
           <div className="relative">
             <select
               value={sourceAccountId}
               onChange={(e) => setSourceAccountId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-[#1E293B] focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-[#1E293B] dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
             >
               {eligibleSourceAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
-                  {acc.name} · Số dư: {formatVND(acc.currentBalance)}
+                  {acc.name} · Số dư: {formatVNDMasked(acc.currentBalance, isPrivacyMode)}
                 </option>
               ))}
             </select>
@@ -270,8 +274,8 @@ export function CreditCardRepaymentSheet({
         </div>
 
         {/* Safety Box (Event Sourcing) */}
-        <div className="rounded-xl p-2.5 bg-[#ECFDF5] border border-[#A7F3D0] flex items-center gap-2.5 text-xs text-[#047857]">
-          <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-600" />
+        <div className="rounded-xl p-2.5 bg-[#ECFDF5] dark:bg-emerald-500/15 border border-[#A7F3D0] dark:border-emerald-500/30 flex items-center gap-2.5 text-xs text-[#047857] dark:text-emerald-300">
+          <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p className="text-[11px] font-medium leading-tight">
             Cơ chế <strong>Event Sourcing</strong> tự động trừ tài khoản thanh toán và hoàn lại hạn mức thẻ tức thì, chống lệch sổ cái gia đình.
           </p>
@@ -281,16 +285,18 @@ export function CreditCardRepaymentSheet({
         <button
           onClick={handleConfirmRepayment}
           disabled={isSubmitting || fullAmount <= 0}
-          className="w-full h-12 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 disabled:bg-slate-300 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
+          className="w-full h-12 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
         >
           <CreditCard className="w-4 h-4" />
           <span>
-            {isSubmitting ? "Đang xử lý..." : `XÁC NHẬN THANH TOÁN ${formatVND(selectedAmount)}`}
+            {isSubmitting
+              ? "Đang xử lý..."
+              : `XÁC NHẬN THANH TOÁN ${formatVNDMasked(selectedAmount, isPrivacyMode)}`}
           </span>
         </button>
 
         {/* Home Indicator */}
-        <div className="w-32 h-1 rounded-full bg-slate-800 mx-auto mt-2" />
+        <div className="w-32 h-1 rounded-full bg-slate-800 dark:bg-slate-600 mx-auto mt-2" />
       </div>
     </div>
   );

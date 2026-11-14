@@ -1,9 +1,27 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: #f6f8fb;
     --foreground: #172b4d;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --border-subtle: #dce4ee;
+    --chart-grid: #e2e8f0;
+    --chart-tick: #64748b;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --background: #0b1220;
+    --foreground: #f1f5f9;
+    --surface: #0f172a;
+    --surface-muted: #1e293b;
+    --border-subtle: #334155;
+    --chart-grid: #334155;
+    --chart-tick: #cbd5e1;
   }
 
   body {
@@ -12,6 +30,7 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 180ms ease, color 180ms ease;
   }
 }
 
@@ -32,4 +51,12 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }

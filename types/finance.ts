@@ -8,6 +8,8 @@ export type InvestmentType = 'GOLD' | 'SAVINGS' | 'STOCK' | 'OTHER';
 
 export type ThemeColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange';
 
+export type ThemeMode = 'light' | 'dark';
+
 export type FamilyMember = 'HUSBAND' | 'WIFE' | 'SHARED';
 
 export type ExpenseScope = 'FAMILY' | 'PERSONAL';
@@ -125,6 +127,7 @@ export interface MemberAuthConfig {
 
 export interface AppSettings {
   themeColor: ThemeColor;
+  themeMode?: ThemeMode;
   currency: 'VND';
   notificationsEnabled: boolean;
   husbandName: string;
@@ -138,6 +141,7 @@ export interface AppSettings {
   authActiveProfile?: AuthMemberId; // Hồ sơ đăng nhập gần nhất trên /login
   husbandAuth?: MemberAuthConfig;   // Cấu hình Code, Face ID & nền khóa của Anh Chuột
   wifeAuth?: MemberAuthConfig;      // Cấu hình Code, Face ID & nền khóa của Bé Mèo
+  requireAuthForDangerActions?: boolean; // Hỏi mã Code / Face ID cho thao tác nguy hiểm (Reset, xóa hàng loạt, ghi đè)
 }
 
 export interface AppNotification {
@@ -147,6 +151,72 @@ export interface AppNotification {
   type: 'warning' | 'info' | 'danger';
   date: string;
   read: boolean;
+}
+
+export type MortgageStage = 'FIXED' | 'FLOATING';
+
+export type MortgagePrepayStrategy = 'SHORTEN_TERM' | 'REDUCE_MONTHLY';
+
+export type MortgageInstallmentStatus = 'PAID' | 'DUE_SOON' | 'OVERDUE' | 'UPCOMING';
+
+export interface MortgagePrepaymentPenaltyTier {
+  fromYear: number;
+  toYear: number;
+  feePercent: number;
+}
+
+export interface MortgageRateAdjustment {
+  id: string;
+  effectiveFromPeriod: number;
+  annualRate: number;
+  effectiveDate: string;
+  note?: string;
+}
+
+export interface MortgagePaidInstallmentRecord {
+  period: number;
+  paidAt: string;
+  paidPrincipal: number;
+  paidInterest: number;
+  appliedRate: number;
+  linkedTransactionId?: string;
+  note?: string;
+}
+
+export interface MortgagePrepaymentEvent {
+  id: string;
+  date: string;
+  afterPeriod: number;
+  amount: number;
+  penaltyAmount: number;
+  feePercent: number;
+  strategy: MortgagePrepayStrategy;
+  linkedTransactionId?: string;
+  note?: string;
+}
+
+export interface MortgageContract {
+  id: string;
+  projectName: string;
+  unitCode: string;
+  bankName: string;
+  propertyValue: number;
+  currentMarketValue: number;
+  downPayment: number;
+  loanAmount: number;
+  termMonths: number;
+  disbursementDate: string;
+  paymentDayOfMonth: number;
+  fixedRateMonths: number;
+  fixedInterestRate: number;
+  floatingBaseRate: number;
+  floatingSpread: number;
+  prepayStrategyDefault: MortgagePrepayStrategy;
+  prepaymentPenaltyTiers: MortgagePrepaymentPenaltyTier[];
+  rateAdjustments: MortgageRateAdjustment[];
+  paidRecords: MortgagePaidInstallmentRecord[];
+  prepayments: MortgagePrepaymentEvent[];
+  updatedAt: string;
 }
 
 export interface AppDataBackup {
@@ -161,6 +231,7 @@ export interface AppDataBackup {
   investments: InvestmentItem[];
   recurringRules?: RecurringRule[];
   settings: AppSettings;
+  skyoneLoan?: MortgageContract;
 }
 
 export interface FinancialSummary {

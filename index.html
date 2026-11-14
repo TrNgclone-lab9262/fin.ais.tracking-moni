@@ -2,7 +2,10 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>HOME MONI - Quản Lý Tài Chính Gia Đình</title>
     <meta name="description" content="Nền tảng quản lý tài chính tổ ấm thông minh, bảo mật cho 2 vợ chồng (Anh Chuột & Bé Mèo)." />
     <meta property="og:title" content="HOME MONI - Quản Lý Tài Chính Gia Đình" />
@@ -21,8 +24,19 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      try {
+        var raw = localStorage.getItem("HOME_MONI_DATA_V4");
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.settings && parsed.settings.themeMode === "dark") {
+            document.documentElement.classList.add("dark");
+          }
+        }
+      } catch (e) {}
+    </script>
   </head>
-  <body class="bg-[#F6F8FB] text-[#172B4D] antialiased">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

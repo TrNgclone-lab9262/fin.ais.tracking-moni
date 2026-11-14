@@ -330,7 +330,7 @@ export function LoginGateView() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden flex flex-col justify-between bg-[#0F172A] text-white select-none">
+    <div className="relative min-h-[100dvh] w-full overflow-x-hidden flex flex-col justify-between bg-[#0F172A] text-white select-none pt-safe pb-safe">
       {/* 1. Hậu cảnh Hình nền Cá nhân (từ thư viện thiết bị của từng người) hoặc Calm Slate Gradient */}
       {activeWallpaper ? (
         <div
@@ -369,18 +369,18 @@ export function LoginGateView() {
         aria-label="Chọn ảnh nền từ thư viện thiết bị"
       />
 
-      {/* 2. Thanh trên cùng gọn gàng */}
-      <header className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-8 pt-5 pb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-sm">
+      {/* 2. Thanh trên cùng gọn gàng, tối ưu notch / Dynamic Island */}
+      <header className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-8 pt-1 sm:pt-3 pb-1 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-sm">
             <Lock className="w-4 h-4 text-sky-200" />
           </div>
           <div>
-            <span className="font-black tracking-wider text-sm sm:text-base block leading-none">
+            <span className="font-black tracking-wider text-xs sm:text-base block leading-none">
               HOME MONI
             </span>
-            <span className="text-[11px] text-slate-300 font-medium">
-              Cổng bảo mật tài chính tổ ấm
+            <span className="text-[10px] sm:text-[11px] text-slate-300 font-medium">
+              Bảo mật tài chính tổ ấm
             </span>
           </div>
         </div>
@@ -388,31 +388,46 @@ export function LoginGateView() {
         <button
           type="button"
           onClick={() => setIsWallpaperModalOpen(true)}
-          className="min-h-[44px] px-3.5 py-2 rounded-2xl bg-white/12 hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/20 text-xs font-bold text-white inline-flex items-center gap-2 transition-all cursor-pointer"
+          className="min-h-[40px] sm:min-h-[44px] px-3 sm:px-3.5 py-1.5 rounded-2xl bg-white/12 hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/20 text-[11px] sm:text-xs font-bold text-white inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
         >
           <ImagePlus className="w-4 h-4 text-sky-200" />
-          <span>Hình nền {memberName}</span>
+          <span className="truncate max-w-[120px] sm:max-w-none">Nền {memberName}</span>
         </button>
       </header>
 
-      {/* 3. Nội dung chính: Desktop 2 cột cân đối | Mobile tối ưu Thumb-Zone */}
-      <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-center">
-        <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
-          {/* Cột Trái (Desktop Showcase / Mobile Header Greeting) */}
-          <section className="lg:col-span-6 flex flex-col justify-between rounded-3xl bg-slate-900/35 backdrop-blur-md border border-white/15 p-5 sm:p-8 shadow-2xl">
-            <div className="space-y-2 text-center lg:text-left">
-              <p className="text-xs sm:text-sm font-semibold text-sky-200">
+      {/* 3. Nội dung chính: Desktop 2 cột cân đối | iPhone / Mobile fit 1 màn hình không cần cuộn */}
+      <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-3.5 sm:px-8 py-1.5 sm:py-4 flex flex-col justify-center">
+        <div className="w-full max-w-[430px] lg:max-w-none mx-auto flex flex-col lg:grid lg:grid-cols-12 gap-2.5 sm:gap-5 lg:gap-8 items-stretch">
+          {/* Mobile Compact Status Strip (< lg) */}
+          <section className="lg:hidden rounded-2xl bg-slate-900/45 backdrop-blur-md border border-white/15 px-3.5 py-2 flex items-center justify-between gap-3 shadow-lg">
+            <div className="text-xl sm:text-2xl font-black tracking-tight tabular-nums text-white leading-none">
+              {formatLiveClock(now)}
+            </div>
+            <div className="text-right min-w-0">
+              <p className="text-xs font-bold text-sky-200 truncate">
                 {getTimeGreeting()}, {memberName}
               </p>
-              <div className="text-4xl sm:text-6xl font-black tracking-tight tabular-nums text-white">
+              <p className="text-[10px] text-slate-200/80 capitalize truncate">
+                {formatLiveDate(now)}
+              </p>
+            </div>
+          </section>
+
+          {/* Desktop Showcase Card (>= lg) */}
+          <section className="hidden lg:flex lg:col-span-6 flex-col justify-between rounded-3xl bg-slate-900/35 backdrop-blur-md border border-white/15 p-8 shadow-2xl">
+            <div className="space-y-2 text-left">
+              <p className="text-sm font-semibold text-sky-200">
+                {getTimeGreeting()}, {memberName}
+              </p>
+              <div className="text-6xl font-black tracking-tight tabular-nums text-white">
                 {formatLiveClock(now)}
               </div>
-              <p className="text-xs sm:text-sm text-slate-200/90 capitalize">
+              <p className="text-sm text-slate-200/90 capitalize">
                 {formatLiveDate(now)}
               </p>
             </div>
 
-            <div className="hidden lg:block space-y-4 my-8">
+            <div className="space-y-4 my-8">
               <div className="p-4 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-sm space-y-1.5">
                 <div className="flex items-center gap-2 text-sm font-bold text-white">
                   <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
@@ -424,7 +439,7 @@ export function LoginGateView() {
               </div>
             </div>
 
-            <div className="hidden lg:flex items-center justify-between pt-4 border-t border-white/15 text-xs text-slate-300">
+            <div className="flex items-center justify-between pt-4 border-t border-white/15 text-xs text-slate-300">
               <span>
                 Ảnh nền:{" "}
                 <strong className="text-white">
@@ -441,12 +456,12 @@ export function LoginGateView() {
             </div>
           </section>
 
-          {/* Cột Phải: Thẻ Xác Thực Bo Góc Hiện Đại (Chọn Hồ Sơ + Face ID + Mã Code) */}
-          <section className="lg:col-span-6 rounded-3xl bg-white/95 text-[#172B4D] backdrop-blur-xl border border-white/50 p-5 sm:p-7 shadow-2xl flex flex-col justify-between space-y-5">
+          {/* Thẻ Xác Thực Bo Góc Hiện Đại (Chọn Hồ Sơ + Bàn phím số + Face ID) */}
+          <section className="lg:col-span-6 rounded-3xl bg-white/95 dark:bg-slate-900/95 text-[#172B4D] dark:text-slate-100 backdrop-blur-xl border border-white/50 dark:border-slate-700/80 p-4 sm:p-6 shadow-2xl flex flex-col justify-between gap-3 sm:gap-4">
             {/* Bộ chuyển đổi hồ sơ Anh Chuột / Bé Mèo */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
-                <span>Chọn hồ sơ đăng nhập</span>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Hồ sơ đăng nhập</span>
                 <span>
                   {isLockedMode
                     ? isSetupStepConfirm
@@ -456,14 +471,14 @@ export function LoginGateView() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200/80">
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700">
                 <button
                   type="button"
                   onClick={() => handleSelectMember("HUSBAND")}
-                  className={`min-h-[46px] rounded-xl px-3 py-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  className={`min-h-[44px] rounded-xl px-2.5 py-1.5 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     selectedMember === "HUSBAND"
                       ? "bg-[#1E3A8A] text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
+                      : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   <span aria-hidden="true">👨</span>
@@ -473,10 +488,10 @@ export function LoginGateView() {
                 <button
                   type="button"
                   onClick={() => handleSelectMember("WIFE")}
-                  className={`min-h-[46px] rounded-xl px-3 py-2 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  className={`min-h-[44px] rounded-xl px-2.5 py-1.5 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     selectedMember === "WIFE"
                       ? "bg-[#1E3A8A] text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
+                      : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   <span aria-hidden="true">👩</span>
@@ -486,38 +501,38 @@ export function LoginGateView() {
             </div>
 
             {/* Hiển thị chấm mã Code 4-6 số */}
-            <div className="space-y-3">
-              <div className="text-center space-y-1">
-                <h1 className="text-base sm:text-lg font-extrabold text-[#172B4D]">
+            <div className="space-y-2">
+              <div className="text-center space-y-0.5">
+                <h1 className="text-sm sm:text-lg font-extrabold text-[#172B4D] dark:text-slate-100">
                   {!isLockedMode
                     ? isSetupStepConfirm
                       ? `Xác nhận mã Code cho ${memberName}`
                       : `Tạo mã Code cho ${memberName}`
                     : `Nhập mã Code hoặc Face ID`}
                 </h1>
-                <p className="text-xs text-slate-500">
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                   {!isLockedMode
-                    ? "Nhập 4–6 chữ số để bảo vệ ứng dụng trước khi thực hiện giao dịch"
-                    : `Xác thực tài khoản ${memberName} để mở sổ tài chính`}
+                    ? "Nhập 4–6 chữ số để bảo vệ sổ tài chính"
+                    : `Xác thực ${memberName} trước khi dùng ứng dụng`}
                 </p>
               </div>
 
               {/* 6 ô chấm mã Code */}
               <div
                 aria-label="Mã Code đã nhập"
-                className="flex items-center justify-center gap-2.5 py-2"
+                className="flex items-center justify-center gap-2.5 py-1"
               >
                 {[0, 1, 2, 3, 4, 5].map((idx) => {
                   const filled = idx < codeInput.length;
                   return (
                     <div
                       key={idx}
-                      className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full transition-all duration-150 ${
+                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full transition-all duration-150 ${
                         filled
                           ? "bg-[#2563EB] scale-110 shadow-xs"
                           : idx < 4
-                          ? "bg-slate-200 border border-slate-300"
-                          : "bg-slate-100 border border-dashed border-slate-300"
+                          ? "bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600"
+                          : "bg-slate-100 dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-600"
                       }`}
                     />
                   );
@@ -528,7 +543,7 @@ export function LoginGateView() {
               {authError && (
                 <div
                   role="alert"
-                  className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2"
+                  className="p-2 rounded-xl bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] sm:text-xs font-semibold flex items-center gap-2"
                 >
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{authError}</span>
@@ -536,59 +551,22 @@ export function LoginGateView() {
               )}
 
               {authInfo && !authError && (
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 text-blue-800 dark:text-blue-300 text-[11px] sm:text-xs font-semibold flex items-center gap-2">
                   <Check className="w-4 h-4 shrink-0" />
                   <span>{authInfo}</span>
                 </div>
               )}
             </div>
 
-            {/* Nút Face ID ưu tiên trên Mobile & Thiết bị hỗ trợ */}
-            {isLockedMode && (
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleBiometricUnlock()}
-                  disabled={isBioBusy || lockoutRemaining > 0}
-                  className={`min-h-[48px] flex-1 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 ${
-                    hasBiometricRegistered
-                      ? "bg-[#1E3A8A] hover:bg-[#1E40AF] text-white shadow-md"
-                      : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
-                  }`}
-                >
-                  <ScanFace className="w-5 h-5" />
-                  <span>
-                    {isBioBusy
-                      ? "Đang nhận diện khuôn mặt..."
-                      : hasBiometricRegistered
-                      ? "Mở khóa bằng Face ID"
-                      : "Chưa bật Face ID (nhấn để xem)"}
-                  </span>
-                </button>
-
-                {!hasBiometricRegistered && bioAvailability.supported && (
-                  <button
-                    type="button"
-                    onClick={() => void handleRegisterBiometric()}
-                    disabled={isBioBusy}
-                    className="min-h-[48px] px-4 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <ScanFace className="w-4 h-4" />
-                    <span>Bật Face ID</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Bàn phím số bo góc chạm thoải mái (>= 52px) */}
-            <div className="grid grid-cols-3 gap-2.5">
+            {/* Bàn phím số bo góc chuẩn chạm Apple HIG (48px - 54px) */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
                 <button
                   key={digit}
                   type="button"
                   disabled={lockoutRemaining > 0 || isSubmitting}
                   onClick={() => handleDigitPress(digit)}
-                  className="min-h-[54px] rounded-2xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-lg font-extrabold text-[#172B4D] tabular-nums transition-all cursor-pointer disabled:opacity-50"
+                  className="h-12 sm:h-[54px] rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 active:scale-95 text-lg font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums transition-all cursor-pointer disabled:opacity-50"
                 >
                   {digit}
                 </button>
@@ -598,9 +576,9 @@ export function LoginGateView() {
                 type="button"
                 onClick={() => setIsWallpaperModalOpen(true)}
                 title="Đổi hình nền khóa"
-                className="min-h-[54px] rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-600 inline-flex flex-col items-center justify-center gap-0.5 cursor-pointer"
+                className="h-12 sm:h-[54px] rounded-2xl bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 inline-flex flex-col items-center justify-center gap-0.5 cursor-pointer"
               >
-                <SlidersHorizontal className="w-4 h-4 text-blue-600" />
+                <SlidersHorizontal className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <span className="text-[10px]">Nền khóa</span>
               </button>
 
@@ -608,7 +586,7 @@ export function LoginGateView() {
                 type="button"
                 disabled={lockoutRemaining > 0 || isSubmitting}
                 onClick={() => handleDigitPress("0")}
-                className="min-h-[54px] rounded-2xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-lg font-extrabold text-[#172B4D] tabular-nums transition-all cursor-pointer disabled:opacity-50"
+                className="h-12 sm:h-[54px] rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 active:scale-95 text-lg font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums transition-all cursor-pointer disabled:opacity-50"
               >
                 0
               </button>
@@ -617,35 +595,74 @@ export function LoginGateView() {
                 type="button"
                 onClick={handleBackspace}
                 aria-label="Xóa một số"
-                className="min-h-[54px] rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 inline-flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                className="h-12 sm:h-[54px] rounded-2xl bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center justify-center transition-all cursor-pointer"
               >
                 <Delete className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Nút Xác nhận mã Code & Tùy chọn mở vào góc nhìn cá nhân */}
-            <div className="space-y-2.5 pt-1">
-              <button
-                type="button"
-                disabled={codeInput.length < 4 || lockoutRemaining > 0 || isSubmitting}
-                onClick={() => void handleVerifyCode(codeInput)}
-                className="min-h-[48px] w-full rounded-2xl bg-[#2563EB] hover:bg-blue-700 active:scale-[0.99] text-white text-sm font-extrabold shadow-md inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>
-                  {isSubmitting
-                    ? "Đang xác thực..."
-                    : !isLockedMode
-                    ? isSetupStepConfirm
-                      ? "Lưu mã Code & Vào ứng dụng"
-                      : "Tiếp tục xác nhận mã Code"
-                    : lockoutRemaining > 0
-                    ? `Tạm khóa (${lockoutRemaining}s)`
-                    : "Xác nhận mã Code"}
-                </span>
-              </button>
+            {/* Hàng hành động Thumb-Zone: Face ID (trái) + Xác nhận Code (phải) */}
+            <div className="space-y-2 pt-0.5">
+              <div className="flex items-stretch gap-2">
+                {isLockedMode && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      !hasBiometricRegistered && bioAvailability.supported
+                        ? void handleRegisterBiometric()
+                        : void handleBiometricUnlock()
+                    }
+                    disabled={isBioBusy || lockoutRemaining > 0}
+                    aria-label={
+                      hasBiometricRegistered
+                        ? "Mở khóa bằng Face ID"
+                        : bioAvailability.supported
+                        ? "Kích hoạt Face ID"
+                        : "Xem trạng thái Face ID"
+                    }
+                    className={`min-h-[48px] px-3.5 sm:px-4 rounded-2xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-60 shrink-0 active:scale-95 ${
+                      hasBiometricRegistered
+                        ? "bg-[#1E3A8A] hover:bg-[#1E40AF] text-white shadow-md"
+                        : bioAvailability.supported
+                        ? "bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
+                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <ScanFace className="w-5 h-5 shrink-0" />
+                    <span>
+                      {isBioBusy
+                        ? "Đang quét..."
+                        : hasBiometricRegistered
+                        ? "Face ID"
+                        : bioAvailability.supported
+                        ? "Bật Face ID"
+                        : "Face ID"}
+                    </span>
+                  </button>
+                )}
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <button
+                  type="button"
+                  disabled={codeInput.length < 4 || lockoutRemaining > 0 || isSubmitting}
+                  onClick={() => void handleVerifyCode(codeInput)}
+                  className="min-h-[48px] flex-1 px-4 rounded-2xl bg-[#2563EB] hover:bg-blue-700 active:scale-[0.99] text-white text-xs sm:text-sm font-extrabold shadow-md inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  <KeyRound className="w-4 h-4 shrink-0" />
+                  <span>
+                    {isSubmitting
+                      ? "Đang xác thực..."
+                      : !isLockedMode
+                      ? isSetupStepConfirm
+                        ? "Lưu mã & Vào app"
+                        : "Tiếp tục"
+                      : lockoutRemaining > 0
+                      ? `Chờ (${lockoutRemaining}s)`
+                      : "Xác nhận"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                 <label className="inline-flex items-center gap-2 cursor-pointer font-medium">
                   <input
                     type="checkbox"
@@ -653,14 +670,14 @@ export function LoginGateView() {
                     onChange={(e) => setSwitchPerspectiveOnUnlock(e.target.checked)}
                     className="rounded accent-blue-600 w-4 h-4"
                   />
-                  <span>Mở đúng góc nhìn của {memberName}</span>
+                  <span>Mở góc nhìn {memberName}</span>
                 </label>
 
                 {!isLockedMode && (
                   <button
                     type="button"
                     onClick={() => bypassLockForFirstSetup(selectedMember)}
-                    className="text-blue-600 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
                     <span>Vào ngay (chưa đặt mã)</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -672,8 +689,8 @@ export function LoginGateView() {
         </div>
       </main>
 
-      {/* Footer nhỏ gọn */}
-      <footer className="relative z-10 text-center pb-4 px-4 text-[11px] text-slate-300/80">
+      {/* Footer chỉ hiện từ tablet/desktop để nhường chiều cao cho iPhone SE / Mini */}
+      <footer className="hidden sm:block relative z-10 text-center pb-2 px-4 text-[11px] text-slate-300/80">
         Dữ liệu tài chính & ảnh nền cá nhân được lưu an toàn ngay trên thiết bị của gia đình.
       </footer>
 
@@ -687,32 +704,32 @@ export function LoginGateView() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="wallpaper-modal-title"
-            className="w-full sm:max-w-md bg-white text-[#172B4D] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
+            className="w-full sm:max-w-md bg-white dark:bg-slate-900 text-[#172B4D] dark:text-slate-100 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom-4 duration-200 pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
                 <h2 id="wallpaper-modal-title" className="text-base font-extrabold">
                   Cá nhân hóa màn hình khóa
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Hồ sơ đang chọn: <strong className="text-blue-700">{memberName}</strong>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Hồ sơ đang chọn: <strong className="text-blue-700 dark:text-blue-400">{memberName}</strong>
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsWallpaperModalOpen(false)}
                 aria-label="Đóng tùy chỉnh"
-                className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="p-5 space-y-4 max-h-[75dvh] overflow-y-auto">
               {/* Chọn ảnh từ thư viện thiết bị */}
               <div className="space-y-2.5">
-                <span className="text-xs font-bold text-slate-700 block">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 block">
                   Hình nền riêng từ thư viện thiết bị
                 </span>
 
@@ -737,7 +754,7 @@ export function LoginGateView() {
                     <button
                       type="button"
                       onClick={handleRemoveWallpaper}
-                      className="min-h-[44px] px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="min-h-[44px] px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/15 hover:bg-rose-100 dark:hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30 text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                       <span>Gỡ ảnh</span>
@@ -748,9 +765,9 @@ export function LoginGateView() {
 
               {/* Thanh điều chỉnh độ mờ & độ tối lớp phủ */}
               {activeWallpaper && (
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
                   <div className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
+                    <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
                       <span>Độ mờ hậu cảnh</span>
                       <span>{wallpaperBlur}px</span>
                     </div>
@@ -770,7 +787,7 @@ export function LoginGateView() {
                   </div>
 
                   <div className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
+                    <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
                       <span>Độ tối lớp phủ dễ đọc</span>
                       <span>{wallpaperDim}%</span>
                     </div>
@@ -792,15 +809,15 @@ export function LoginGateView() {
               )}
 
               {/* Kích hoạt / Gỡ Face ID cho thiết bị hiện tại */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <ScanFace className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <ScanFace className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     <span>Nhận diện khuôn mặt (Face ID / WebAuthn)</span>
                   </span>
                   <span
                     className={`text-[11px] font-bold ${
-                      hasBiometricRegistered ? "text-emerald-600" : "text-slate-500"
+                      hasBiometricRegistered ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
                     }`}
                   >
                     {hasBiometricRegistered ? "Đã bật" : "Chưa bật"}
@@ -808,7 +825,7 @@ export function LoginGateView() {
                 </div>
 
                 {bioAvailability.reason && !hasBiometricRegistered && (
-                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
                     {bioAvailability.reason}
                   </p>
                 )}
@@ -818,7 +835,7 @@ export function LoginGateView() {
                     type="button"
                     disabled={isBioBusy}
                     onClick={() => void handleRegisterBiometric()}
-                    className="min-h-[44px] flex-1 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-800 cursor-pointer"
+                    className="min-h-[44px] flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                   >
                     {hasBiometricRegistered ? "Đăng ký lại Face ID máy này" : "Đăng ký Face ID ngay"}
                   </button>
@@ -831,7 +848,7 @@ export function LoginGateView() {
                           webauthnDeviceLabel: undefined,
                         })
                       }
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold cursor-pointer"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-500/15 hover:bg-rose-100 dark:hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 text-xs font-bold cursor-pointer"
                     >
                       Tắt
                     </button>

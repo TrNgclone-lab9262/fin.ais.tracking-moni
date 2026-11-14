@@ -1,6 +1,6 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.4.0-login-security` | **Ngày phát hành:** 2026-11-13 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
+> **Phiên bản:** `v1.6.0-phudong-skyone` | **Ngày phát hành:** 2026-11-13 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
 > **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
 
 ---
@@ -121,6 +121,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `lib/storage.test.ts` | Unit test tự động kiểm tra cơ chế lưu trữ và validation schema | **STABLE** |
 | `lib/financeEngine.ts` | Domain Engine thuần túy: hạn mức ngày, chu kỳ thẻ BIDV, đối soát 2 vợ chồng, heatmap, toàn vẹn Event Sourcing | **STABLE** |
 | `lib/financeEngine.test.ts` | Unit test tự động cho các phép tính tài chính trong `financeEngine.ts` | **STABLE** |
+| `lib/mortgageEngine.ts` | Engine vay căn hộ Phú Đông SKYONE: dư nợ giảm dần không ân hạn gốc, 2 giai đoạn cố định/thả nổi, mốc lãi suất ngân hàng, Equity/DTI/Stress-test & mô phỏng trả gốc trước hạn | **STABLE** |
+| `lib/mortgageEngine.test.ts` | Unit test kiểm định lịch trả nợ SKYONE, bảo toàn snapshot quá khứ, mô phỏng trả trước hạn & DTI | **STABLE** |
 | `lib/supabaseClient.ts` | Khởi tạo Supabase client an toàn với fallback khi chưa có biến môi trường | **STABLE** |
 | `lib/supabaseMappers.ts` | Bộ chuyển đổi qua lại giữa camelCase (Client) và snake_case (PostgreSQL DB) | **STABLE** |
 | `lib/supabaseService.ts` | Dịch vụ CRUD và đồng bộ hóa ngầm với Supabase Cloud | **STABLE** |
@@ -169,17 +171,21 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/dashboard/AssetDebtGoalsWidgets.tsx`| Khối Bento phân bổ: Cơ cấu tài sản, Đầu tư, Nợ cần thu/trả, Mục tiêu tiết kiệm | **STABLE** |
 | `components/dashboard/RecentActivitySection.tsx`| Danh sách giao dịch mới nhất kèm bộ lọc nhanh | **STABLE** |
 | `components/dashboard/FilterBar.tsx` | Thanh công cụ lọc theo tháng, tài khoản, loại thu/chi | **STABLE** |
+| `components/dashboard/SkyOneAmortizationChart.tsx` | Biểu đồ Recharts kết hợp Cột Gốc/Lãi và Đường tỷ lệ dư nợ giảm dần SKYONE (chuyển đổi VNĐ/%, 3 mốc tham chiếu) | **STABLE** |
+| `components/dashboard/SkyOneCashflowScheduleTable.tsx` | Bảng chi tiết dòng tiền Amortization Schedule SKYONE theo Năm / Tháng (Dư nợ đầu kỳ, Gốc, Lãi, Tổng đóng, Dư nợ cuối kỳ) | **STABLE** |
 
 ### 4.5. Mobile-First Components (`components/mobile/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
 | :--- | :--- | :--- |
 | `components/mobile/MobileHeader.tsx` | Thanh header cô đọng cho điện thoại với avatar Chuột & Mèo, nút mở menu | **STABLE** |
+| `components/mobile/MobileMonthSelector.tsx` | Thanh chọn kỳ/tháng cuộn ngang tối ưu ngón cái cho giao diện tổng quan và giao dịch di động | **STABLE** |
 | `components/mobile/sheets/MobileNumpadSheet.tsx` | Bàn phím số 3 giây nhập liệu nhanh bằng ngón cái với phím tắt mệnh giá | **STABLE** |
 | `components/mobile/sheets/TransactionDetailSheet.tsx`| Sheet xem chi tiết và sửa/xóa giao dịch trên di động | **STABLE** |
 | `components/mobile/sheets/CreditCardRepaymentSheet.tsx`| Sheet thanh toán dư nợ thẻ tín dụng BIDV nhanh | **STABLE** |
 | `components/mobile/sheets/GoalDepositSheet.tsx` | Sheet nạp thêm tiền vào mục tiêu tiết kiệm | **STABLE** |
 | `components/mobile/sheets/MobileNotificationSheet.tsx` | Bottom sheet thông báo cảnh báo BIDV/ngân sách & ghi sổ nhanh định kỳ trên di động | **STABLE** |
-| `components/auth/LoginGateView.tsx` | Màn hình khóa `/login` đôi bo góc hiện đại cho Anh Chuột & Bé Mèo (Code 4-6 số, Face ID, ảnh nền cá nhân) | **STABLE** |
+| `components/auth/LoginGateView.tsx` | Màn hình khóa `/login` đôi bo góc hiện đại cho Anh Chuột & Bé Mèo (Code 4-6 số, Face ID, ảnh nền cá nhân, tối ưu mọi màn hình iPhone) | **STABLE** |
+| `components/auth/StepUpAuthModal.tsx` | Modal xác thực nâng cao (Code 4-6 số hoặc Face ID) bảo vệ thao tác xóa hàng loạt, Reset mẫu và ghi đè dữ liệu | **STABLE** |
 | `components/mobile/views/MobileOverviewView.tsx` | Màn hình Tổng quan Bento tối ưu di động với thẻ Net Worth, 2 thẻ BIDV, Hạn mức ngày | **STABLE** |
 | `components/mobile/views/MobileTransactionsView.tsx` | Sổ giao dịch dạng thẻ danh sách di động dễ vuốt chạm | **STABLE** |
 | `components/mobile/views/MobileAccountsView.tsx` | Màn hình danh sách ví và thẻ tín dụng di động | **STABLE** |
@@ -200,6 +206,7 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/views/AccountsView.tsx` | Quản lý danh mục tài khoản ngân hàng, ví tiền mặt, thẻ tín dụng BIDV | **STABLE** |
 | `components/views/PlanningView.tsx` | Thiết lập ngân sách danh mục, quy tắc 6 hũ, tiến độ các mục tiêu tiết kiệm | **STABLE** |
 | `components/views/DebtsInvestView.tsx` | Theo dõi sổ nợ (Ai nợ mình / Mình nợ ai) và danh mục đầu tư (Vàng, Cổ phiếu, Tiết kiệm) | **STABLE** |
+| `components/views/SkyOneLoanView.tsx` | Tab chuyên biệt Phú Đông SKYONE (5 phân khu: Tổng quan & Stress-Test, Lịch trả nợ, Trả gốc trước hạn, Hợp đồng & Lãi suất, Chi tiết dòng tiền) | **STABLE** |
 | `components/views/GuideView.tsx` | Cẩm nang tài chính gia đình: Lời khuyên chi tiêu, hướng dẫn dùng thẻ tín dụng 45 ngày | **STABLE** |
 | `components/views/SettingsView.tsx` | Quản lý thành viên, Privacy Mode & PIN 4 số, quản lý danh mục, kiểm tra AI Server & sao lưu JSON | **STABLE** |
 | `components/views/DataAdminView.tsx` | Studio Quản trị Dữ liệu đa bảng (8 thực thể: Ngân sách, Mục tiêu, Nợ, Đầu tư, Giao dịch, Ví/Thẻ, Danh mục, Định kỳ) với kiểm toán Event Sourcing | **STABLE** |
@@ -244,7 +251,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
     "monthlyIncomeTarget": 50000000,
     "sharedSplitRatioHusband": 50,
     "privacyMode": false
-  }
+  },
+  "skyoneLoan": { ... }
 }
 ```
 
@@ -288,7 +296,16 @@ $$\text{SafeDailyLimit} = \frac{\text{RemainingBudget}}{D_{\text{remaining}}}$$
   * Thêm `public/manifest.webmanifest`, bộ icon đa kích cỡ (`public/icons/icon.svg`), và `public/sw.js` (Service Worker) hỗ trợ cài đặt toàn màn hình và offline caching 0ms.
   * Tích hợp hook `usePWAInstall.ts`, banner cài đặt `PWAInstallBanner.tsx` và modal hướng dẫn cho iPhone/iPad `IOSInstallModal.tsx`.
   * Kích hoạt sẵn tính năng Quét Hóa Đơn bằng Google Gemini Vision AI (`lib/geminiReceiptService.ts`, `components/transactions/ReceiptScannerModal.tsx`) với nút camera 📷 trên thanh ghi chép nhanh di động và TopBar.
-* **v1.4.0 — Secure Couple `/login`, Mobile Face ID & Custom Wallpapers (Hiện tại - Hoàn tất 100%):**
+* **v1.6.0 — Tab Chuyên Biệt Phú Đông SKYONE (Hiện tại - Hoàn tất 100%):**
+  * Xây dựng module quản lý khoản vay căn hộ **Phú Đông SKYONE** (`lib/mortgageEngine.ts`, `components/views/SkyOneLoanView.tsx`) chuẩn ngân hàng (dư nợ giảm dần không ân hạn gốc, 2 giai đoạn cố định/thả nổi, mốc điều chỉnh lãi suất không làm sai snapshot các kỳ đã đóng).
+  * Trang bị phân tích BĐS & tài chính thực chiến: Equity %, LTV %, DTI % tự động từ thu nhập gia đình, Stress-test biến động lãi thả nổi (+1%, +2%, +3%), biểu đồ cơ cấu Gốc/Lãi & đường cong giảm dư nợ, mô phỏng trả gốc trước hạn kèm tính phí phạt theo năm.
+  * Đồng bộ xuyên suốt toàn app: thẻ truy cập nhanh trên Tổng quan Desktop & Mobile + Mobile Drawer, theo dõi độc lập với tùy chọn ghi kèm Sổ giao dịch, lưu trữ LocalStorage V4, sao lưu JSON & Gói hợp nhất 2 máy.
+* **v1.5.0 — iPhone `/login` Responsive, Mobile Parity, 100% Privacy & Couple Sync (Hoàn tất 100%):**
+  * Tối ưu toàn diện trang `/login` trên mọi kích thước màn hình iPhone (SE 375px đến Pro Max 430px) và chế độ PWA `viewport-fit=cover`: safe-area padding, dải đồng hồ/chào 1 dòng gọn gàng trên mobile, bàn phím số và hàng nút Face ID + Xác nhận vừa khít 1 màn hình không cần cuộn.
+  * Bổ sung đầy đủ parity trên Mobile: `MobileMonthSelector.tsx`, thẻ đối soát quỹ chung & tất toán 1 chạm, tổng kết AI kỳ này (`generateMonthlyDigest`) và ghi sổ định kỳ 1 chạm ngay trên `MobileOverviewView.tsx`.
+  * Phủ kín Chế độ Riêng tư 100% (`formatVNDMasked` / `formatShortVNDMasked`) across toàn bộ giao dịch Desktop, Sheet di động và toàn bộ biểu đồ Recharts; dọn sạch 100% kiểu `any`.
+  * Triển khai Gói đồng bộ 2 máy (Smart Merge chống trùng ID + xem trước chênh lệch + giữ nguyên bảo mật máy cục bộ) trong `ExportImportModal.tsx` cùng tùy chọn bảo vệ Step-Up (`StepUpAuthModal.tsx`) cho thao tác Reset, xóa hàng loạt và ghi đè dữ liệu.
+* **v1.4.0 — Secure Couple `/login`, Mobile Face ID & Custom Wallpapers (Hoàn tất 100%):**
   * Thiết kế màn hình khóa `/login` (`components/auth/LoginGateView.tsx`) phong cách Calm Slate Glass-Minimalist bo góc hiện đại cho **Anh Chuột** & **Bé Mèo** với hồ sơ tách biệt, mã Code 4–6 chữ số băm SHA-256 + muối (`lib/authSecurity.ts`), WebAuthn Face ID trên mobile kèm mã Code dự phòng, và tải ảnh cá nhân trực tiếp từ thư viện thiết bị làm hình nền khóa.
   * Tích hợp tự động khóa khi rảnh (`autoLockMinutes`), khóa khi thu gọn nền (`lockOnBackground`), đồng bộ URL `/login`, trung tâm thông báo di động (`MobileNotificationSheet.tsx`), nút ghi sổ tất cả định kỳ 1 chạm và xuất báo cáo CSV/Excel (`exportTransactionsToCsv`).
 * **v1.3.0 — Mobile PWA 1-Tap Auto-Update (Hoàn tất 100%):**
@@ -311,6 +328,15 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.6.0-phudong-skyone (2026-11-13):**
+  * Thêm hợp đồng vay căn hộ `MortgageContract` (`skyoneLoan`) vào `types/finance.ts`, Zod contract `lib/validations.ts`, `lib/storage.ts` (kèm Smart Merge chống trùng kỳ đã đóng / đợt trả trước hạn / mốc lãi suất) và `FinanceContext.tsx`.
+  * Xây dựng engine thuần túy `lib/mortgageEngine.ts` + bộ test `lib/mortgageEngine.test.ts` cho công thức dư nợ giảm dần không ân hạn gốc, 2 giai đoạn cố định/thả nổi, Equity %, DTI %, Stress-test lãi suất và mô phỏng trả gốc trước hạn.
+  * Triển khai `components/views/SkyOneLoanView.tsx` (100% Privacy Mode, nhắc lịch nội bộ tab, lọc kỳ/nhảy tới kỳ hiện tại/đóng hàng loạt, biểu đồ Recharts, cấu hình hợp đồng) cùng thẻ truy cập nhanh trên `OverviewView.tsx`, `MobileOverviewView.tsx`, `Sidebar.tsx`, `MobileDrawer.tsx`.
+* **v1.5.0-mobile-iphone-parity (2026-11-13):**
+  * Tối ưu `/login` responsive mọi dòng iPhone (`index.html` `viewport-fit=cover`, `app/globals.css` `pt-safe`/`pb-safe`/`touch-action: manipulation`, `LoginGateView.tsx` bố cục `min-h-[100dvh]` vừa khít 1 màn hình trên iPhone SE/15/Pro Max).
+  * Nâng cấp Mobile Parity: thêm `MobileMonthSelector.tsx`, đối soát quỹ chung & tất toán 1 chạm, tóm tắt AI kỳ này và nút ghi sổ định kỳ 1 chạm trên `MobileOverviewView.tsx` + `MobileTransactionsView.tsx`.
+  * Phủ kín Privacy Mode 100% cho `TransactionsView.tsx`, `TransactionList.tsx`, `RecentActivitySection.tsx`, `TransactionDetailSheet.tsx`, `GoalDepositSheet.tsx`, `CreditCardRepaymentSheet.tsx` (kèm sửa ngày sao kê/hạn trả động) và 5 widget biểu đồ Recharts; loại bỏ triệt để toàn bộ kiểu `any`.
+  * Triển khai Couple Sync Package (`mergeFinanceData`, `previewMergeDiff`, `parseSyncBundleText` trong `lib/storage.ts`) với UI sao chép/dán/xem trước trong `ExportImportModal.tsx`, cùng tùy chọn bảo vệ thao tác nguy hiểm (`requireAuthForDangerActions` + `StepUpAuthModal.tsx`).
 * **v1.4.0-login-security (2026-11-13):**
   * Ra mắt màn hình khóa `/login` bo góc hiện đại (`components/auth/LoginGateView.tsx`) cùng mô hình bảo mật đôi cho Anh Chuột & Bé Mèo trong `lib/authSecurity.ts`: mã Code 4–6 số băm SHA-256 + muối, Face ID WebAuthn trên di động có fallback dự phòng, và tùy chỉnh hình nền khóa từ ảnh cá nhân trong thiết bị (nén Canvas lưu riêng tại `HOME_MONI_WALLPAPERS_V1`).
   * Nâng cấp `SettingsView.tsx`, `TopBar.tsx`, `MobileHeader.tsx`, `Sidebar.tsx`, `MobileDrawer.tsx` để cấu hình từng người, khóa nhanh `/login` và cấu hình tự động khóa phiên.

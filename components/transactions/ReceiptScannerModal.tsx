@@ -169,18 +169,18 @@ export function ReceiptScannerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+      <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-[#F6F8FB]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-[#F6F8FB] dark:bg-slate-800/80">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center text-white shadow-xs">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                 Quét Hóa Đơn Thông Minh
               </h3>
-              <p className="text-[11px] text-blue-600 font-semibold">
+              <p className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
                 Gemini Vision AI · Server-Side OCR
               </p>
             </div>
@@ -190,7 +190,7 @@ export function ReceiptScannerModal({
               onClose();
               handleReset();
             }}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -201,14 +201,14 @@ export function ReceiptScannerModal({
           {!imagePreview && (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 bg-slate-50/70 hover:bg-blue-50/30 transition-all cursor-pointer group"
+              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 bg-slate-50/70 dark:bg-slate-800/60 hover:bg-blue-50/30 dark:hover:bg-blue-500/10 transition-all cursor-pointer group"
             >
-              <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
                 <Camera className="w-7 h-7" />
               </div>
               <div className="text-center">
-                <p className="text-xs font-bold text-slate-700">Chụp ảnh hoặc tải hóa đơn lên</p>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Chụp ảnh hoặc tải hóa đơn lên</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1">
                   Hỗ trợ bóc tách từng món hàng & tách danh mục tự động
                 </p>
               </div>
@@ -224,7 +224,7 @@ export function ReceiptScannerModal({
 
           {imagePreview && (
             <div className="space-y-4">
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 max-h-48 flex items-center justify-center">
+              <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 max-h-48 flex items-center justify-center">
                 <img
                   src={imagePreview}
                   alt="Hóa đơn"
@@ -244,22 +244,22 @@ export function ReceiptScannerModal({
               </div>
 
               {errorMsg && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
+                <div className="p-3 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 rounded-xl flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
               {scanResult && !isScanning && (
-                <div className="p-4 bg-slate-50 border border-[#DCE4EE] rounded-xl space-y-3 animate-in fade-in duration-300">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border border-[#DCE4EE] dark:border-slate-700 rounded-xl space-y-3 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       {scanResult.isDemoFallback
                         ? "Bóc tách mẫu offline (chưa gắn GEMINI_API_KEY)"
                         : "Bóc tách thành công bằng AI"}
                     </span>
-                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/20 px-2 py-0.5 rounded-full">
                       Tin cậy {Math.round(scanResult.confidence * 100)}%
                     </span>
                   </div>
@@ -267,47 +267,47 @@ export function ReceiptScannerModal({
                   {/* Review & Edit Fields */}
                   <div className="grid grid-cols-2 gap-2.5 text-xs">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Tổng tiền (VNĐ)
                       </label>
                       <input
                         type="number"
                         value={editAmount}
                         onChange={(e) => setEditAmount(Number(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-black text-rose-600 outline-none focus:border-blue-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-black text-rose-600 dark:text-rose-400 outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Ngày phát sinh
                       </label>
                       <input
                         type="date"
                         value={editDate}
                         onChange={(e) => setEditDate(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-700 outline-none focus:border-blue-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-bold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500"
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Cửa hàng / Nội dung
                       </label>
                       <input
                         type="text"
                         value={editMerchant}
                         onChange={(e) => setEditMerchant(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 outline-none focus:border-blue-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Danh mục chính
                       </label>
                       <select
                         value={editCategoryId}
                         onChange={(e) => setEditCategoryId(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-slate-800 outline-none focus:border-blue-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                       >
                         {expenseCategories.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -318,13 +318,13 @@ export function ReceiptScannerModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Ví / Thẻ thanh toán
                       </label>
                       <select
                         value={editAccountId}
                         onChange={(e) => setEditAccountId(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-semibold text-slate-800 outline-none focus:border-blue-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                       >
                         {accounts.map((a) => (
                           <option key={a.id} value={a.id}>
@@ -335,7 +335,7 @@ export function ReceiptScannerModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Thành viên
                       </label>
                       <div className="grid grid-cols-2 gap-1">
@@ -345,7 +345,7 @@ export function ReceiptScannerModal({
                           className={`py-1.5 rounded-lg font-bold border text-[11px] cursor-pointer ${
                             editMemberId === "HUSBAND"
                               ? "bg-blue-600 text-white border-blue-600"
-                              : "bg-white text-slate-600 border-slate-200"
+                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           👨 {settings.husbandName}
@@ -356,7 +356,7 @@ export function ReceiptScannerModal({
                           className={`py-1.5 rounded-lg font-bold border text-[11px] cursor-pointer ${
                             editMemberId === "WIFE"
                               ? "bg-emerald-600 text-white border-emerald-600"
-                              : "bg-white text-slate-600 border-slate-200"
+                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           👩 {settings.wifeName}
@@ -365,7 +365,7 @@ export function ReceiptScannerModal({
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         Phạm vi chi
                       </label>
                       <div className="grid grid-cols-2 gap-1">
@@ -374,8 +374,8 @@ export function ReceiptScannerModal({
                           onClick={() => setEditScope("FAMILY")}
                           className={`py-1.5 rounded-lg font-bold border text-[11px] cursor-pointer ${
                             editScope === "FAMILY"
-                              ? "bg-blue-50 text-blue-700 border-blue-500"
-                              : "bg-white text-slate-600 border-slate-200"
+                              ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500"
+                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           🏠 Chung
@@ -385,8 +385,8 @@ export function ReceiptScannerModal({
                           onClick={() => setEditScope("PERSONAL")}
                           className={`py-1.5 rounded-lg font-bold border text-[11px] cursor-pointer ${
                             editScope === "PERSONAL"
-                              ? "bg-purple-50 text-purple-700 border-purple-500"
-                              : "bg-white text-slate-600 border-slate-200"
+                              ? "bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500"
+                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           👤 Riêng
@@ -397,9 +397,9 @@ export function ReceiptScannerModal({
 
                   {/* Itemized Breakdown & Split Toggle */}
                   {scanResult.items && scanResult.items.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-700">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
                           Chi tiết món hàng ({scanResult.items.length})
                         </span>
                         {scanResult.items.length > 1 && onApplyTransactions && (
@@ -409,7 +409,7 @@ export function ReceiptScannerModal({
                             className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold border transition-colors cursor-pointer ${
                               splitByItems
                                 ? "bg-indigo-600 text-white border-indigo-600"
-                                : "bg-white text-indigo-700 border-indigo-200"
+                                : "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/40"
                             }`}
                           >
                             <Split className="w-3 h-3" />
@@ -425,17 +425,17 @@ export function ReceiptScannerModal({
                           return (
                             <div
                               key={idx}
-                              className="flex items-center justify-between text-[11px] bg-white px-2.5 py-1.5 rounded-md border border-slate-200"
+                              className="flex items-center justify-between text-[11px] bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-md border border-slate-200 dark:border-slate-700"
                             >
-                              <span className="text-slate-700 font-medium truncate pr-2">
+                              <span className="text-slate-700 dark:text-slate-200 font-medium truncate pr-2">
                                 {item.name}
                                 {itemCat && (
-                                  <span className="ml-1.5 text-[10px] text-blue-600 font-semibold">
+                                  <span className="ml-1.5 text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
                                     ({itemCat.name})
                                   </span>
                                 )}
                               </span>
-                              <span className="font-bold text-slate-800 shrink-0">
+                              <span className="font-bold text-slate-800 dark:text-slate-100 shrink-0">
                                 {formatVND(item.price)}
                               </span>
                             </div>
@@ -460,14 +460,14 @@ export function ReceiptScannerModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+        <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
           {imagePreview ? (
             <>
               <button
                 type="button"
                 onClick={handleReset}
                 disabled={isScanning}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
               >
                 Chụp lại
               </button>
@@ -484,7 +484,7 @@ export function ReceiptScannerModal({
               </button>
             </>
           ) : (
-            <p className="text-[11px] text-slate-400 mx-auto text-center">
+            <p className="text-[11px] text-slate-400 dark:text-slate-400 mx-auto text-center">
               Chụp rõ hóa đơn có số tiền và tên cửa hàng để AI nhận diện chuẩn xác nhất.
             </p>
           )}

@@ -242,6 +242,7 @@ export const DEFAULT_BUDGETS: CategoryBudget[] = [
 
 export const DEFAULT_SETTINGS: AppSettings = {
   themeColor: "blue",
+  themeMode: "light",
   currency: "VND",
   notificationsEnabled: true,
   husbandName: "Anh Chuột",
@@ -253,6 +254,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoLockMinutes: 5,
   lockOnBackground: false,
   authActiveProfile: "HUSBAND",
+  requireAuthForDangerActions: false,
 };
 
 export const DEFAULT_RECURRING_RULES: RecurringRule[] = [

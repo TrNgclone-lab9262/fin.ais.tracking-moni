@@ -1,13 +1,13 @@
 {
-  "version": "1.4.0",
-  "buildId": "v1.4.0-login-security",
+  "version": "1.6.0",
+  "buildId": "v1.6.0-phudong-skyone",
   "releasedAt": "2026-11-13",
-  "title": "Màn hình khóa /login đôi, Face ID di động & Ảnh nền riêng cho 2 vợ chồng",
+  "title": "Tab chuyên biệt Phú Đông SKYONE — Quản Lý Vay & BĐS Toàn Diện",
   "mandatory": false,
   "highlights": [
-    "Thiết kế trang /login bo góc hiện đại dành riêng cho Anh Chuột & Bé Mèo kèm bàn phím số 4–6 chữ số mã hóa SHA-256.",
-    "Hỗ trợ mở khóa 1 chạm bằng Face ID / Sinh trắc học WebAuthn trên điện thoại cùng mã Code dự phòng.",
-    "Cho phép mỗi người tự tải ảnh cá nhân từ thư viện thiết bị làm hình nền màn hình khóa và chỉnh độ mờ/tối.",
-    "Hoàn thiện Trung tâm thông báo di động, ghi sổ định kỳ 1 chạm, xuất báo cáo CSV/Excel và tự động khóa phiên."
+    "Ra mắt tab Phú Đông SKYONE áp dụng chuẩn dư nợ giảm dần không ân hạn gốc, hỗ trợ 2 giai đoạn Lãi cố định ưu đãi & Lãi thả nổi (Cơ sở + Biên độ) cùng mốc điều chỉnh lãi suất thực tế từ ngân hàng.",
+    "Bảng theo dõi thanh toán từng kỳ đa bộ lọc (Trạng thái, Giai đoạn, Năm vay), nhảy nhanh tới kỳ hiện tại, xác nhận từng kỳ hoặc hàng loạt kèm tùy chọn liên kết Sổ giao dịch.",
+    "Phân tích chuyên sâu BĐS & Tài chính: Vốn chủ sở hữu (Equity %), LTV, gánh nặng trả nợ trên thu nhập gia đình (DTI %), bảng Stress-test biến động lãi thả nổi (+1%, +2%, +3%) và biểu đồ Gốc/Lãi/Dư nợ.",
+    "Mô phỏng & lưu đợt Trả gốc trước hạn (tính phí phạt theo năm, lãi tiết kiệm ròng, rút ngắn kỳ hạn hoặc giảm đóng tháng) cùng đồng bộ hoàn toàn vào Sao lưu JSON và Gói hợp nhất 2 máy."
   ]
 }

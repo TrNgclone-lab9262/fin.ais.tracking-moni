@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body className="font-sans antialiased bg-[#F6F8FB] text-[#172B4D]">
+      <body className="font-sans antialiased">
         <FinanceProvider>{children}</FinanceProvider>
       </body>
     </html>

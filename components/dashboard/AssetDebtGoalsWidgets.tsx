@@ -13,11 +13,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, formatShortVND } from "@/lib/formatters";
+import { formatVNDMasked, formatShortVNDMasked } from "@/lib/formatters";
 import { Landmark } from "lucide-react";
 
 export function AssetDebtGoalsWidgets() {
-  const { accounts, investments, debts, goals } = useFinance();
+  const { accounts, investments, debts, goals, isPrivacyMode } = useFinance();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -79,16 +79,16 @@ export function AssetDebtGoalsWidgets() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-        <Landmark className="w-4 h-4 text-blue-600" />
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <Landmark className="w-4 h-4 text-blue-600 dark:text-blue-400" />
         Tài sản, nợ & mục tiêu
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* WIDGET 1: CƠ CẤU TÀI SẢN */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-700">Cơ cấu tài sản</h4>
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Cơ cấu tài sản</h4>
           </div>
 
           <div className="relative w-full h-40 flex items-center justify-center my-1">
@@ -96,8 +96,18 @@ export function AssetDebtGoalsWidgets() {
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
                   <Tooltip
-                    formatter={(v: any) => [formatVND(Number(v)), "Giá trị"]}
-                    contentStyle={{ borderRadius: 12, fontSize: 11 }}
+                    formatter={(v: unknown) => [
+                      formatVNDMasked(Number(v), isPrivacyMode),
+                      "Giá trị",
+                    ]}
+                    contentStyle={{
+                      borderRadius: 12,
+                      fontSize: 11,
+                      backgroundColor: "#0F172A",
+                      border: "1px solid #1E293B",
+                      color: "#F8FAFC",
+                    }}
+                    itemStyle={{ color: "#F8FAFC" }}
                   />
                   <Pie
                     data={assetStructure.list}
@@ -108,6 +118,7 @@ export function AssetDebtGoalsWidgets() {
                     innerRadius={45}
                     outerRadius={65}
                     paddingAngle={2}
+                    stroke="none"
                   >
                     {assetStructure.list.map((entry, idx) => (
                       <Cell key={idx} fill={entry.color} />
@@ -117,14 +128,14 @@ export function AssetDebtGoalsWidgets() {
               </ResponsiveContainer>
             )}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Tổng tài sản</span>
-              <span className="text-sm font-black text-slate-800">
-                {formatShortVND(assetStructure.total)}
+              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-400 uppercase">Tổng tài sản</span>
+              <span className="text-sm font-black text-slate-800 dark:text-slate-100">
+                {formatShortVNDMasked(assetStructure.total, isPrivacyMode)}
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-semibold">
+          <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
             {assetStructure.list.slice(0, 4).map((item, idx) => (
               <div key={idx} className="flex items-center gap-1.5 truncate">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
@@ -135,14 +146,14 @@ export function AssetDebtGoalsWidgets() {
         </div>
 
         {/* WIDGET 2: ĐẦU TƯ ĐANG HOẠT ĐỘNG */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-1">
-            <h4 className="text-xs font-bold text-slate-700">Đầu tư đang hoạt động</h4>
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Đầu tư đang hoạt động</h4>
             <div className="flex items-center gap-2 text-[10px] font-semibold">
-              <span className="flex items-center gap-1 text-slate-500">
+              <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
                 <span className="w-2 h-2 rounded-full bg-slate-400" /> Vốn
               </span>
-              <span className="flex items-center gap-1 text-blue-600">
+              <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                 <span className="w-2 h-2 rounded-full bg-blue-600" /> Giá trị
               </span>
             </div>
@@ -160,10 +171,21 @@ export function AssetDebtGoalsWidgets() {
                     type="number"
                     stroke="#94A3B8"
                     fontSize={9}
-                    tickFormatter={(v) => formatShortVND(v)}
+                    tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
                   />
                   <YAxis type="category" dataKey="name" stroke="#94A3B8" fontSize={9} />
-                  <Tooltip formatter={(v: any) => formatVND(Number(v))} />
+                  <Tooltip
+                    formatter={(v: unknown) => formatVNDMasked(Number(v), isPrivacyMode)}
+                    contentStyle={{
+                      borderRadius: 12,
+                      fontSize: 11,
+                      backgroundColor: "#0F172A",
+                      border: "1px solid #1E293B",
+                      color: "#F8FAFC",
+                    }}
+                    itemStyle={{ color: "#F8FAFC" }}
+                    labelStyle={{ color: "#94A3B8" }}
+                  />
                   <Bar dataKey="principal" fill="#94A3B8" radius={[0, 4, 4, 0]} maxBarSize={12} />
                   <Bar dataKey="estimated" fill="#2563EB" radius={[0, 4, 4, 0]} maxBarSize={12} />
                 </BarChart>
@@ -171,29 +193,29 @@ export function AssetDebtGoalsWidgets() {
             )}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-[10px] text-slate-400 text-center font-medium">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium">
             Lợi nhuận bình quân ~ 6.5% / năm
           </div>
         </div>
 
         {/* WIDGET 3: TIẾN ĐỘ TRẢ NỢ */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-700">Tiến độ trả nợ</h4>
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Tiến độ trả nợ</h4>
           </div>
 
           <div className="flex flex-col items-center justify-center my-auto py-2">
-            <div className="w-24 h-24 rounded-full border-4 border-slate-100 border-t-blue-600 border-r-blue-600 flex flex-col items-center justify-center">
+            <div className="w-24 h-24 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-blue-600 border-r-blue-600 flex flex-col items-center justify-center">
               <span className="text-[10px] text-slate-400 font-semibold uppercase">Còn nợ</span>
-              <span className="text-base font-black text-slate-800">
-                {formatShortVND(debtProgress.totalRemaining)}
+              <span className="text-base font-black text-slate-800 dark:text-slate-100">
+                {formatShortVNDMasked(debtProgress.totalRemaining, isPrivacyMode)}
               </span>
             </div>
           </div>
 
-          <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[11px]">
+          <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px]">
             {debtProgress.items.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-slate-600">
+              <div key={idx} className="flex items-center justify-between text-slate-600 dark:text-slate-300">
                 <span className="flex items-center gap-1.5 font-medium truncate">
                   <span
                     className={`w-2 h-2 rounded-full ${
@@ -202,16 +224,16 @@ export function AssetDebtGoalsWidgets() {
                   />
                   {item.name}:
                 </span>
-                <span className="font-bold text-slate-800">{item.percentage}%</span>
+                <span className="font-bold text-slate-800 dark:text-slate-100">{item.percentage}%</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* WIDGET 4: MỤC TIÊU TIẾT KIỆM */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold text-slate-700">Mục tiêu tiết kiệm</h4>
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Mục tiêu tiết kiệm</h4>
           </div>
 
           <div className="space-y-3.5 my-auto">
@@ -220,18 +242,18 @@ export function AssetDebtGoalsWidgets() {
               return (
                 <div key={g.id} className="space-y-1">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-slate-700">{g.name}</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-200">{g.name}</span>
                     <span
                       className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
                         pct === 100
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-blue-100 text-blue-700"
+                          ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                          : "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
                       }`}
                     >
                       {pct}%
                     </span>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${
                         pct === 100 ? "bg-emerald-500" : "bg-blue-600"
@@ -244,7 +266,7 @@ export function AssetDebtGoalsWidgets() {
             })}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-[10px] text-slate-400 text-center font-medium">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium">
             Tự động theo dõi từ các khoản nạp
           </div>
         </div>

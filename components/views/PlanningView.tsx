@@ -232,13 +232,13 @@ export function PlanningView() {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Tab Switcher */}
-      <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-[#E9EEF5] w-fit">
+      <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-[#E9EEF5] dark:border-slate-700 w-fit">
         <button
           onClick={() => setActiveSubTab("BUDGET")}
           className={`px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all cursor-pointer ${
             activeSubTab === "BUDGET"
-              ? "bg-white text-blue-700 shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
+              ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+              : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
           }`}
         >
           Ngân sách tháng ({budgetSummary.items.length})
@@ -247,8 +247,8 @@ export function PlanningView() {
           onClick={() => setActiveSubTab("GOALS")}
           className={`px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all cursor-pointer ${
             activeSubTab === "GOALS"
-              ? "bg-white text-blue-700 shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
+              ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+              : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
           }`}
         >
           Mục tiêu tiết kiệm ({goals.length})
@@ -257,8 +257,8 @@ export function PlanningView() {
           onClick={() => setActiveSubTab("RECURRING")}
           className={`px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === "RECURRING"
-              ? "bg-white text-blue-700 shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
+              ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+              : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
           }`}
         >
           <Repeat className="w-3.5 h-3.5" />
@@ -268,36 +268,36 @@ export function PlanningView() {
 
       {activeSubTab === "BUDGET" ? (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 border border-[#DCE4EE] shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E9EEF5]">
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E9EEF5] dark:border-slate-800">
               <div>
-                <h3 className="text-base font-bold text-[#172B4D]">
+                <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                   Theo dõi ngân sách · {getMonthDisplayLabel(activeMonthKey)}
                 </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                   Theo dõi chi tiêu so với ngân sách từng danh mục chi
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleCopyPrevMonth}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs rounded-md transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-700 dark:text-blue-300 font-semibold text-xs rounded-md transition-colors cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Sao chép từ tháng trước</span>
                 </button>
                 <button
                   onClick={() => setIsBudgetModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-md transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-md transition-colors cursor-pointer"
                 >
-                  <Sliders className="w-4 h-4 text-slate-500" />
+                  <Sliders className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Đặt ngân sách</span>
                 </button>
               </div>
             </div>
 
             {copyFeedback && (
-              <div className="mt-4 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+              <div className="mt-4 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
                 {copyFeedback}
               </div>
             )}
@@ -307,7 +307,7 @@ export function PlanningView() {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Tổng ngân sách tháng
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-[#172B4D] mt-1 block">
+                <span className="text-xl sm:text-2xl font-black text-[#172B4D] dark:text-slate-100 mt-1 block">
                   {formatVNDMasked(budgetSummary.totalBudget, isPrivacyMode)}
                 </span>
               </div>
@@ -315,7 +315,7 @@ export function PlanningView() {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Đã chi
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-rose-600 mt-1 block">
+                <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 mt-1 block">
                   {formatVNDMasked(budgetSummary.totalSpent, isPrivacyMode)}
                 </span>
               </div>
@@ -323,15 +323,15 @@ export function PlanningView() {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                   Còn lại
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-emerald-600 mt-1 block">
+                <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block">
                   {formatVNDMasked(budgetSummary.remaining, isPrivacyMode)}
                 </span>
               </div>
-              <div className="bg-blue-50/70 p-3 sm:p-4 rounded-lg border border-blue-100">
-                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">
+              <div className="bg-blue-50/70 dark:bg-blue-500/10 p-3 sm:p-4 rounded-lg border border-blue-100 dark:border-blue-500/30">
+                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider block">
                   Mỗi ngày còn được tiêu ({budgetSummary.daysRemaining} ngày)
                 </span>
-                <span className="text-lg sm:text-xl font-black text-blue-700 mt-1 block">
+                <span className="text-lg sm:text-xl font-black text-blue-700 dark:text-blue-300 mt-1 block">
                   {formatVNDMasked(budgetSummary.dailyAllowance, isPrivacyMode)}
                 </span>
               </div>
@@ -344,7 +344,7 @@ export function PlanningView() {
               return (
                 <div
                   key={item.categoryId}
-                  className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col justify-between space-y-3"
+                  className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-3"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -352,32 +352,32 @@ export function PlanningView() {
                         className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: item.categoryColor }}
                       />
-                      <h4 className="font-bold text-[#172B4D] text-sm truncate">{item.categoryName}</h4>
+                      <h4 className="font-bold text-[#172B4D] dark:text-slate-100 text-sm truncate">{item.categoryName}</h4>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenQuickBudgetEdit(item)}
                         title="Điều chỉnh hạn mức danh mục"
-                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => deleteBudget(item.categoryId, activeMonthKey)}
                         title="Xóa hạn mức danh mục này"
-                        className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1 text-slate-300 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="text-xs font-semibold text-slate-600">
+                  <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                     {formatVNDMasked(item.spentAmount, isPrivacyMode)} /{" "}
                     {formatVNDMasked(item.limitAmount, isPrivacyMode)}
                   </div>
 
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${
                         isOver ? "bg-amber-500" : "bg-teal-500"
@@ -386,11 +386,11 @@ export function PlanningView() {
                     />
                   </div>
 
-                  <div className="flex justify-between items-center text-xs text-slate-500 font-medium">
+                  <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 font-medium">
                     <span>
                       {isOver ? "Còn 0 ₫" : `Còn ${formatVNDMasked(item.remainingAmount, isPrivacyMode)}`}
                     </span>
-                    <span className={`font-bold ${isOver ? "text-amber-600" : "text-teal-600"}`}>
+                    <span className={`font-bold ${isOver ? "text-amber-600 dark:text-amber-400" : "text-teal-600 dark:text-teal-400"}`}>
                       {item.percentage}%
                     </span>
                   </div>
@@ -401,10 +401,10 @@ export function PlanningView() {
         </div>
       ) : activeSubTab === "GOALS" ? (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 border border-[#DCE4EE] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="text-base font-bold text-[#172B4D]">Mục tiêu tài chính</h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">Mục tiêu tài chính</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                 Đặt mục tiêu tiết kiệm và ghi nhận dòng tiền nạp hũ minh bạch
               </p>
             </div>
@@ -425,16 +425,16 @@ export function PlanningView() {
               return (
                 <div
                   key={g.id}
-                  className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs flex flex-col justify-between space-y-4"
+                  className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4"
                 >
                   <div>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center border border-[#E9EEF5]">
+                        <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-[#E9EEF5] dark:border-slate-700">
                           {getGoalIcon(g.name)}
                         </div>
                         <div>
-                          <h4 className="font-bold text-[#172B4D] text-sm">{g.name}</h4>
+                          <h4 className="font-bold text-[#172B4D] dark:text-slate-100 text-sm">{g.name}</h4>
                           <p className="text-[11px] text-slate-400 font-medium">
                             {g.deadline ? `Hạn: ${g.deadline.split("-").reverse().join("/")}` : "Không đặt hạn"}
                           </p>
@@ -444,7 +444,7 @@ export function PlanningView() {
 
                     <div className="mt-4">
                       <div className="flex justify-between items-baseline mb-1.5 text-xs">
-                        <span className="font-black text-[#172B4D]">
+                        <span className="font-black text-[#172B4D] dark:text-slate-100">
                           {formatVNDMasked(g.currentAmount, isPrivacyMode)}
                         </span>
                         <span className="text-slate-400 font-semibold">
@@ -452,7 +452,7 @@ export function PlanningView() {
                         </span>
                       </div>
 
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             isDone ? "bg-emerald-500" : "bg-blue-600"
@@ -462,11 +462,11 @@ export function PlanningView() {
                       </div>
 
                       <div className="flex justify-between items-center text-[11px] mt-2 font-medium">
-                        <span className="text-slate-500">
+                        <span className="text-slate-500 dark:text-slate-400">
                           {isDone ? "🎉 Đã hoàn thành!" : `Tiến độ: ${pct}%`}
                         </span>
                         {!isDone && (
-                          <span className="text-blue-600 font-semibold">
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">
                             Cần ~{formatVNDMasked(Math.round((g.targetAmount - g.currentAmount) / 12), isPrivacyMode)}/tháng
                           </span>
                         )}
@@ -474,18 +474,18 @@ export function PlanningView() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-[#E9EEF5] flex items-center justify-between">
+                  <div className="pt-3 border-t border-[#E9EEF5] dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {!isDone ? (
                         <button
                           onClick={() => setDepositGoalId(g.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold rounded-md transition-colors cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-md transition-colors cursor-pointer"
                         >
                           <Coins className="w-3.5 h-3.5" />
                           <span>Nạp thêm</span>
                         </button>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-bold">
+                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                           <CheckCircle2 className="w-4 h-4" /> Đạt mục tiêu
                         </span>
                       )}
@@ -495,14 +495,14 @@ export function PlanningView() {
                       <button
                         onClick={() => handleOpenEditGoal(g)}
                         title="Chỉnh sửa mục tiêu"
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => setDeleteGoalId(g.id)}
                         title="Xóa mục tiêu"
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -516,12 +516,12 @@ export function PlanningView() {
       ) : (
         /* TAB 3: THU/CHI ĐỊNH KỲ */
         <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 border border-[#DCE4EE] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="text-base font-bold text-[#172B4D]">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Quy Tắc Thu / Chi Định Kỳ Hàng Tháng
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                 Tiền lương, tiền thuê nhà, internet, gửi tiết kiệm... ghi sổ 1 chạm mỗi tháng ({activeMonthKey})
               </p>
             </div>
@@ -555,8 +555,8 @@ export function PlanningView() {
               return (
                 <div
                   key={rule.id}
-                  className={`bg-white rounded-xl p-5 border shadow-xs flex flex-col justify-between space-y-3 ${
-                    rule.isActive ? "border-[#DCE4EE]" : "border-slate-200 opacity-65"
+                  className={`bg-white dark:bg-slate-900 rounded-xl p-5 border shadow-xs flex flex-col justify-between space-y-3 ${
+                    rule.isActive ? "border-[#DCE4EE] dark:border-slate-800" : "border-slate-200 dark:border-slate-800 opacity-65"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -565,18 +565,18 @@ export function PlanningView() {
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             rule.type === "INCOME"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-rose-50 text-rose-700"
+                              ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              : "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300"
                           }`}
                         >
                           {rule.type === "INCOME" ? "Thu nhập" : "Chi tiêu"}
                         </span>
-                        <span className="text-[11px] font-semibold text-slate-500">
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                           Ngày {rule.dayOfMonth} hàng tháng
                         </span>
                       </div>
-                      <h4 className="font-bold text-slate-800 text-sm mt-1.5">{rule.name}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm mt-1.5">{rule.name}</h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                         {cat?.name || "Danh mục"} · {acc?.name || "Ví"} ·{" "}
                         {rule.memberId === "HUSBAND" ? settings.husbandName : settings.wifeName}
                       </p>
@@ -585,7 +585,7 @@ export function PlanningView() {
                     <div className="text-right shrink-0">
                       <span
                         className={`text-base font-black ${
-                          rule.type === "INCOME" ? "text-emerald-600" : "text-rose-600"
+                          rule.type === "INCOME" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                         }`}
                       >
                         {rule.type === "INCOME" ? "+" : "-"}
@@ -594,15 +594,15 @@ export function PlanningView() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => updateRecurringRule(rule.id, { isActive: !rule.isActive })}
                         className={`text-[11px] font-bold px-2.5 py-1 rounded-md border cursor-pointer ${
                           rule.isActive
-                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                            : "bg-slate-100 border-slate-200 text-slate-500"
+                            ? "bg-emerald-50 dark:bg-emerald-500/15 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                            : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"
                         }`}
                       >
                         {rule.isActive ? "Đang bật" : "Tạm tắt"}
@@ -611,7 +611,7 @@ export function PlanningView() {
                         type="button"
                         onClick={() => openEditRule(rule)}
                         title="Sửa quy tắc"
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -619,14 +619,14 @@ export function PlanningView() {
                         type="button"
                         onClick={() => deleteRecurringRule(rule.id)}
                         title="Xóa quy tắc"
-                        className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                        className="p-1.5 text-slate-300 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
                     {appliedThisMonth ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="w-4 h-4" /> Đã ghi {activeMonthKey}
                       </span>
                     ) : (
@@ -650,14 +650,14 @@ export function PlanningView() {
       {isBudgetModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-6 border border-[#DCE4EE] max-h-[85vh] flex flex-col"
+            className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 border border-[#DCE4EE] dark:border-slate-800 max-h-[85vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
-              <h3 className="text-base font-bold text-[#172B4D]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                 Cài đặt hạn mức ngân sách ({getMonthDisplayLabel(activeMonthKey)})
               </h3>
-              <button onClick={() => setIsBudgetModalOpen(false)} className="text-slate-400 p-1 cursor-pointer">
+              <button onClick={() => setIsBudgetModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -671,11 +671,11 @@ export function PlanningView() {
                   return (
                     <div
                       key={cat.id}
-                      className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-[#E9EEF5]"
+                      className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#E9EEF5] dark:border-slate-700"
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
-                        <span className="text-xs font-bold text-slate-800">{cat.name}</span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{cat.name}</span>
                       </div>
                       <input
                         type="text"
@@ -686,17 +686,17 @@ export function PlanningView() {
                             setCategoryBudget(cat.id, val, activeMonthKey);
                           }
                         }}
-                        className="w-32 text-right bg-white border border-[#DCE4EE] rounded-lg px-2.5 py-1 text-xs font-black text-slate-800 outline-none focus:border-blue-500"
+                        className="w-32 text-right bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-black text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                       />
                     </div>
                   );
                 })}
             </div>
 
-            <div className="pt-3 border-t border-[#E9EEF5] flex justify-end">
+            <div className="pt-3 border-t border-[#E9EEF5] dark:border-slate-800 flex justify-end">
               <button
                 onClick={() => setIsBudgetModalOpen(false)}
-                className="px-5 py-2.5 bg-blue-600 text-white font-bold text-xs rounded-md shadow-xs cursor-pointer"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-md shadow-xs cursor-pointer"
               >
                 Hoàn tất
               </button>
@@ -715,11 +715,11 @@ export function PlanningView() {
       {isGoalModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className="w-full max-w-md bg-white rounded-xl shadow-2xl p-6 border border-[#DCE4EE]"
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 border border-[#DCE4EE] dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
-              <h3 className="text-base font-bold text-[#172B4D]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                 {editingGoal ? "Chỉnh sửa mục tiêu tiết kiệm" : "Thêm mục tiêu tiết kiệm"}
               </h3>
               <button
@@ -727,7 +727,7 @@ export function PlanningView() {
                   setIsGoalModalOpen(false);
                   setEditingGoal(null);
                 }}
-                className="text-slate-400 p-1 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
+                className="text-slate-400 p-1 hover:text-slate-600 dark:hover:text-slate-200 rounded-md transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -735,19 +735,19 @@ export function PlanningView() {
 
             <form onSubmit={handleSaveGoal} className="space-y-3.5 pt-4">
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Tên mục tiêu</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên mục tiêu</label>
                 <input
                   type="text"
                   required
                   value={goalName}
                   onChange={(e) => setGoalName(e.target.value)}
                   placeholder="VD: Quỹ dự phòng, Mua xe máy..."
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-semibold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 font-semibold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Số tiền mục tiêu (VND)</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Số tiền mục tiêu (VND)</label>
                 <input
                   type="text"
                   required
@@ -757,12 +757,12 @@ export function PlanningView() {
                     setGoalTarget(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
                   }}
                   placeholder="VD: 50.000.000"
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-bold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Hiện đã có (VND)</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Hiện đã có (VND)</label>
                 <input
                   type="text"
                   value={goalCurrent}
@@ -771,17 +771,17 @@ export function PlanningView() {
                     setGoalCurrent(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
                   }}
                   placeholder="0"
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-bold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Hạn mục tiêu (Tùy chọn)</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Hạn mục tiêu (Tùy chọn)</label>
                 <input
                   type="date"
                   value={goalDeadline}
                   onChange={(e) => setGoalDeadline(e.target.value)}
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3.5 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 font-semibold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 font-semibold"
                 />
               </div>
 
@@ -792,7 +792,7 @@ export function PlanningView() {
                     setIsGoalModalOpen(false);
                     setEditingGoal(null);
                   }}
-                  className="flex-1 py-2.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                  className="flex-1 py-2.5 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 >
                   Hủy
                 </button>
@@ -812,34 +812,34 @@ export function PlanningView() {
       {isRecModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className="w-full max-w-md bg-white rounded-xl shadow-2xl p-6 border border-[#DCE4EE]"
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 border border-[#DCE4EE] dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
-              <h3 className="text-base font-bold text-[#172B4D]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+              <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
                 {editingRule ? "Sửa quy tắc định kỳ" : "Thêm quy tắc định kỳ mới"}
               </h3>
-              <button onClick={() => setIsRecModalOpen(false)} className="text-slate-400 p-1 cursor-pointer">
+              <button onClick={() => setIsRecModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveRule} className="space-y-3 pt-4">
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Tên khoản định kỳ</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tên khoản định kỳ</label>
                 <input
                   type="text"
                   required
                   value={recName}
                   onChange={(e) => setRecName(e.target.value)}
                   placeholder="VD: Tiền thuê nhà, Lương tháng..."
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-sm font-semibold"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-slate-100 font-semibold outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Số tiền (VND)</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Số tiền (VND)</label>
                   <input
                     type="text"
                     required
@@ -848,25 +848,25 @@ export function PlanningView() {
                       const raw = e.target.value.replace(/[^0-9]/g, "");
                       setRecAmount(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
                     }}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-sm font-bold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-slate-100 font-bold outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Ngày hàng tháng (1-28)</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Ngày hàng tháng (1-28)</label>
                   <input
                     type="number"
                     min={1}
                     max={28}
                     value={recDay}
                     onChange={(e) => setRecDay(e.target.value)}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-sm font-bold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-slate-100 font-bold outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Loại</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Loại</label>
                   <select
                     value={recType}
                     onChange={(e) => {
@@ -875,18 +875,18 @@ export function PlanningView() {
                       const firstCat = categories.find((c) => c.type === (nextType === "INCOME" ? "INCOME" : "EXPENSE"));
                       if (firstCat) setRecCategoryId(firstCat.id);
                     }}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 font-semibold outline-none focus:border-blue-500"
                   >
                     <option value="EXPENSE">Chi tiêu</option>
                     <option value="INCOME">Thu nhập</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Danh mục</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Danh mục</label>
                   <select
                     value={recCategoryId}
                     onChange={(e) => setRecCategoryId(e.target.value)}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 font-semibold outline-none focus:border-blue-500"
                   >
                     {categories
                       .filter((c) => c.type === (recType === "INCOME" ? "INCOME" : "EXPENSE"))
@@ -901,11 +901,11 @@ export function PlanningView() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Tài khoản</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Tài khoản</label>
                   <select
                     value={recAccountId}
                     onChange={(e) => setRecAccountId(e.target.value)}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 font-semibold outline-none focus:border-blue-500"
                   >
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -915,11 +915,11 @@ export function PlanningView() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Người thực hiện</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Người thực hiện</label>
                   <select
                     value={recMemberId}
                     onChange={(e) => setRecMemberId(e.target.value as FamilyMember)}
-                    className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-100 font-semibold outline-none focus:border-blue-500"
                   >
                     <option value="HUSBAND">👨 {settings.husbandName}</option>
                     <option value="WIFE">👩 {settings.wifeName}</option>
@@ -931,13 +931,13 @@ export function PlanningView() {
                 <button
                   type="button"
                   onClick={() => setIsRecModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-md text-xs font-bold bg-blue-600 text-white cursor-pointer"
+                  className="flex-1 py-2.5 rounded-md text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                 >
                   Lưu quy tắc
                 </button>
@@ -951,22 +951,22 @@ export function PlanningView() {
       {editingCategoryBudget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className="w-full max-w-sm bg-white rounded-xl shadow-2xl p-6 border border-[#DCE4EE]"
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 border border-[#DCE4EE] dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <span
                   className="w-3.5 h-3.5 rounded-full"
                   style={{ backgroundColor: editingCategoryBudget.categoryColor }}
                 />
-                <h3 className="text-sm font-bold text-[#172B4D]">
+                <h3 className="text-sm font-bold text-[#172B4D] dark:text-slate-100">
                   Hạn mức: {editingCategoryBudget.categoryName}
                 </h3>
               </div>
               <button
                 onClick={() => setEditingCategoryBudget(null)}
-                className="text-slate-400 p-1 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
+                className="text-slate-400 p-1 hover:text-slate-600 dark:hover:text-slate-200 rounded-md transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -974,7 +974,7 @@ export function PlanningView() {
 
             <form onSubmit={handleSaveCategoryBudget} className="space-y-4 pt-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
                   Hạn mức chi tháng này (VND)
                 </label>
                 <input
@@ -989,7 +989,7 @@ export function PlanningView() {
                     );
                   }}
                   placeholder="0"
-                  className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-base font-black text-slate-800 outline-none focus:border-blue-500 text-right"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-base font-black text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 text-right"
                 />
               </div>
 
@@ -999,7 +999,7 @@ export function PlanningView() {
                     key={val}
                     type="button"
                     onClick={() => setCategoryBudgetInput(new Intl.NumberFormat("vi-VN").format(val))}
-                    className="py-1 px-2 text-[11px] font-semibold bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 rounded-md transition-colors cursor-pointer"
+                    className="py-1 px-2 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/20 hover:text-blue-700 dark:hover:text-blue-300 text-slate-600 dark:text-slate-300 rounded-md transition-colors cursor-pointer"
                   >
                     {val / 1000000}tr
                   </button>
@@ -1010,7 +1010,7 @@ export function PlanningView() {
                 <button
                   type="button"
                   onClick={() => setEditingCategoryBudget(null)}
-                  className="flex-1 py-2 text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
+                  className="flex-1 py-2 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md transition-colors cursor-pointer"
                 >
                   Hủy
                 </button>

@@ -74,10 +74,10 @@ async function startServer() {
     }
 
     return res.json({
-      version: '1.4.0',
-      buildId: 'v1.4.0-login-security',
+      version: '1.5.0',
+      buildId: 'v1.5.0-mobile-iphone-parity',
       releasedAt: '2026-11-13',
-      title: 'Màn hình khóa /login đôi, Face ID di động & Ảnh nền riêng cho 2 vợ chồng',
+      title: 'Tối ưu /login mọi dòng iPhone, Parity Mobile, Privacy 100% & Đồng bộ 2 máy',
       mandatory: false,
       highlights: [],
     });

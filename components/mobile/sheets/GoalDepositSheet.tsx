@@ -8,7 +8,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { SavingsGoal } from "@/types/finance";
-import { formatVND } from "@/lib/formatters";
+import { formatVNDMasked } from "@/lib/formatters";
 import { useFinance } from "@/context/FinanceContext";
 
 interface GoalDepositSheetProps {
@@ -32,7 +32,7 @@ export function GoalDepositSheet({
   onClose,
   onSuccess,
 }: GoalDepositSheetProps) {
-  const { accounts, depositGoal } = useFinance();
+  const { accounts, depositGoal, isPrivacyMode } = useFinance();
 
   const [amount, setAmount] = useState<number>(5000000);
   const [sourceAccountId, setSourceAccountId] = useState<string>("");
@@ -73,9 +73,10 @@ export function GoalDepositSheet({
 
     if (selectedSourceAccount && selectedSourceAccount.currentBalance < amount) {
       setError(
-        `Số dư ${selectedSourceAccount.name} (${formatVND(
-          selectedSourceAccount.currentBalance
-        )}) không đủ để nạp ${formatVND(amount)}!`
+        `Số dư ${selectedSourceAccount.name} (${formatVNDMasked(
+          selectedSourceAccount.currentBalance,
+          isPrivacyMode
+        )}) không đủ để nạp ${formatVNDMasked(amount, isPrivacyMode)}!`
       );
       return;
     }
@@ -107,69 +108,72 @@ export function GoalDepositSheet({
 
       {/* Bottom Sheet Container */}
       <div
-        className="w-full max-w-lg mx-auto bg-white rounded-t-[32px] shadow-2xl border-t border-slate-200 p-5 space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[88vh]"
+        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-5 space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
-        <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto -mt-1 cursor-grab" />
+        <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 cursor-grab" />
 
         {/* Header Bar */}
         <div className="flex items-center justify-between pb-1">
-          <h3 className="text-base sm:text-lg font-bold text-[#0F172A]">
+          <h3 className="text-base sm:text-lg font-bold text-[#0F172A] dark:text-slate-100">
             Nạp Tiền Mục Tiêu Tích Lũy
           </h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-2">
+          <div className="p-3 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-lg flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Target Goal Mini Card (Indigo Theme) */}
-        <div className="rounded-xl p-3.5 bg-[#F5F3FF] border border-[#DDD6FE] space-y-2.5">
+        <div className="rounded-xl p-3.5 bg-[#F5F3FF] dark:bg-indigo-500/15 border border-[#DDD6FE] dark:border-indigo-500/30 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-lg">🏡</span>
-              <span className="font-bold text-xs sm:text-sm text-[#4338CA]">
+              <span className="font-bold text-xs sm:text-sm text-[#4338CA] dark:text-indigo-300">
                 {goal.name}
               </span>
             </div>
-            <span className="text-xs sm:text-sm font-extrabold text-[#6366F1]">
+            <span className="text-xs sm:text-sm font-extrabold text-[#6366F1] dark:text-indigo-400">
               {currentPct}%
             </span>
           </div>
 
           {/* Progress Bar */}
-          <div className="w-full h-2 rounded-full bg-[#E0E7FF] overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-[#E0E7FF] dark:bg-slate-800 overflow-hidden">
             <div
               className="h-full rounded-full bg-[#4F46E5] transition-all duration-300"
               style={{ width: `${Math.min(currentPct, 100)}%` }}
             />
           </div>
 
-          <div className="flex items-center justify-between text-[11px] font-semibold text-[#312E81]">
-            <span>{formatVND(currentAmount)} / {formatVND(targetAmount)}</span>
-            <span className="text-[#6366F1] font-medium">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-[#312E81] dark:text-indigo-200">
+            <span>
+              {formatVNDMasked(currentAmount, isPrivacyMode)} /{" "}
+              {formatVNDMasked(targetAmount, isPrivacyMode)}
+            </span>
+            <span className="text-[#6366F1] dark:text-indigo-400 font-medium">
               {goal.deadline ? `Hạn: ${goal.deadline}` : "Tổ ấm tương lai"}
             </span>
           </div>
         </div>
 
         {/* Amount Input Display */}
-        <div className="rounded-xl p-3 bg-[#F8FAFC] border border-[#E2E8F0] text-center space-y-1">
-          <span className="text-[11px] font-bold text-[#475569] uppercase tracking-wider block">
+        <div className="rounded-xl p-3 bg-[#F8FAFC] dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-slate-700 text-center space-y-1">
+          <span className="text-[11px] font-bold text-[#475569] dark:text-slate-400 uppercase tracking-wider block">
             SỐ TIỀN MUỐN NẠP VÀO HŨ:
           </span>
-          <div className="text-2xl sm:text-3xl font-black text-[#4F46E5] tracking-tight">
-            +{formatVND(amount)}
+          <div className="text-2xl sm:text-3xl font-black text-[#4F46E5] dark:text-indigo-400 tracking-tight">
+            +{formatVNDMasked(amount, isPrivacyMode)}
           </div>
         </div>
 
@@ -185,7 +189,7 @@ export function GoalDepositSheet({
                 className={`h-9 rounded-lg text-xs font-bold transition-all flex items-center justify-center border cursor-pointer ${
                   isActive
                     ? "bg-[#4F46E5] border-[#4338CA] text-white shadow-xs"
-                    : "bg-[#F1F5F9] border-[#E2E8F0] text-[#334155] hover:bg-slate-200"
+                    : "bg-[#F1F5F9] dark:bg-slate-800 border-[#E2E8F0] dark:border-slate-700 text-[#334155] dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
                 }`}
               >
                 {chip.label}
@@ -195,31 +199,31 @@ export function GoalDepositSheet({
         </div>
 
         {/* Source Wallet Selector */}
-        <div className="rounded-xl p-3 bg-[#F1F5F9] border border-[#E2E8F0] space-y-1.5">
-          <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wider block">
+        <div className="rounded-xl p-3 bg-[#F1F5F9] dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-slate-700 space-y-1.5">
+          <label className="text-[11px] font-bold text-[#475569] dark:text-slate-400 uppercase tracking-wider block">
             Trích tiền từ tài khoản tích lũy:
           </label>
           <select
             value={sourceAccountId}
             onChange={(e) => setSourceAccountId(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-[#1E293B] focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-[#1E293B] dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
           >
             {eligibleAccounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
-                {acc.name} · Số dư: {formatVND(acc.currentBalance)}
+                {acc.name} · Số dư: {formatVNDMasked(acc.currentBalance, isPrivacyMode)}
               </option>
             ))}
           </select>
         </div>
 
         {/* Milestone Impact Badge */}
-        <div className="rounded-xl p-2.5 bg-[#ECFDF5] border border-[#A7F3D0] flex items-center gap-2.5 text-xs text-[#047857]">
-          <TrendingUp className="w-5 h-5 shrink-0 text-emerald-600" />
+        <div className="rounded-xl p-2.5 bg-[#ECFDF5] dark:bg-emerald-500/15 border border-[#A7F3D0] dark:border-emerald-500/30 flex items-center gap-2.5 text-xs text-[#047857] dark:text-emerald-300">
+          <TrendingUp className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <div>
             <span className="font-bold block text-xs">
-              Sau khi nạp: {formatVND(nextAmount)} (Đạt {nextPct}% mục tiêu)
+              Sau khi nạp: {formatVNDMasked(nextAmount, isPrivacyMode)} (Đạt {nextPct}% mục tiêu)
             </span>
-            <span className="text-[10px] text-[#059669] block font-medium">
+            <span className="text-[10px] text-[#059669] dark:text-emerald-400 block font-medium">
               +{diffPct}% tiến độ · Rút ngắn thêm những bước đi trên hành trình cán mốc tổ ấm!
             </span>
           </div>
@@ -229,16 +233,18 @@ export function GoalDepositSheet({
         <button
           onClick={handleConfirmDeposit}
           disabled={isSubmitting || amount <= 0}
-          className="w-full h-12 rounded-xl bg-[#4F46E5] hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
+          className="w-full h-12 rounded-xl bg-[#4F46E5] hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-colors cursor-pointer"
         >
           <Sparkles className="w-4 h-4" />
           <span>
-            {isSubmitting ? "Đang xử lý..." : `XÁC NHẬN NẠP ${formatVND(amount)} VÀO HŨ`}
+            {isSubmitting
+              ? "Đang xử lý..."
+              : `XÁC NHẬN NẠP ${formatVNDMasked(amount, isPrivacyMode)} VÀO HŨ`}
           </span>
         </button>
 
         {/* Home Indicator */}
-        <div className="w-32 h-1 rounded-full bg-slate-800 mx-auto mt-2" />
+        <div className="w-32 h-1 rounded-full bg-slate-800 dark:bg-slate-600 mx-auto mt-2" />
       </div>
     </div>
   );

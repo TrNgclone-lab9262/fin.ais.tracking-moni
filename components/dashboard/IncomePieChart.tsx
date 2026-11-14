@@ -3,15 +3,25 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, formatShortVND } from "@/lib/formatters";
+import { formatVNDMasked, formatShortVNDMasked } from "@/lib/formatters";
 import { ArrowDownLeft, Info } from "lucide-react";
+
+interface IncomeTooltipEntry {
+  payload: {
+    name: string;
+    color: string;
+    amount: number;
+    percentage: number;
+  };
+}
 
 interface CustomTooltipProps {
   active?: boolean;
-  payload?: any[];
+  payload?: IncomeTooltipEntry[];
+  isPrivacyMode: boolean;
 }
 
-function CustomTooltip({ active, payload }: CustomTooltipProps) {
+function CustomTooltip({ active, payload, isPrivacyMode }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -25,7 +35,9 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
         </div>
         <div className="flex justify-between gap-4 text-slate-300">
           <span>Thu nhập:</span>
-          <span className="font-semibold text-white">{formatVND(data.amount)}</span>
+          <span className="font-semibold text-white">
+            {formatVNDMasked(data.amount, isPrivacyMode)}
+          </span>
         </div>
         <div className="flex justify-between gap-4 text-slate-300 mt-1">
           <span>Tỷ trọng:</span>
@@ -38,7 +50,8 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
 }
 
 export function IncomePieChart() {
-  const { transactions, selectedMonth, summary, getCategoryById } = useFinance();
+  const { transactions, selectedMonth, summary, getCategoryById, isPrivacyMode } =
+    useFinance();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -76,15 +89,15 @@ export function IncomePieChart() {
   }, [transactions, selectedMonth, getCategoryById]);
 
   return (
-    <div className="bg-white rounded-xl p-5 sm:p-6 border border-[#DCE4EE] shadow-xs flex flex-col h-full">
-      <div className="flex items-center justify-between pb-4 border-b border-[#E9EEF5]">
+    <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col h-full">
+      <div className="flex items-center justify-between pb-4 border-b border-[#E9EEF5] dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
             <ArrowDownLeft className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-[#172B4D]">Thu nhập theo nguồn</h3>
-            <p className="text-xs text-slate-500 font-medium">Tỷ trọng các nguồn thu</p>
+            <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">Thu nhập theo nguồn</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Tỷ trọng các nguồn thu</p>
           </div>
         </div>
       </div>
@@ -92,8 +105,8 @@ export function IncomePieChart() {
       <div className="flex-1 flex flex-col justify-center items-center py-4">
         {incomeStats.length === 0 ? (
           <div className="text-center py-10 px-4">
-            <Info className="w-6 h-6 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs text-slate-400">Chưa phát sinh thu nhập trong kỳ</p>
+            <Info className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+            <p className="text-xs text-slate-400 dark:text-slate-500">Chưa phát sinh thu nhập trong kỳ</p>
           </div>
         ) : (
           <div className="w-full flex flex-col items-center">
@@ -101,7 +114,7 @@ export function IncomePieChart() {
               {isMounted && (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<CustomTooltip isPrivacyMode={isPrivacyMode} />} />
                     <Pie
                       data={incomeStats}
                       dataKey="amount"
@@ -111,8 +124,7 @@ export function IncomePieChart() {
                       innerRadius={55}
                       outerRadius={80}
                       paddingAngle={3}
-                      stroke="#FFFFFF"
-                      strokeWidth={2}
+                      stroke="none"
                     >
                       {incomeStats.map((entry) => (
                         <Cell key={`cell-${entry.id}`} fill={entry.color} />
@@ -127,25 +139,25 @@ export function IncomePieChart() {
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Tổng thu
                 </span>
-                <span className="text-xl font-black text-slate-800 tracking-tight">
-                  {formatShortVND(summary.monthlyIncome)}
+                <span className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                  {formatShortVNDMasked(summary.monthlyIncome, isPrivacyMode)}
                 </span>
               </div>
             </div>
 
             {/* Legend badges */}
-            <div className="w-full mt-3 flex flex-wrap justify-center gap-2 pt-3 border-t border-slate-100">
+            <div className="w-full mt-3 flex flex-wrap justify-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               {incomeStats.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 text-xs font-semibold text-slate-700"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200"
                 >
                   <span
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: item.color }}
                   />
                   <span>{item.name}</span>
-                  <span className="text-[10px] text-slate-400">({item.percentage}%)</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-400">({item.percentage}%)</span>
                 </div>
               ))}
             </div>

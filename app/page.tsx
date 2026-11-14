@@ -14,6 +14,7 @@ import { TransactionsView } from "@/components/views/TransactionsView";
 import { AccountsView } from "@/components/views/AccountsView";
 import { PlanningView } from "@/components/views/PlanningView";
 import { DebtsInvestView } from "@/components/views/DebtsInvestView";
+import { SkyOneLoanView } from "@/components/views/SkyOneLoanView";
 import { DataAdminView } from "@/components/views/DataAdminView";
 import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
@@ -35,6 +36,7 @@ import { PWAUpdateBanner } from "@/components/common/PWAUpdateBanner";
 import { ReleaseNotesModal } from "@/components/common/ReleaseNotesModal";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
 import { LoginGateView } from "@/components/auth/LoginGateView";
+import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
 import { MobileNotificationSheet } from "@/components/mobile/sheets/MobileNotificationSheet";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
@@ -47,7 +49,9 @@ export default function HomePage() {
     addTransaction,
     addTransactionsBatch,
     accounts,
+    settings,
     isAppLocked,
+    hasPasscodeProtection,
   } = useFinance();
 
   const {
@@ -61,6 +65,7 @@ export default function HomePage() {
   const [isMobileNumpadOpen, setIsMobileNumpadOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isResetStepUpOpen, setIsResetStepUpOpen] = useState(false);
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
   const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
 
@@ -79,17 +84,17 @@ export default function HomePage() {
   // Skeleton Loader khi chờ hydrate từ LocalStorage hoặc xác định viewport
   if (!isLoaded || isMobile === null) {
     return (
-      <div className="min-h-screen bg-[#F6F8FB] flex">
-        <aside className="w-64 bg-[#1E3A8A] hidden md:block animate-pulse" />
+      <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] flex">
+        <aside className="w-64 bg-[#1E3A8A] dark:bg-[#0F172A] dark:border-r dark:border-slate-800 hidden md:block animate-pulse" />
         <div className="flex-1 flex flex-col">
-          <header className="h-20 bg-white border-b border-slate-200 animate-pulse" />
+          <header className="h-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-pulse" />
           <main className="p-8 space-y-6">
             <div className="grid grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 bg-slate-200/80 rounded-xl animate-pulse" />
+                <div key={i} className="h-32 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl animate-pulse" />
               ))}
             </div>
-            <div className="h-80 bg-slate-200/80 rounded-xl animate-pulse" />
+            <div className="h-80 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl animate-pulse" />
           </main>
         </div>
       </div>
@@ -119,6 +124,8 @@ export default function HomePage() {
         return <PlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
+      case "skyone":
+        return <SkyOneLoanView />;
       case "data_admin":
         return <DataAdminView />;
       case "guide":
@@ -152,6 +159,8 @@ export default function HomePage() {
         return <MobilePlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
+      case "skyone":
+        return <SkyOneLoanView />;
       case "data_admin":
         return <DataAdminView />;
       case "guide":
@@ -199,7 +208,7 @@ export default function HomePage() {
 
       {/* 1. DESKTOP VIEW SHELL (>= 768px) */}
       {!isMobile && (
-        <div className="flex min-h-screen bg-[#F6F8FB] text-slate-900 font-sans antialiased">
+        <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
           <Sidebar />
           <div className="flex-1 flex flex-col min-w-0">
             <TopBar
@@ -218,7 +227,7 @@ export default function HomePage() {
 
       {/* 2. MOBILE VIEW SHELL (< 768px) */}
       {isMobile && (
-        <div className="min-h-screen bg-[#F6F8FB] text-slate-900 font-sans antialiased pb-24">
+        <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
           <MobileHeader
             onOpenDrawer={() => setIsMobileMenuOpen(true)}
             onOpenScanner={() => setIsGlobalScannerOpen(true)}
@@ -277,10 +286,25 @@ export default function HomePage() {
         cancelLabel="Hủy"
         isDanger={false}
         onConfirm={() => {
-          resetToMockData();
           setIsResetConfirmOpen(false);
+          if (settings.requireAuthForDangerActions && hasPasscodeProtection) {
+            setIsResetStepUpOpen(true);
+          } else {
+            resetToMockData();
+          }
         }}
         onCancel={() => setIsResetConfirmOpen(false)}
+      />
+
+      <StepUpAuthModal
+        isOpen={isResetStepUpOpen}
+        title="Xác thực khôi phục dữ liệu mẫu"
+        description="Thao tác này sẽ đặt lại toàn bộ sổ sách về mẫu mặc định. Nhập mã Code hoặc Face ID để xác nhận."
+        onVerified={() => {
+          setIsResetStepUpOpen(false);
+          resetToMockData();
+        }}
+        onCancel={() => setIsResetStepUpOpen(false)}
       />
     </>
   );

@@ -16,11 +16,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, formatDateVN, getMonthDisplayLabel } from "@/lib/formatters";
+import { formatVNDMasked, formatDateVN, getMonthDisplayLabel } from "@/lib/formatters";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
-import { Transaction } from "@/types/finance";
+import { Transaction, TransactionType } from "@/types/finance";
 
 interface TransactionsViewProps {
   onOpenAddModal: () => void;
@@ -50,6 +50,7 @@ export function TransactionsView({
     getAccountById,
     deleteTransaction,
     activePerspective,
+    isPrivacyMode,
   } = useFinance();
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export function TransactionsView({
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* 1. Thanh Lọc & Tìm kiếm Toàn diện */}
-      <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
         {/* Quick Month Filter Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
@@ -95,7 +96,7 @@ export function TransactionsView({
               className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 selectedMonth === "ALL"
                   ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                  : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
               }`}
             >
               Tất cả thời gian
@@ -107,7 +108,7 @@ export function TransactionsView({
                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   selectedMonth === m
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
                 }`}
               >
                 {getMonthDisplayLabel(m)}
@@ -118,7 +119,7 @@ export function TransactionsView({
           <div className="flex items-center gap-2">
             <button
               onClick={onOpenBackupModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-md transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Xuất dữ liệu</span>
@@ -134,12 +135,12 @@ export function TransactionsView({
         </div>
 
         {/* Dòng Dropdowns: Loại, Tài khoản, Danh mục, Search */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-[#E9EEF5]">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-[#E9EEF5] dark:border-slate-800">
           <div>
             <select
               value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value as any)}
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+              onChange={(e) => setSelectedType(e.target.value as "ALL" | TransactionType)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value="ALL">Tất cả loại giao dịch</option>
               <option value="INCOME">Thu nhập</option>
@@ -152,7 +153,7 @@ export function TransactionsView({
             <select
               value={selectedAccount}
               onChange={(e) => setSelectedAccount(e.target.value)}
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value="ALL">Tất cả tài khoản (Ví)</option>
               {accounts.map((a) => (
@@ -167,7 +168,7 @@ export function TransactionsView({
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value="ALL">Tất cả danh mục</option>
               {categories.map((c) => (
@@ -186,12 +187,12 @@ export function TransactionsView({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm theo ghi chú..."
-              className="w-full bg-slate-50 border border-[#DCE4EE] rounded-lg pl-9 pr-8 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 placeholder:text-slate-400 font-medium"
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -201,27 +202,27 @@ export function TransactionsView({
       </div>
 
       {/* 2. Dòng Tóm tắt Chỉ số */}
-      <div className="flex flex-wrap items-center gap-4 sm:gap-8 px-2 text-xs font-bold text-slate-600">
-        <span className="text-slate-700">
+      <div className="flex flex-wrap items-center gap-4 sm:gap-8 px-2 text-xs font-bold text-slate-600 dark:text-slate-400">
+        <span className="text-slate-700 dark:text-slate-200">
           📋 <strong>{filterSummary.count}</strong> giao dịch {activePerspective !== "ALL" ? `(${activePerspective === "HUSBAND" ? "Anh Chuột" : "Bé Mèo"})` : "(My Home)"}
         </span>
-        <span className="text-emerald-600">
-          Thu: <strong>{formatVND(filterSummary.income)}</strong>
+        <span className="text-emerald-600 dark:text-emerald-400">
+          Thu: <strong>{formatVNDMasked(filterSummary.income, isPrivacyMode)}</strong>
         </span>
-        <span className="text-rose-600">
-          Chi: <strong>{formatVND(filterSummary.expense)}</strong>
+        <span className="text-rose-600 dark:text-rose-400">
+          Chi: <strong>{formatVNDMasked(filterSummary.expense, isPrivacyMode)}</strong>
         </span>
-        <span className="text-blue-600">
-          Chênh lệch: <strong>{formatVND(filterSummary.diff)}</strong>
+        <span className="text-blue-600 dark:text-blue-400">
+          Chênh lệch: <strong>{formatVNDMasked(filterSummary.diff, isPrivacyMode)}</strong>
         </span>
       </div>
 
       {/* 3. Bảng Giao Dịch Chi Tiết Đa Thiết Bị */}
-      <div className="bg-white rounded-xl border border-[#DCE4EE] shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs overflow-hidden">
         {filteredTransactions.length === 0 ? (
           <div className="p-12 text-center">
-            <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-bold text-slate-600">Không tìm thấy giao dịch nào phù hợp</p>
+            <AlertCircle className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">Không tìm thấy giao dịch nào phù hợp</p>
           </div>
         ) : (
           <>
@@ -239,7 +240,7 @@ export function TransactionsView({
                   <col className="w-auto" />
                   <col className="w-[85px]" />
                 </colgroup>
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                   <tr>
                     <th className="py-3.5 px-3.5">Ngày</th>
                     <th className="py-3.5 px-3.5">Người chi</th>
@@ -252,7 +253,7 @@ export function TransactionsView({
                     <th className="py-3.5 px-3 text-center">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {paginatedList.map((tx) => {
                     const cat = getCategoryById(tx.categoryId);
                     const acc = getAccountById(tx.accountId);
@@ -261,8 +262,8 @@ export function TransactionsView({
                     const isTransfer = tx.type === "TRANSFER";
 
                     return (
-                      <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
-                        <td className="py-3.5 px-3.5 font-medium text-slate-700 whitespace-nowrap">
+                      <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group">
+                        <td className="py-3.5 px-3.5 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           {formatDateVN(tx.date)}
                         </td>
 
@@ -271,8 +272,8 @@ export function TransactionsView({
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                               tx.memberId === "HUSBAND"
-                                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
+                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
                             }`}
                           >
                             {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
@@ -284,10 +285,10 @@ export function TransactionsView({
                           <span
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               isTransfer
-                                ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
                                 : isExpense
-                                ? "bg-rose-50 text-rose-600 border border-rose-200"
-                                : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                                ? "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30"
+                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
                             }`}
                           >
                             {isTransfer ? (
@@ -314,8 +315,8 @@ export function TransactionsView({
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                               tx.scope === "FAMILY"
-                                ? "bg-slate-100 text-slate-700"
-                                : "bg-purple-50 text-purple-700 border border-purple-200"
+                                ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                : "bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30"
                             }`}
                           >
                             {tx.scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}
@@ -324,7 +325,7 @@ export function TransactionsView({
 
                         {/* Danh mục */}
                         <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200/60 max-w-full">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 max-w-full">
                             <span
                               className="w-2.5 h-2.5 rounded-full shrink-0"
                               style={{ backgroundColor: cat?.color || "#94A3B8" }}
@@ -337,19 +338,19 @@ export function TransactionsView({
                         <td
                           className={`py-3.5 px-3.5 text-right font-black whitespace-nowrap ${
                             isTransfer
-                              ? "text-blue-600"
+                              ? "text-blue-600 dark:text-blue-400"
                               : isExpense
-                              ? "text-rose-600"
-                              : "text-emerald-600"
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-emerald-600 dark:text-emerald-400"
                           }`}
                         >
-                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVND(tx.amount)}
+                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
                         </td>
 
                         {/* Tài khoản nguồn */}
-                        <td className="py-3.5 px-3.5 text-slate-600 font-semibold whitespace-nowrap">
+                        <td className="py-3.5 px-3.5 text-slate-600 dark:text-slate-300 font-semibold whitespace-nowrap">
                           <span
-                            className="inline-flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded-md text-slate-700 truncate max-w-full"
+                            className="inline-flex items-center gap-1 text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-slate-700 dark:text-slate-300 truncate max-w-full"
                             title={isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name}
                           >
                             {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name || "Ví tiền"}
@@ -358,10 +359,10 @@ export function TransactionsView({
 
                         {/* Ghi chú */}
                         <td
-                          className="py-3.5 px-3.5 truncate text-slate-600 font-medium"
+                          className="py-3.5 px-3.5 truncate text-slate-600 dark:text-slate-300 font-medium"
                           title={tx.note || ""}
                         >
-                          {tx.note || <span className="text-slate-300 italic">—</span>}
+                          {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
                         </td>
 
                         {/* Thao tác */}
@@ -370,14 +371,14 @@ export function TransactionsView({
                             <button
                               onClick={() => setEditingTx(tx)}
                               title="Chỉnh sửa giao dịch"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setDeleteTargetId(tx.id)}
                               title="Xóa giao dịch"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -402,7 +403,7 @@ export function TransactionsView({
                   <col className="w-auto" />
                   <col className="w-[80px]" />
                 </colgroup>
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-3">Ngày</th>
                     <th className="py-3 px-3">Người & Ví</th>
@@ -413,7 +414,7 @@ export function TransactionsView({
                     <th className="py-3 px-2 text-center">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {paginatedList.map((tx) => {
                     const cat = getCategoryById(tx.categoryId);
                     const acc = getAccountById(tx.accountId);
@@ -421,13 +422,13 @@ export function TransactionsView({
                     const isTransfer = tx.type === "TRANSFER";
 
                     return (
-                      <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-3 font-medium text-slate-700 whitespace-nowrap">
+                      <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
+                        <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           {formatDateVN(tx.date)}
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-[11px] font-bold text-slate-800">
+                            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
                               {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
                             </span>
                             <span className="text-[10px] text-slate-400 font-medium truncate">
@@ -439,46 +440,46 @@ export function TransactionsView({
                           <span
                             className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                               isTransfer
-                                ? "bg-blue-50 text-blue-600"
+                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300"
                                 : isExpense
-                                ? "bg-rose-50 text-rose-600"
-                                : "bg-emerald-50 text-emerald-600"
+                                ? "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-300"
+                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                             }`}
                           >
                             {isTransfer ? "Chuyển" : isExpense ? "Chi" : "Thu"}
                           </span>
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
-                          <span className="font-semibold text-slate-700 truncate block">
+                          <span className="font-semibold text-slate-700 dark:text-slate-200 truncate block">
                             {isTransfer ? "Chuyển khoản" : cat?.name || "Khác"}
                           </span>
                         </td>
                         <td
                           className={`py-3 px-3 text-right font-black whitespace-nowrap ${
                             isTransfer
-                              ? "text-blue-600"
+                              ? "text-blue-600 dark:text-blue-400"
                               : isExpense
-                              ? "text-rose-600"
-                              : "text-emerald-600"
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-emerald-600 dark:text-emerald-400"
                           }`}
                         >
-                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVND(tx.amount)}
+                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
                         </td>
-                        <td className="py-3 px-3 truncate text-slate-500 font-medium" title={tx.note || ""}>
-                          {tx.note || <span className="text-slate-300 italic">—</span>}
+                        <td className="py-3 px-3 truncate text-slate-500 dark:text-slate-400 font-medium" title={tx.note || ""}>
+                          {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
                         </td>
                         <td className="py-3 px-2 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => setEditingTx(tx)}
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
                               title="Sửa"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setDeleteTargetId(tx.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
                               title="Xóa"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -493,7 +494,7 @@ export function TransactionsView({
             </div>
 
             {/* VIEW 3: MOBILE BENTO CARD VIEW */}
-            <div className="md:hidden divide-y divide-slate-100">
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedList.map((tx) => {
                 const cat = getCategoryById(tx.categoryId);
                 const acc = getAccountById(tx.accountId);
@@ -502,14 +503,14 @@ export function TransactionsView({
                 const isTransfer = tx.type === "TRANSFER";
 
                 return (
-                  <div key={tx.id} onClick={() => setSelectedTxForDetail(tx)} className="p-4 space-y-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer active:bg-blue-50/40">
+                  <div key={tx.id} onClick={() => setSelectedTxForDetail(tx)} className="p-4 space-y-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors cursor-pointer active:bg-blue-50/40 dark:active:bg-blue-500/10">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             tx.memberId === "HUSBAND"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
+                              : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
                           }`}
                         >
                           {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
@@ -517,8 +518,8 @@ export function TransactionsView({
                         <span
                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                             tx.scope === "FAMILY"
-                              ? "bg-slate-100 text-slate-700"
-                              : "bg-purple-50 text-purple-700 border border-purple-200"
+                              ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                              : "bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30"
                           }`}
                         >
                           {tx.scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}
@@ -536,30 +537,30 @@ export function TransactionsView({
                           style={{ backgroundColor: cat?.color || "#94A3B8" }}
                         />
                         <div className="min-w-0">
-                          <span className="font-bold text-sm text-[#172B4D] truncate block">
+                          <span className="font-bold text-sm text-[#172B4D] dark:text-slate-100 truncate block">
                             {isTransfer ? "Chuyển khoản ví" : cat?.name || "Khác"}
                           </span>
-                          <span className="text-xs text-slate-500 font-medium truncate block">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate block">
                             {tx.note || (isExpense ? "Chi tiêu" : isTransfer ? "Chuyển tiền" : "Thu nhập")}
                           </span>
                         </div>
                       </div>
-                      <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
+                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
                         {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name || "Ví tiền"}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-50">
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-50 dark:border-slate-800">
                       <p
                         className={`text-base font-black ${
                           isTransfer
-                            ? "text-blue-600"
+                            ? "text-blue-600 dark:text-blue-400"
                             : isExpense
-                            ? "text-rose-600"
-                            : "text-emerald-600"
+                            ? "text-rose-600 dark:text-rose-400"
+                            : "text-emerald-600 dark:text-emerald-400"
                         }`}
                       >
-                        {isExpense ? "-" : isTransfer ? "" : "+"} {formatVND(tx.amount)}
+                        {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
                       </p>
                       <div className="flex items-center gap-1.5">
                         <button
@@ -567,7 +568,7 @@ export function TransactionsView({
                             e.stopPropagation();
                             setEditingTx(tx);
                           }}
-                          className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
+                          className="p-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
                           aria-label="Sửa giao dịch"
                           title="Sửa"
                         >
@@ -578,7 +579,7 @@ export function TransactionsView({
                             e.stopPropagation();
                             setDeleteTargetId(tx.id);
                           }}
-                          className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
+                          className="p-2 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/15 hover:bg-rose-100 dark:hover:bg-rose-500/25 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
                           aria-label="Xóa giao dịch"
                           title="Xóa"
                         >
@@ -595,12 +596,12 @@ export function TransactionsView({
 
         {/* Phân trang */}
         {filteredTransactions.length > pageSize && (
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-1">
               <button
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-30 hover:bg-slate-50 cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -609,7 +610,7 @@ export function TransactionsView({
                   key={p}
                   onClick={() => setCurrentPage(p)}
                   className={`w-7 h-7 rounded-lg font-bold text-xs cursor-pointer ${
-                    currentPage === p ? "bg-blue-600 text-white" : "hover:bg-slate-100"
+                    currentPage === p ? "bg-blue-600 text-white" : "hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
                   {p}
@@ -618,7 +619,7 @@ export function TransactionsView({
               <button
                 disabled={currentPage === totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="p-1.5 rounded-lg border border-slate-200 disabled:opacity-30 hover:bg-slate-50 cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -636,7 +637,7 @@ export function TransactionsView({
         isOpen={deleteTargetId !== null}
         title="Xóa giao dịch này?"
         message={`Bạn có chắc muốn xóa giao dịch ${
-          targetTx ? formatVND(targetTx.amount) : ""
+          targetTx ? formatVNDMasked(targetTx.amount, isPrivacyMode) : ""
         }?`}
         confirmLabel="Xóa"
         cancelLabel="Hủy"

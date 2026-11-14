@@ -24,17 +24,17 @@ export function DualCreditCardsWidget() {
   };
 
   return (
-    <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs space-y-4">
-      <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5]">
+    <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
+      <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <CreditCard className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm sm:text-base font-bold text-[#172B4D]">
+            <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
               Quản lý 2 Thẻ Tín Dụng BIDV Credit
             </h3>
-            <p className="text-[11px] text-slate-500 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
               Chốt sao kê ngày {husbandCreditCard?.statementDay || 20} · Hạn trả ngày{" "}
               {String(husbandCreditCard?.dueDay || 6).padStart(2, "0")} tháng sau · Ngưỡng an toàn ≤ 30%
             </p>
@@ -43,7 +43,7 @@ export function DualCreditCardsWidget() {
 
         <button
           onClick={() => setActiveTab("accounts")}
-          className="text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 hover:text-blue-700 hover:bg-blue-50/70 transition-all flex items-center gap-1 cursor-pointer"
+          className="text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50/70 dark:hover:bg-blue-500/15 transition-all flex items-center gap-1 cursor-pointer"
         >
           <span>Chi tiết ví</span>
           <ArrowRight className="w-3.5 h-3.5" />

@@ -48,15 +48,15 @@ export function MobileNotificationSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Cảnh báo và nhắc nhở gia đình"
-        className="w-full bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 max-h-[82vh] flex flex-col animate-in slide-in-from-bottom duration-200"
+        className="w-full bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl border-t border-slate-200 dark:border-slate-800 max-h-[82vh] flex flex-col animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1.5 bg-slate-300 rounded-full mx-auto mt-3 mb-1" />
+        <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
 
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Bell className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm font-extrabold text-[#172B4D]">
+            <Bell className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <h3 className="text-sm font-extrabold text-[#172B4D] dark:text-slate-100">
               Cảnh báo & Nhắc nhở ({notifications.length})
             </h3>
           </div>
@@ -65,7 +65,7 @@ export function MobileNotificationSheet({
             type="button"
             onClick={onClose}
             aria-label="Đóng thông báo"
-            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+            className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -73,19 +73,19 @@ export function MobileNotificationSheet({
 
         <div className="p-4 overflow-y-auto space-y-3">
           {appliedMsg && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-2">
+            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
               <Check className="w-4 h-4 shrink-0" />
               <span>{appliedMsg}</span>
             </div>
           )}
 
           {pendingCount > 0 && (
-            <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-between gap-3">
+            <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-[#1E3A8A]">
+                <div className="text-xs font-extrabold text-[#1E3A8A] dark:text-blue-300">
                   {pendingCount} giao dịch định kỳ chờ ghi sổ
                 </div>
-                <p className="text-[11px] text-slate-600 mt-0.5">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
                   Áp dụng nhanh cho kỳ {activeMonth}
                 </p>
               </div>
@@ -102,13 +102,13 @@ export function MobileNotificationSheet({
 
           {notifications.length === 0 ? (
             <div className="py-10 text-center space-y-2">
-              <AlertTriangle className="w-6 h-6 text-slate-300 mx-auto" />
-              <p className="text-xs text-slate-500 font-medium">
+              <AlertTriangle className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 Không còn cảnh báo nào chưa đọc.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {notifications.map((n) => (
                 <div key={n.id} className="py-3 flex items-start gap-3">
                   <span
@@ -121,17 +121,17 @@ export function MobileNotificationSheet({
                     }`}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-800">{n.title}</p>
-                    <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{n.title}</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
                       {n.message}
                     </p>
-                    <span className="text-[10px] text-slate-400 mt-1 block">{n.date}</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">{n.date}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => markNotificationRead(n.id)}
                     aria-label="Đánh dấu đã đọc"
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 flex items-center justify-center cursor-pointer shrink-0"
+                    className="min-w-[36px] min-h-[36px] rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center cursor-pointer shrink-0"
                   >
                     <Check className="w-4 h-4" />
                   </button>

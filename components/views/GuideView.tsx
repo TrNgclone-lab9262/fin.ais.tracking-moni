@@ -33,9 +33,9 @@ export function GuideView() {
       title: "Cơ chế quản lý tài chính Tổ Ấm (Anh Chuột & Bé Mèo)",
       icon: Users,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
-          <div className="p-4 rounded-lg bg-blue-50/80 border border-blue-200/60 flex items-start gap-3 text-blue-900">
-            <Lightbulb className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+          <div className="p-4 rounded-lg bg-blue-50/80 dark:bg-blue-500/10 border border-blue-200/60 dark:border-blue-500/30 flex items-start gap-3 text-blue-900 dark:text-blue-200">
+            <Lightbulb className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
             <div>
               <strong>Nguyên tắc đồng thuận:</strong> HOME MONI giúp Anh Chuột và Bé Mèo nắm rõ thu nhập, chi tiêu và nợ thẻ tín dụng của nhau nhưng vẫn tôn trọng các khoản chi tiêu cá nhân hợp lý.
             </div>
@@ -56,7 +56,7 @@ export function GuideView() {
       title: "Quản lý 2 thẻ tín dụng BIDV Credit (50tr & 20tr)",
       icon: CreditCard,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
             Tổ ấm sử dụng 2 thẻ BIDV Credit: thẻ của <strong>Anh Chuột (Hạn mức 50.000.000 ₫)</strong> và thẻ của <strong>Bé Mèo (Hạn mức 20.000.000 ₫)</strong>.
           </p>
@@ -79,7 +79,7 @@ export function GuideView() {
       title: "Hệ thống 6 tài khoản ngân hàng của gia đình",
       icon: CreditCard,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <ul className="list-disc pl-5 space-y-1.5">
             <li><strong>Vietinbank (Anh Chuột):</strong> Nhận lương chính của Anh Chuột. Dùng trích tiền nhà và nạp sang ví chi tiêu.</li>
             <li><strong>BIDV (Anh Chuột):</strong> Ví phụ chi tiêu thường ngày của Anh Chuột.</li>
@@ -94,7 +94,7 @@ export function GuideView() {
       title: "Ngân sách tháng & Chỉ số tiêu mỗi ngày",
       icon: Target,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
             Chỉ số <strong>"Mỗi ngày còn được tiêu X VND"</strong> lấy số tiền ngân sách còn lại chia đều cho số ngày thực tế còn lại trong tháng, giúp 2 vợ chồng điều tiết chi tiêu hợp lý.
           </p>
@@ -106,7 +106,7 @@ export function GuideView() {
       title: "Cài đặt & Sao lưu LocalStorage an toàn",
       icon: Settings,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
             Dữ liệu tài chính gia đình được mã hóa và lưu trực tiếp trên thiết bị này. Hãy xuất file sao lưu JSON định kỳ để bảo toàn dữ liệu.
           </p>
@@ -118,7 +118,7 @@ export function GuideView() {
       title: "Cài đặt & Cập nhật bản mới 1 chạm trên iPhone / Android (PWA)",
       icon: Smartphone,
       content: (
-        <div className="space-y-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           <p>
             Khi HOME MONI đã được cài ra màn hình chính điện thoại, thiết bị vẫn tự động nhận phiên bản mới mà không cần xóa app cài lại:
           </p>
@@ -140,9 +140,9 @@ export function GuideView() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-xl p-6 border border-[#DCE4EE] shadow-xs">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-blue-600" />
+      <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs">
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <HelpCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           Cẩm nang sử dụng HOME MONI
         </h2>
         <p className="text-xs text-slate-400 font-medium mt-1">
@@ -158,17 +158,17 @@ export function GuideView() {
           return (
             <div
               key={sec.id}
-              className="bg-white rounded-xl border border-[#DCE4EE] shadow-xs overflow-hidden transition-all"
+              className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs overflow-hidden transition-all"
             >
               <button
                 onClick={() => toggleSection(sec.id)}
-                className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors cursor-pointer"
+                className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className="font-bold text-sm text-slate-800">{sec.title}</span>
+                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{sec.title}</span>
                 </div>
                 {isOpen ? (
                   <ChevronUp className="w-5 h-5 text-slate-400" />
@@ -178,7 +178,7 @@ export function GuideView() {
               </button>
 
               {isOpen && (
-                <div className="px-5 pb-5 pt-1 border-t border-slate-100 bg-white">
+                <div className="px-5 pb-5 pt-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
                   {sec.content}
                 </div>
               )}

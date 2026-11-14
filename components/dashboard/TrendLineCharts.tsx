@@ -11,7 +11,11 @@ import {
   ReferenceLine,
 } from "recharts";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVND, formatShortVND, getMonthDisplayLabel } from "@/lib/formatters";
+import {
+  formatVNDMasked,
+  formatShortVNDMasked,
+  getMonthDisplayLabel,
+} from "@/lib/formatters";
 import { calculateBalanceAndCumulativeTrends } from "@/lib/financeEngine";
 import { Activity } from "lucide-react";
 
@@ -22,6 +26,7 @@ export function TrendLineCharts() {
     selectedMonth,
     activePerspective,
     budgetSummary,
+    isPrivacyMode,
   } = useFinance();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -51,17 +56,17 @@ export function TrendLineCharts() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-        <Activity className="w-4 h-4 text-blue-600" />
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
         Xu hướng tích lũy & Lũy kế ({monthLabel})
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Biểu đồ 1: Số dư theo thời gian */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold text-slate-700">Số dư thanh khoản 6 tháng</h4>
-            <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Số dư thanh khoản 6 tháng</h4>
+            <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/15 px-2 py-0.5 rounded-md">
               {firstRangeLabel} - {lastRangeLabel}
             </span>
           </div>
@@ -75,11 +80,22 @@ export function TrendLineCharts() {
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v) => formatShortVND(v)}
+                    tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
                   />
                   <Tooltip
-                    formatter={(v: unknown) => [formatVND(Number(v)), "Số dư"]}
-                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    formatter={(v: unknown) => [
+                      formatVNDMasked(Number(v), isPrivacyMode),
+                      "Số dư",
+                    ]}
+                    contentStyle={{
+                      borderRadius: 12,
+                      fontSize: 12,
+                      backgroundColor: "#0F172A",
+                      border: "1px solid #1E293B",
+                      color: "#F8FAFC",
+                    }}
+                    itemStyle={{ color: "#F8FAFC" }}
+                    labelStyle={{ color: "#94A3B8" }}
                   />
                   <Line
                     type="monotone"
@@ -95,11 +111,11 @@ export function TrendLineCharts() {
         </div>
 
         {/* Biểu đồ 2: Chi tiêu lũy kế trong tháng */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold text-slate-700">Chi tiêu lũy kế trong tháng</h4>
-            <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">
-              Mốc {formatShortVND(budgetSummary.totalBudget)}
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Chi tiêu lũy kế trong tháng</h4>
+            <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/15 px-2 py-0.5 rounded-md">
+              Mốc {formatShortVNDMasked(budgetSummary.totalBudget, isPrivacyMode)}
             </span>
           </div>
           <div className="h-40 w-full pt-2">
@@ -112,12 +128,23 @@ export function TrendLineCharts() {
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v) => formatShortVND(v)}
+                    tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
                   />
                   <Tooltip
-                    formatter={(v: unknown) => [formatVND(Number(v)), "Đã chi lũy kế"]}
+                    formatter={(v: unknown) => [
+                      formatVNDMasked(Number(v), isPrivacyMode),
+                      "Đã chi lũy kế",
+                    ]}
                     labelFormatter={(d) => `Ngày ${d}`}
-                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    contentStyle={{
+                      borderRadius: 12,
+                      fontSize: 12,
+                      backgroundColor: "#0F172A",
+                      border: "1px solid #1E293B",
+                      color: "#F8FAFC",
+                    }}
+                    itemStyle={{ color: "#F8FAFC" }}
+                    labelStyle={{ color: "#94A3B8" }}
                   />
                   {budgetSummary.totalBudget > 0 && (
                     <ReferenceLine
@@ -140,10 +167,10 @@ export function TrendLineCharts() {
         </div>
 
         {/* Biểu đồ 3: Thu lũy kế trong tháng */}
-        <div className="bg-white rounded-xl p-5 border border-[#DCE4EE] shadow-xs flex flex-col">
+        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-bold text-slate-700">Thu lũy kế trong tháng</h4>
-            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">Thu lũy kế trong tháng</h4>
+            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/15 px-2 py-0.5 rounded-md">
               {monthLabel}
             </span>
           </div>
@@ -157,12 +184,23 @@ export function TrendLineCharts() {
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v) => formatShortVND(v)}
+                    tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
                   />
                   <Tooltip
-                    formatter={(v: unknown) => [formatVND(Number(v)), "Thu nhập lũy kế"]}
+                    formatter={(v: unknown) => [
+                      formatVNDMasked(Number(v), isPrivacyMode),
+                      "Thu nhập lũy kế",
+                    ]}
                     labelFormatter={(d) => `Ngày ${d}`}
-                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    contentStyle={{
+                      borderRadius: 12,
+                      fontSize: 12,
+                      backgroundColor: "#0F172A",
+                      border: "1px solid #1E293B",
+                      color: "#F8FAFC",
+                    }}
+                    itemStyle={{ color: "#F8FAFC" }}
+                    labelStyle={{ color: "#94A3B8" }}
                   />
                   <Line
                     type="monotone"

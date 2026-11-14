@@ -13,11 +13,37 @@ export interface AppReleaseEntry {
   mandatory?: boolean;
 }
 
-export const APP_VERSION = '1.4.0';
-export const APP_BUILD_ID = 'v1.4.0-login-security';
+export const APP_VERSION = '1.6.0';
+export const APP_BUILD_ID = 'v1.6.0-phudong-skyone';
 export const APP_RELEASE_DATE = '2026-11-13';
 
 export const APP_CHANGELOG: AppReleaseEntry[] = [
+  {
+    version: '1.6.0',
+    buildId: 'v1.6.0-phudong-skyone',
+    releasedAt: '2026-11-13',
+    title: 'Tab chuyên biệt Phú Đông SKYONE — Quản Lý Vay & BĐS Toàn Diện',
+    highlights: [
+      'Ra mắt tab Phú Đông SKYONE áp dụng chuẩn dư nợ giảm dần không ân hạn gốc, hỗ trợ 2 giai đoạn Lãi cố định ưu đãi & Lãi thả nổi (Cơ sở + Biên độ) cùng mốc điều chỉnh lãi suất thực tế từ ngân hàng.',
+      'Bảng theo dõi thanh toán từng kỳ đa bộ lọc (Trạng thái, Giai đoạn, Năm vay), nhảy nhanh tới kỳ hiện tại, xác nhận từng kỳ hoặc hàng loạt kèm tùy chọn liên kết Sổ giao dịch.',
+      'Phân tích chuyên sâu BĐS & Tài chính: Vốn chủ sở hữu (Equity %), LTV, gánh nặng trả nợ trên thu nhập gia đình (DTI %), bảng Stress-test biến động lãi thả nổi (+1%, +2%, +3%) và biểu đồ Gốc/Lãi/Dư nợ.',
+      'Mô phỏng & lưu đợt Trả gốc trước hạn (tính phí phạt theo năm, lãi tiết kiệm ròng, rút ngắn kỳ hạn hoặc giảm đóng tháng) cùng đồng bộ hoàn toàn vào Sao lưu JSON và Gói hợp nhất 2 máy.',
+    ],
+    mandatory: false,
+  },
+  {
+    version: '1.5.0',
+    buildId: 'v1.5.0-mobile-iphone-parity',
+    releasedAt: '2026-11-13',
+    title: 'Tối ưu /login mọi dòng iPhone, Parity Mobile, Privacy 100% & Đồng bộ 2 máy',
+    highlights: [
+      'Tối ưu bố cục /login trên toàn bộ kích cỡ iPhone (SE đến Pro Max) và chế độ PWA safe-area: bàn phím số gọn vừa 1 màn hình kèm nút Face ID + Xác nhận ngay tầm ngón cái.',
+      'Hoàn thiện tính năng trên Mobile: thanh chọn kỳ/tháng ngang, đối soát quỹ chung & tất toán 1 chạm, tóm tắt AI kỳ này và ghi sổ nhanh khoản định kỳ.',
+      'Phủ kín Chế độ Riêng tư 100% trên toàn bộ bảng giao dịch, các Bottom Sheet và toàn bộ biểu đồ Recharts.',
+      'Ra mắt Gói chia sẻ đồng bộ 2 máy (Smart Merge chống trùng ID + giữ nguyên bảo mật cục bộ) và tùy chọn xác thực Step-Up cho thao tác xóa hàng loạt / Reset / ghi đè.',
+    ],
+    mandatory: false,
+  },
   {
     version: '1.4.0',
     buildId: 'v1.4.0-login-security',

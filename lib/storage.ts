@@ -9,6 +9,7 @@ import {
   AppSettings,
   AppDataBackup,
   RecurringRule,
+  MortgageContract,
 } from "@/types/finance";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import {
@@ -21,7 +22,8 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_RECURRING_RULES,
 } from "@/constants/mockData";
-import { AppDataBackupSchema } from "./validations";
+import { AppDataBackupSchema, MortgageContractSchema } from "./validations";
+import { createDefaultSkyOneLoan } from "./mortgageEngine";
 
 export const STORAGE_KEY_V3 = "HOME_MONI_DATA_V4";
 
@@ -35,6 +37,7 @@ export interface StoredAppStateV3 {
   investments: InvestmentItem[];
   recurringRules: RecurringRule[];
   settings: AppSettings;
+  skyoneLoan: MortgageContract;
 }
 
 function isStorageAvailable(): boolean {
@@ -100,6 +103,7 @@ export function seedInitialDataV3(): StoredAppStateV3 {
     investments: DEFAULT_INVESTMENTS,
     recurringRules: DEFAULT_RECURRING_RULES,
     settings: DEFAULT_SETTINGS,
+    skyoneLoan: createDefaultSkyOneLoan(),
   };
 
   initialData.accounts = recalculateAccountBalances(initialData.accounts, initialData.transactions);
@@ -128,6 +132,7 @@ export function loadStoredDataV3(): StoredAppStateV3 {
     if (rawV3) {
       const parsed = JSON.parse(rawV3);
       if (parsed.transactions && Array.isArray(parsed.transactions)) {
+        const skyoneParsed = MortgageContractSchema.safeParse(parsed.skyoneLoan);
         return {
           categories: parsed.categories?.length ? parsed.categories : DEFAULT_CATEGORIES,
           accounts: parsed.accounts?.length ? parsed.accounts : DEFAULT_ACCOUNTS,
@@ -140,6 +145,7 @@ export function loadStoredDataV3(): StoredAppStateV3 {
             ? parsed.recurringRules
             : DEFAULT_RECURRING_RULES,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+          skyoneLoan: skyoneParsed.success ? skyoneParsed.data : createDefaultSkyOneLoan(),
         };
       }
     }
@@ -165,11 +171,8 @@ export function saveStoredDataV3(state: StoredAppStateV3): boolean {
   }
 }
 
-/**
- * Xuất dữ liệu sao lưu JSON
- */
-export function exportDataToJsonV3(state: StoredAppStateV3): void {
-  const backupPayload: AppDataBackup = {
+export function buildSyncBundlePayload(state: StoredAppStateV3): AppDataBackup {
+  return {
     version: "4.0",
     exportedAt: new Date().toISOString(),
     categories: state.categories,
@@ -181,9 +184,19 @@ export function exportDataToJsonV3(state: StoredAppStateV3): void {
     investments: state.investments,
     recurringRules: state.recurringRules,
     settings: state.settings,
+    skyoneLoan: state.skyoneLoan,
   };
+}
 
-  const jsonString = JSON.stringify(backupPayload, null, 2);
+export function buildSyncBundleJson(state: StoredAppStateV3): string {
+  return JSON.stringify(buildSyncBundlePayload(state), null, 2);
+}
+
+/**
+ * Xuất dữ liệu sao lưu JSON
+ */
+export function exportDataToJsonV3(state: StoredAppStateV3): void {
+  const jsonString = buildSyncBundleJson(state);
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 
@@ -272,7 +285,236 @@ export function exportTransactionsToCsv(
 }
 
 /**
- * Nhập dữ liệu sao lưu JSON
+ * Phân tích chuỗi JSON gói đồng bộ / sao lưu thành StoredAppStateV3 chuẩn hóa
+ */
+export function parseSyncBundleText(text: string): {
+  success: boolean;
+  data?: StoredAppStateV3;
+  error?: string;
+} {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { success: false, error: "Dữ liệu gói đồng bộ đang rỗng." };
+  }
+
+  try {
+    const rawJson: unknown = JSON.parse(trimmed);
+    const validation = AppDataBackupSchema.safeParse(rawJson);
+
+    if (!validation.success) {
+      const firstError = validation.error.issues?.[0]?.message || "Cấu trúc gói JSON không hợp lệ";
+      return { success: false, error: `Lỗi định dạng: ${firstError}` };
+    }
+
+    const validData = validation.data;
+    const appState: StoredAppStateV3 = {
+      categories: validData.categories,
+      accounts: validData.accounts ?? DEFAULT_ACCOUNTS,
+      transactions: validData.transactions,
+      budgets: validData.budgets ?? DEFAULT_BUDGETS,
+      goals: validData.goals ?? DEFAULT_SAVINGS_GOALS,
+      debts: validData.debts ?? DEFAULT_DEBTS,
+      investments: validData.investments ?? DEFAULT_INVESTMENTS,
+      recurringRules: validData.recurringRules ?? DEFAULT_RECURRING_RULES,
+      settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
+      skyoneLoan: validData.skyoneLoan ?? createDefaultSkyOneLoan(),
+    };
+
+    appState.accounts = recalculateAccountBalances(appState.accounts, appState.transactions);
+    return { success: true, data: appState };
+  } catch {
+    return { success: false, error: "Không thể đọc chuỗi JSON. Vui lòng kiểm tra lại định dạng." };
+  }
+}
+
+export interface MergeDiffPreview {
+  newTransactions: number;
+  newAccounts: number;
+  newGoals: number;
+  newDebts: number;
+  newInvestments: number;
+  newBudgets: number;
+  newCategories: number;
+  newRecurringRules: number;
+  newMortgagePaidRecords: number;
+  newMortgagePrepayments: number;
+  newMortgageRateAdjustments: number;
+  totalNewItems: number;
+  totalIncomingTransactions: number;
+}
+
+export interface MergeOptions {
+  mode: "MERGE" | "REPLACE";
+  keepLocalSecurity: boolean;
+}
+
+function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const seen = new Set(existing.map((item) => item.id));
+  const additions = incoming.filter((item) => !seen.has(item.id));
+  return [...existing, ...additions];
+}
+
+function budgetKey(b: CategoryBudget): string {
+  return `${b.categoryId}__${b.month}`;
+}
+
+export function previewMergeDiff(
+  current: StoredAppStateV3,
+  incoming: StoredAppStateV3
+): MergeDiffPreview {
+  const countNewById = <T extends { id: string }>(a: T[], b: T[]) => {
+    const ids = new Set(a.map((x) => x.id));
+    return b.filter((x) => !ids.has(x.id)).length;
+  };
+
+  const budgetKeys = new Set(current.budgets.map(budgetKey));
+  const newBudgets = incoming.budgets.filter((b) => !budgetKeys.has(budgetKey(b))).length;
+
+  const newTransactions = countNewById(current.transactions, incoming.transactions);
+  const newAccounts = countNewById(current.accounts, incoming.accounts);
+  const newGoals = countNewById(current.goals, incoming.goals);
+  const newDebts = countNewById(current.debts, incoming.debts);
+  const newInvestments = countNewById(current.investments, incoming.investments);
+  const newCategories = countNewById(current.categories, incoming.categories);
+  const newRecurringRules = countNewById(current.recurringRules, incoming.recurringRules);
+
+  const curPaidPeriods = new Set(current.skyoneLoan.paidRecords.map((r) => r.period));
+  const newMortgagePaidRecords = incoming.skyoneLoan.paidRecords.filter(
+    (r) => !curPaidPeriods.has(r.period)
+  ).length;
+  const newMortgagePrepayments = countNewById(
+    current.skyoneLoan.prepayments,
+    incoming.skyoneLoan.prepayments
+  );
+  const newMortgageRateAdjustments = countNewById(
+    current.skyoneLoan.rateAdjustments,
+    incoming.skyoneLoan.rateAdjustments
+  );
+
+  const totalNewItems =
+    newTransactions +
+    newAccounts +
+    newGoals +
+    newDebts +
+    newInvestments +
+    newBudgets +
+    newCategories +
+    newRecurringRules +
+    newMortgagePaidRecords +
+    newMortgagePrepayments +
+    newMortgageRateAdjustments;
+
+  return {
+    newTransactions,
+    newAccounts,
+    newGoals,
+    newDebts,
+    newInvestments,
+    newBudgets,
+    newCategories,
+    newRecurringRules,
+    newMortgagePaidRecords,
+    newMortgagePrepayments,
+    newMortgageRateAdjustments,
+    totalNewItems,
+    totalIncomingTransactions: incoming.transactions.length,
+  };
+}
+
+export function mergeFinanceData(
+  current: StoredAppStateV3,
+  incoming: StoredAppStateV3,
+  options: MergeOptions
+): StoredAppStateV3 {
+  const securitySlice: Partial<AppSettings> = options.keepLocalSecurity
+    ? {
+        pinCode: current.settings.pinCode,
+        requireAuthOnOpen: current.settings.requireAuthOnOpen,
+        autoLockMinutes: current.settings.autoLockMinutes,
+        lockOnBackground: current.settings.lockOnBackground,
+        requireAuthForDangerActions: current.settings.requireAuthForDangerActions,
+        authActiveProfile: current.settings.authActiveProfile,
+        husbandAuth: current.settings.husbandAuth,
+        wifeAuth: current.settings.wifeAuth,
+      }
+    : {};
+
+  if (options.mode === "REPLACE") {
+    const nextAccounts = recalculateAccountBalances(incoming.accounts, incoming.transactions);
+    return {
+      ...incoming,
+      accounts: nextAccounts,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ...incoming.settings,
+        ...securitySlice,
+      },
+    };
+  }
+
+  const mergedCategories = mergeById(current.categories, incoming.categories);
+  const mergedAccountsRaw = mergeById(current.accounts, incoming.accounts);
+  const mergedTransactions = mergeById(current.transactions, incoming.transactions);
+  const existingBudgetKeys = new Set(current.budgets.map(budgetKey));
+  const mergedBudgets = [
+    ...current.budgets,
+    ...incoming.budgets.filter((b) => !existingBudgetKeys.has(budgetKey(b))),
+  ];
+  const mergedGoals = mergeById(current.goals, incoming.goals);
+  const mergedDebts = mergeById(current.debts, incoming.debts);
+  const mergedInvestments = mergeById(current.investments, incoming.investments);
+  const mergedRules = mergeById(current.recurringRules, incoming.recurringRules);
+
+  const incomingIsNewer =
+    incoming.skyoneLoan.updatedAt.localeCompare(current.skyoneLoan.updatedAt) > 0;
+  const baseContract = incomingIsNewer ? incoming.skyoneLoan : current.skyoneLoan;
+
+  const paidPeriodSet = new Set(current.skyoneLoan.paidRecords.map((r) => r.period));
+  const mergedPaidRecords = [
+    ...current.skyoneLoan.paidRecords,
+    ...incoming.skyoneLoan.paidRecords.filter((r) => !paidPeriodSet.has(r.period)),
+  ].sort((a, b) => a.period - b.period);
+
+  const mergedPrepayments = mergeById(
+    current.skyoneLoan.prepayments,
+    incoming.skyoneLoan.prepayments
+  ).sort((a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date));
+
+  const mergedRateAdjustments = mergeById(
+    current.skyoneLoan.rateAdjustments,
+    incoming.skyoneLoan.rateAdjustments
+  ).sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod);
+
+  const mergedSkyOneLoan: MortgageContract = {
+    ...baseContract,
+    paidRecords: mergedPaidRecords,
+    prepayments: mergedPrepayments,
+    rateAdjustments: mergedRateAdjustments,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const mergedAccounts = recalculateAccountBalances(mergedAccountsRaw, mergedTransactions);
+
+  return {
+    categories: mergedCategories,
+    accounts: mergedAccounts,
+    transactions: mergedTransactions,
+    budgets: mergedBudgets,
+    goals: mergedGoals,
+    debts: mergedDebts,
+    investments: mergedInvestments,
+    recurringRules: mergedRules,
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...current.settings,
+      ...securitySlice,
+    },
+    skyoneLoan: mergedSkyOneLoan,
+  };
+}
+
+/**
+ * Nhập dữ liệu sao lưu JSON từ tệp
  */
 export async function importDataFromJsonV3(file: File): Promise<{
   success: boolean;
@@ -283,39 +525,12 @@ export async function importDataFromJsonV3(file: File): Promise<{
     const reader = new FileReader();
 
     reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        if (!text) {
-          return resolve({ success: false, error: "Tệp tin rỗng" });
-        }
-
-        const rawJson = JSON.parse(text);
-        const validation = AppDataBackupSchema.safeParse(rawJson);
-
-        if (!validation.success) {
-          const firstError = validation.error.issues?.[0]?.message || "Cấu trúc tệp JSON không hợp lệ";
-          return resolve({ success: false, error: `Lỗi định dạng: ${firstError}` });
-        }
-
-        const validData = validation.data;
-        const appState: StoredAppStateV3 = {
-          categories: validData.categories,
-          accounts: validData.accounts || DEFAULT_ACCOUNTS,
-          transactions: validData.transactions,
-          budgets: validData.budgets || DEFAULT_BUDGETS,
-          goals: validData.goals || DEFAULT_SAVINGS_GOALS,
-          debts: validData.debts || DEFAULT_DEBTS,
-          investments: validData.investments || DEFAULT_INVESTMENTS,
-          recurringRules: validData.recurringRules || DEFAULT_RECURRING_RULES,
-          settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
-        };
-
-        appState.accounts = recalculateAccountBalances(appState.accounts, appState.transactions);
-
-        resolve({ success: true, data: appState });
-      } catch (err) {
-        resolve({ success: false, error: "Không thể đọc tệp JSON. Vui lòng kiểm tra lại." });
+      const text = (event.target?.result as string) || "";
+      if (!text.trim()) {
+        resolve({ success: false, error: "Tệp tin rỗng" });
+        return;
       }
+      resolve(parseSyncBundleText(text));
     };
 
     reader.onerror = () => {

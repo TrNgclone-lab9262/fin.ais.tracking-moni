@@ -5,6 +5,7 @@ import { Search, Plus, Sparkles } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatDateVN } from "@/lib/formatters";
 import { Transaction } from "@/types/finance";
+import { MobileMonthSelector } from "@/components/mobile/MobileMonthSelector";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 
@@ -79,7 +80,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm theo ghi chú, danh mục, ví..."
-            className="w-full pl-9 pr-3 py-2 bg-white border border-[#DCE4EE] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-800 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <button
@@ -91,6 +92,9 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
         </button>
       </div>
 
+      {/* 1B. CHỌN KỲ / THÁNG */}
+      <MobileMonthSelector />
+
       {/* 2. KHỐI LỌC 4 VIÊN */}
       <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
         <button
@@ -98,7 +102,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer ${
             quickFilter === "ALL"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-              : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
+              : "bg-white dark:bg-slate-900 border-[#DCE4EE] dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           }`}
         >
           Tất cả ({counts.all})
@@ -109,7 +113,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "HUSBAND"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-              : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
+              : "bg-white dark:bg-slate-900 border-[#DCE4EE] dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           }`}
         >
           👨 Chuột ({counts.husband})
@@ -120,7 +124,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "WIFE"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-              : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
+              : "bg-white dark:bg-slate-900 border-[#DCE4EE] dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           }`}
         >
           👩 Mèo ({counts.wife})
@@ -131,7 +135,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           className={`py-2 px-1 rounded-xl transition-all text-center border cursor-pointer truncate ${
             quickFilter === "FAMILY"
               ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-              : "bg-white border-[#DCE4EE] text-slate-600 hover:bg-slate-50"
+              : "bg-white dark:bg-slate-900 border-[#DCE4EE] dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           }`}
         >
           🏠 Chung ({counts.family})
@@ -139,23 +143,23 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
       </div>
 
       {/* 3. THẺ TÓM TẮT BỘ LỌC */}
-      <div className="p-3 bg-white rounded-xl border border-[#DCE4EE] shadow-xs flex items-center justify-between text-xs gap-2">
+      <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex items-center justify-between text-xs gap-2">
         <div>
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+          <span className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-wider block">
             Tổng chi trong bộ lọc
           </span>
-          <span className="text-base font-black text-[#BE123C]">
+          <span className="text-base font-black text-[#BE123C] dark:text-rose-400">
             -{formatVNDMasked(totalExpense, isPrivacyMode)}
           </span>
         </div>
 
         <div className="text-right">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+          <span className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-wider block">
             Hạn mức ngày ({todaySpentInfo.isCurrentDay ? "Hôm nay" : formatDateVN(todaySpentInfo.referenceDate)})
           </span>
           <span
             className={`text-xs font-black ${
-              todaySpentInfo.amount > dailyAllowance ? "text-rose-600" : "text-emerald-600"
+              todaySpentInfo.amount > dailyAllowance ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
             }`}
           >
             Còn {formatVNDMasked(todayRemaining, isPrivacyMode)} / {formatVNDMasked(dailyAllowance, isPrivacyMode)}
@@ -165,16 +169,16 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
 
       {/* 4. DANH SÁCH BENTO CARDS HOẶC TRẠNG THÁI RỖNG */}
       {displayedTransactions.length === 0 ? (
-        <div className="p-8 bg-white rounded-2xl border border-[#DCE4EE] shadow-xs text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-3xl mx-auto shadow-inner">
+        <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center text-3xl mx-auto shadow-inner">
             🧾
           </div>
 
           <div className="space-y-1">
-            <h4 className="font-extrabold text-slate-800 text-base">
+            <h4 className="font-extrabold text-slate-800 dark:text-slate-100 text-base">
               Chưa Có Giao Dịch Nào
             </h4>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
               Không tìm thấy giao dịch phù hợp với bộ lọc hiện tại. Hãy ghi chép ngay để bảo toàn mục tiêu gia đình!
             </p>
           </div>
@@ -187,12 +191,12 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
             <span>+ GHI CHÉP GIAO DỊCH (3S)</span>
           </button>
 
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-left text-xs text-emerald-800 space-y-0.5">
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-left text-xs text-emerald-800 dark:text-emerald-300 space-y-0.5">
             <span className="font-bold flex items-center gap-1 text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               Mẹo tài chính tổ ấm:
             </span>
-            <p className="text-[10px] text-emerald-700 leading-relaxed">
+            <p className="text-[10px] text-emerald-700 dark:text-emerald-300/90 leading-relaxed">
               Ghi chép trong 3 giây sau khi quẹt thẻ giúp 2 vợ chồng bảo vệ điểm tín dụng CIC và tiến độ Quỹ Mua Nhà 2028.
             </p>
           </div>
@@ -209,15 +213,15 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
               <div
                 key={tx.id}
                 onClick={() => setSelectedTx(tx)}
-                className="p-3.5 bg-white rounded-xl border border-[#DCE4EE] shadow-xs hover:border-blue-400 active:bg-blue-50/50 cursor-pointer transition-all space-y-2"
+                className="p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs hover:border-blue-400 dark:hover:border-blue-500 active:bg-blue-50/50 dark:active:bg-slate-800 cursor-pointer transition-all space-y-2"
               >
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5">
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
                         tx.memberId === "HUSBAND"
-                          ? "bg-blue-50 text-blue-700 border border-blue-200"
-                          : "bg-rose-50 text-rose-700 border border-rose-200"
+                          ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
+                          : "bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30"
                       }`}
                     >
                       {tx.memberId === "HUSBAND"
@@ -228,15 +232,15 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                         tx.scope === "FAMILY"
-                          ? "bg-slate-100 text-slate-700"
-                          : "bg-purple-50 text-purple-700 border border-purple-200"
+                          ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                          : "bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30"
                       }`}
                     >
                       {tx.scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}
                     </span>
                   </div>
 
-                  <span className="text-[11px] text-slate-400 font-medium">
+                  <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">
                     {formatDateVN(tx.date)}
                   </span>
                 </div>
@@ -246,20 +250,20 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0 ${
                         isExpense
-                          ? "bg-rose-50 text-rose-600"
+                          ? "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400"
                           : isTransfer
-                          ? "bg-blue-50 text-blue-600"
-                          : "bg-emerald-50 text-emerald-600"
+                          ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                          : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                       }`}
                     >
                       {isExpense ? "🛒" : isTransfer ? "⇄" : "💰"}
                     </div>
 
                     <div className="min-w-0">
-                      <span className="font-bold text-xs text-slate-800 block truncate">
+                      <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">
                         {tx.note || (isExpense ? "Chi tiêu" : isTransfer ? "Chuyển tiền" : "Thu nhập")}
                       </span>
-                      <span className="text-[11px] text-slate-500 font-medium block truncate">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium block truncate">
                         {isTransfer ? "Chuyển khoản ví" : cat?.name || "Chi tiêu"} · {acc?.name || "Ví"}
                       </span>
                     </div>
@@ -268,10 +272,10 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
                   <span
                     className={`text-sm sm:text-base font-black shrink-0 ${
                       isExpense
-                        ? "text-[#BE123C]"
+                        ? "text-[#BE123C] dark:text-rose-400"
                         : isTransfer
-                        ? "text-blue-600"
-                        : "text-[#047857]"
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-[#047857] dark:text-emerald-400"
                     }`}
                   >
                     {isExpense ? "-" : isTransfer ? "" : "+"}

@@ -22,7 +22,7 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 backdrop-blur-md border-t border-[#DCE4EE] px-3 py-2 flex items-center justify-between shadow-lg">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#DCE4EE] dark:border-slate-800 px-3 py-2 flex items-center justify-between shadow-lg transition-colors">
       {/* 2 tabs bên trái */}
       <div className="flex items-center justify-around flex-1">
         {navItems.map((item) => {
@@ -33,12 +33,12 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
-                isActive ? "text-blue-600 font-bold" : "text-slate-500 hover:text-slate-800"
+                isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
               <div
                 className={`p-1 rounded-md transition-colors ${
-                  isActive ? "bg-blue-50 text-blue-600" : ""
+                  isActive ? "bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400" : ""
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -54,7 +54,7 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
         <button
           onClick={onOpenAddModal}
           aria-label="Thêm giao dịch nhanh 3 giây"
-          className="w-13 h-13 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-blue-500/35 border-4 border-[#F6F8FB] transition-all cursor-pointer"
+          className="w-13 h-13 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-blue-500/35 border-4 border-[#F6F8FB] dark:border-[#0B1220] transition-all cursor-pointer"
         >
           <Plus className="w-6 h-6 stroke-[2.5]" />
         </button>
@@ -70,12 +70,12 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
-                isActive ? "text-blue-600 font-bold" : "text-slate-500 hover:text-slate-800"
+                isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
               <div
                 className={`p-1 rounded-md transition-colors ${
-                  isActive ? "bg-blue-50 text-blue-600" : ""
+                  isActive ? "bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400" : ""
                 }`}
               >
                 <Icon className="w-5 h-5" />

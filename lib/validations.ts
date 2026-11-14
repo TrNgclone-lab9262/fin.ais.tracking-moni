@@ -132,6 +132,7 @@ export const MemberAuthConfigSchema = z.object({
 
 export const AppSettingsSchema = z.object({
   themeColor: z.enum(["blue", "purple", "pink", "green", "orange"]),
+  themeMode: z.enum(["light", "dark"]).optional(),
   currency: z.literal("VND"),
   notificationsEnabled: z.boolean(),
   husbandName: z.string(),
@@ -145,6 +146,67 @@ export const AppSettingsSchema = z.object({
   authActiveProfile: z.enum(["HUSBAND", "WIFE"]).optional(),
   husbandAuth: MemberAuthConfigSchema.optional(),
   wifeAuth: MemberAuthConfigSchema.optional(),
+  requireAuthForDangerActions: z.boolean().optional(),
+});
+
+export const MortgagePrepaymentPenaltyTierSchema = z.object({
+  fromYear: z.number().int().min(1),
+  toYear: z.number().int().min(1),
+  feePercent: z.number().min(0).max(20),
+});
+
+export const MortgageRateAdjustmentSchema = z.object({
+  id: z.string().min(1),
+  effectiveFromPeriod: z.number().int().min(1),
+  annualRate: z.number().min(0).max(50),
+  effectiveDate: z.string(),
+  note: z.string().optional(),
+});
+
+export const MortgagePaidInstallmentRecordSchema = z.object({
+  period: z.number().int().min(1),
+  paidAt: z.string(),
+  paidPrincipal: z.number().nonnegative(),
+  paidInterest: z.number().nonnegative(),
+  appliedRate: z.number().min(0).max(50),
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const MortgagePrepaymentEventSchema = z.object({
+  id: z.string().min(1),
+  date: z.string(),
+  afterPeriod: z.number().int().min(0),
+  amount: z.number().positive(),
+  penaltyAmount: z.number().nonnegative(),
+  feePercent: z.number().min(0).max(20),
+  strategy: z.enum(["SHORTEN_TERM", "REDUCE_MONTHLY"]),
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const MortgageContractSchema = z.object({
+  id: z.string().min(1),
+  projectName: z.string().min(1),
+  unitCode: z.string().min(1),
+  bankName: z.string().min(1),
+  propertyValue: z.number().positive(),
+  currentMarketValue: z.number().positive(),
+  downPayment: z.number().nonnegative(),
+  loanAmount: z.number().positive(),
+  termMonths: z.number().int().min(1).max(480),
+  disbursementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  paymentDayOfMonth: z.number().int().min(1).max(31),
+  fixedRateMonths: z.number().int().min(0).max(480),
+  fixedInterestRate: z.number().min(0).max(50),
+  floatingBaseRate: z.number().min(0).max(50),
+  floatingSpread: z.number().min(0).max(30),
+  prepayStrategyDefault: z.enum(["SHORTEN_TERM", "REDUCE_MONTHLY"]),
+  prepaymentPenaltyTiers: z.array(MortgagePrepaymentPenaltyTierSchema),
+  rateAdjustments: z.array(MortgageRateAdjustmentSchema),
+  paidRecords: z.array(MortgagePaidInstallmentRecordSchema),
+  prepayments: z.array(MortgagePrepaymentEventSchema),
+  updatedAt: z.string(),
 });
 
 export const AppDataBackupSchema = z.object({
@@ -159,6 +221,7 @@ export const AppDataBackupSchema = z.object({
   investments: z.array(InvestmentItemSchema).optional(),
   recurringRules: z.array(RecurringRuleSchema).optional(),
   settings: AppSettingsSchema.optional(),
+  skyoneLoan: MortgageContractSchema.optional(),
 });
 
 export type TransactionInput = z.infer<typeof TransactionInputSchema>;
