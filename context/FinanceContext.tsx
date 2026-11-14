@@ -91,6 +91,7 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   supabaseService,
   CloudUser,
+  CloudProfile,
   HouseholdInfo,
   CloudFullData,
 } from "@/lib/supabaseService";
@@ -174,9 +175,10 @@ interface FinanceContextType {
   openAppLauncher: () => void;
   getSkyOneLinkForTransaction: (txId: string) => SkyOneTransactionLink | undefined;
 
-  // Trạng thái Cloud Database, Tổ ấm & Realtime
+  // Trạng thái Cloud Database, Hồ sơ Profile, Tổ ấm & Realtime
   isSupabaseEnvReady: boolean;
   cloudUser: CloudUser | null;
+  cloudProfile: CloudProfile | null;
   household: HouseholdInfo | null;
   isCloudConnected: boolean;
   isSyncing: boolean;
@@ -360,8 +362,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [skyoneHighlightPeriod, setSkyoneHighlightPeriod] = useState<number | null>(null);
   const [activePerspective, setActivePerspective] = useState<PerspectiveMode>("ALL");
 
-  // Supabase Cloud, Household & Outbox State
+  // Supabase Cloud, Profile, Household & Outbox State
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
+  const [cloudProfile, setCloudProfile] = useState<CloudProfile | null>(null);
   const [household, setHousehold] = useState<HouseholdInfo | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -639,8 +642,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         clearOutboxQueue();
         setPendingOutboxCount(0);
 
-        const refreshed = await supabaseService.fetchMyHousehold(cloudUser.id);
+        const [refreshed, refreshedProfile] = await Promise.all([
+          supabaseService.fetchMyHousehold(cloudUser.id),
+          supabaseService.fetchMyProfile(cloudUser.id),
+        ]);
         setHousehold(refreshed);
+        setCloudProfile(refreshedProfile);
         setLastSyncedAt(new Date());
         return true;
       } catch (err) {
@@ -673,8 +680,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        const refreshed = await supabaseService.fetchMyHousehold(cloudUser.id);
+        const [refreshed, refreshedProfile] = await Promise.all([
+          supabaseService.fetchMyHousehold(cloudUser.id),
+          supabaseService.fetchMyProfile(cloudUser.id),
+        ]);
         setHousehold(refreshed);
+        setCloudProfile(refreshedProfile);
 
         const remoteData = await supabaseService.fetchAllData(joined.household.id);
         if (remoteData) {
@@ -770,6 +781,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     clearOutboxQueue();
     setPendingOutboxCount(0);
     setHousehold(null);
+    setCloudProfile((prev) =>
+      prev ? { ...prev, householdId: null, role: null } : null
+    );
     setLastSyncedAt(null);
     return true;
   }, [household]);
@@ -842,6 +856,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const unsubscribeAuth = supabaseService.onAuthChange((user) => {
       setCloudUser(user);
       if (!user) {
+        setCloudProfile(null);
         setHousehold(null);
       }
     });
@@ -851,16 +866,21 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Nạp thông tin Tổ ấm ngay khi người dùng đăng nhập Cloud
+  // Nạp hồ sơ cá nhân (profiles) và thông tin Tổ ấm (households) khi người dùng đăng nhập Cloud
   useEffect(() => {
     if (!isSupabaseConfigured || !cloudUser) {
+      setCloudProfile(null);
       setHousehold(null);
       return;
     }
 
     let cancelled = false;
-    void supabaseService.fetchMyHousehold(cloudUser.id).then((hh) => {
+    void Promise.all([
+      supabaseService.fetchMyProfile(cloudUser.id),
+      supabaseService.fetchMyHousehold(cloudUser.id),
+    ]).then(([profile, hh]) => {
       if (!cancelled) {
+        setCloudProfile(profile);
         setHousehold(hh);
       }
     });
@@ -879,9 +899,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const unsubscribeRealtime = supabaseService.subscribeHouseholdRealtime(
       household.id,
       (changedTable) => {
-        if (changedTable === "household_members" || changedTable === "households") {
-          void supabaseService.fetchMyHousehold(cloudUser.id).then((hh) => {
+        if (
+          changedTable === "household_members" ||
+          changedTable === "households" ||
+          changedTable === "profiles"
+        ) {
+          void Promise.all([
+            supabaseService.fetchMyHousehold(cloudUser.id),
+            supabaseService.fetchMyProfile(cloudUser.id),
+          ]).then(([hh, profile]) => {
             if (hh) setHousehold(hh);
+            if (profile) setCloudProfile(profile);
           });
           return;
         }
@@ -2798,6 +2826,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     getSkyOneLinkForTransaction,
     isSupabaseEnvReady: isSupabaseConfigured,
     cloudUser,
+    cloudProfile,
     household,
     isCloudConnected,
     isSyncing,

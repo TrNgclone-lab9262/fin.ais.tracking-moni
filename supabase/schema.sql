@@ -28,7 +28,90 @@ create table if not exists public.household_members (
 
 create index if not exists idx_household_members_user on public.household_members(user_id);
 
--- Security Definer helper for RLS
+-- 1B. USER PROFILES (Linked directly to auth.users & households)
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  display_name text not null default '',
+  avatar_url text,
+  member_slot text not null default 'HUSBAND' check (member_slot in ('HUSBAND', 'WIFE')),
+  household_id uuid references public.households(id) on delete set null,
+  role text check (role in ('OWNER', 'PARTNER')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_profiles_household_id on public.profiles(household_id);
+
+-- Auto-create profile when a new auth user signs up
+create or replace function public.handle_new_user_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    new.email,
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(new.email, ''), '@', 1), '')
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_profile on auth.users;
+create trigger on_auth_user_created_profile
+  after insert on auth.users
+  for each row execute function public.handle_new_user_profile();
+
+-- Idempotent backfill for existing auth users & household members
+insert into public.profiles (id, email, display_name, member_slot, household_id, role)
+select
+  u.id,
+  u.email,
+  coalesce(nullif(hm.display_name, ''), split_part(coalesce(u.email, ''), '@', 1), ''),
+  coalesce(hm.member_slot, 'HUSBAND'),
+  hm.household_id,
+  hm.role
+from auth.users u
+left join public.household_members hm on hm.user_id = u.id
+on conflict (id) do update
+  set email = coalesce(excluded.email, public.profiles.email),
+      household_id = coalesce(public.profiles.household_id, excluded.household_id),
+      role = coalesce(public.profiles.role, excluded.role);
+
+-- Non-recursive SECURITY DEFINER helpers for RLS
+create or replace function public.current_user_household_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select p.household_id from public.profiles p where p.id = auth.uid() limit 1),
+    (select hm.household_id from public.household_members hm where hm.user_id = auth.uid() limit 1)
+  );
+$$;
+
+create or replace function public.current_user_household_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select p.role from public.profiles p where p.id = auth.uid() limit 1),
+    (select hm.role from public.household_members hm where hm.user_id = auth.uid() limit 1)
+  );
+$$;
+
 create or replace function public.is_household_member(p_household_id uuid)
 returns boolean
 language sql
@@ -41,6 +124,12 @@ as $$
     from public.household_members hm
     where hm.household_id = p_household_id
       and hm.user_id = auth.uid()
+  )
+  or exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.household_id = p_household_id
   );
 $$;
 
@@ -120,6 +209,23 @@ begin
     coalesce(nullif(trim(p_display_name), ''), case when v_slot = 'HUSBAND' then 'Anh Chuột' else 'Bé Mèo' end)
   );
 
+  insert into public.profiles (id, email, display_name, member_slot, household_id, role, updated_at)
+  values (
+    v_uid,
+    (select u.email from auth.users u where u.id = v_uid),
+    coalesce(nullif(trim(p_display_name), ''), case when v_slot = 'HUSBAND' then 'Anh Chuột' else 'Bé Mèo' end),
+    v_slot,
+    v_household.id,
+    'OWNER',
+    now()
+  )
+  on conflict (id) do update
+    set display_name = excluded.display_name,
+        member_slot = excluded.member_slot,
+        household_id = excluded.household_id,
+        role = excluded.role,
+        updated_at = now();
+
   return v_household;
 end;
 $$;
@@ -189,6 +295,23 @@ begin
     coalesce(nullif(trim(p_display_name), ''), case when v_slot = 'HUSBAND' then 'Anh Chuột' else 'Bé Mèo' end)
   );
 
+  insert into public.profiles (id, email, display_name, member_slot, household_id, role, updated_at)
+  values (
+    v_uid,
+    (select u.email from auth.users u where u.id = v_uid),
+    coalesce(nullif(trim(p_display_name), ''), case when v_slot = 'HUSBAND' then 'Anh Chuột' else 'Bé Mèo' end),
+    v_slot,
+    v_household.id,
+    'PARTNER',
+    now()
+  )
+  on conflict (id) do update
+    set display_name = excluded.display_name,
+        member_slot = excluded.member_slot,
+        household_id = excluded.household_id,
+        role = excluded.role,
+        updated_at = now();
+
   return v_household;
 end;
 $$;
@@ -242,6 +365,12 @@ begin
 
   delete from public.household_members
   where household_id = p_household_id and user_id = v_uid;
+
+  update public.profiles
+  set household_id = null,
+      role = null,
+      updated_at = now()
+  where id = v_uid and household_id = p_household_id;
 
   select count(*) into v_remaining
   from public.household_members
@@ -398,6 +527,7 @@ create table if not exists public.household_settings (
 );
 
 -- 3. ENABLE ROW LEVEL SECURITY (RLS)
+alter table public.profiles enable row level security;
 alter table public.households enable row level security;
 alter table public.household_members enable row level security;
 alter table public.categories enable row level security;
@@ -410,6 +540,34 @@ alter table public.investments enable row level security;
 alter table public.recurring_rules enable row level security;
 alter table public.skyone_loans enable row level security;
 alter table public.household_settings enable row level security;
+
+-- Profiles policies: self + paired household members only; household_id & role protected via RPC
+drop policy if exists profiles_select_same_household on public.profiles;
+create policy profiles_select_same_household on public.profiles
+  for select using (
+    auth.uid() = id
+    or (
+      household_id is not null
+      and household_id = public.current_user_household_id()
+    )
+  );
+
+drop policy if exists profiles_insert_self on public.profiles;
+create policy profiles_insert_self on public.profiles
+  for insert with check (
+    auth.uid() = id
+    and household_id is null
+    and role is null
+  );
+
+drop policy if exists profiles_update_self_safe on public.profiles;
+create policy profiles_update_self_safe on public.profiles
+  for update using (auth.uid() = id)
+  with check (
+    auth.uid() = id
+    and household_id is not distinct from public.current_user_household_id()
+    and role is not distinct from public.current_user_household_role()
+  );
 
 -- Households & Members policies (queries only allowed for members; join/create happen via SECURITY DEFINER RPC)
 drop policy if exists households_member_select on public.households;
@@ -462,6 +620,7 @@ declare
   t text;
 begin
   foreach t in array array[
+    'profiles',
     'households',
     'household_members',
     'categories',

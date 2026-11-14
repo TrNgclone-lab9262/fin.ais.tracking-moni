@@ -63,6 +63,17 @@ export interface CloudUser {
   email: string;
 }
 
+export interface CloudProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  memberSlot: AuthMemberId;
+  householdId: string | null;
+  role: "OWNER" | "PARTNER" | null;
+  updatedAt: string;
+}
+
 export interface HouseholdMemberInfo {
   userId: string;
   role: "OWNER" | "PARTNER";
@@ -108,6 +119,17 @@ interface DbHouseholdMemberRow {
   member_slot: string;
   display_name: string;
   joined_at: string;
+}
+
+interface DbProfileRow {
+  id: string;
+  email: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  member_slot: string;
+  household_id: string | null;
+  role: string | null;
+  updated_at: string;
 }
 
 function validateArrayWithZod<T>(
@@ -228,8 +250,65 @@ export const supabaseService = {
   },
 
   // -------------------------------------------------------------------------
-  // 2. HOUSEHOLD & INVITE CODE PAIRING
+  // 2. USER PROFILE, HOUSEHOLD & INVITE CODE PAIRING
   // -------------------------------------------------------------------------
+  async fetchMyProfile(userId: string): Promise<CloudProfile | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle<DbProfileRow>();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      email: data.email || "",
+      displayName: data.display_name || "",
+      avatarUrl: data.avatar_url || undefined,
+      memberSlot: data.member_slot === "WIFE" ? "WIFE" : "HUSBAND",
+      householdId: data.household_id || null,
+      role: data.role === "OWNER" ? "OWNER" : data.role === "PARTNER" ? "PARTNER" : null,
+      updatedAt: data.updated_at,
+    };
+  },
+
+  async updateMyProfile(
+    userId: string,
+    patch: { displayName?: string; avatarUrl?: string; memberSlot?: AuthMemberId }
+  ): Promise<CloudProfile | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.displayName !== undefined) payload.display_name = patch.displayName.trim();
+    if (patch.avatarUrl !== undefined) payload.avatar_url = patch.avatarUrl || null;
+    if (patch.memberSlot !== undefined) payload.member_slot = patch.memberSlot;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", userId)
+      .select("*")
+      .single<DbProfileRow>();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      email: data.email || "",
+      displayName: data.display_name || "",
+      avatarUrl: data.avatar_url || undefined,
+      memberSlot: data.member_slot === "WIFE" ? "WIFE" : "HUSBAND",
+      householdId: data.household_id || null,
+      role: data.role === "OWNER" ? "OWNER" : data.role === "PARTNER" ? "PARTNER" : null,
+      updatedAt: data.updated_at,
+    };
+  },
+
   async fetchMyHousehold(userId: string): Promise<HouseholdInfo | null> {
     if (!isSupabaseConfigured || !supabase) return null;
 
@@ -769,6 +848,7 @@ export const supabaseService = {
       "skyone_loans",
       "household_settings",
       "household_members",
+      "profiles",
     ];
 
     const channel = client.channel(`household_${householdId}`);
