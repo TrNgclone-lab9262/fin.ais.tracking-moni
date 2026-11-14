@@ -18,6 +18,8 @@ import {
   Percent,
   Wallet,
   Compass,
+  BadgeCheck,
+  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -57,7 +59,7 @@ import {
 } from "@/types/finance";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
-type ScheduleStatusFilter = "ALL" | "UNPAID" | "PAID" | "DUE_OR_OVERDUE";
+type ScheduleStatusFilter = "ALL" | "VERIFIED" | "UNPAID" | "PAID" | "DUE_OR_OVERDUE";
 type ScheduleStageFilter = "ALL" | MortgageStage;
 
 interface PendingConfirmState {
@@ -81,6 +83,8 @@ function parseNumericInput(val: string): number {
 export function SkyOneLoanView() {
   const {
     skyoneLoan,
+    skyoneAutoSyncedNotice,
+    dismissSkyoneAutoSyncedNotice,
     skyoneTab,
     setSkyoneTab,
     skyoneHighlightPeriod,
@@ -244,6 +248,7 @@ export function SkyOneLoanView() {
 
   const filteredRows = useMemo(() => {
     return schedule.rows.filter((row) => {
+      if (statusFilter === "VERIFIED" && !row.isVerified) return false;
       if (statusFilter === "UNPAID" && row.status === "PAID") return false;
       if (statusFilter === "PAID" && row.status !== "PAID") return false;
       if (
@@ -464,8 +469,20 @@ export function SkyOneLoanView() {
 
   const renderStatusLabel = (row: MortgageScheduleRow) => {
     if (row.status === "PAID") {
+      if (row.isVerified) {
+        return (
+          <span
+            data-testid="installment-verified-badge"
+            title={row.verifiedSource || "Đối soát sao kê BIDV SmartBanking · TK 8866102943"}
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap"
+          >
+            <BadgeCheck className="w-3.5 h-3.5 shrink-0" />
+            Đã xác thực
+          </span>
+        );
+      }
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
           Đã đóng
         </span>
@@ -567,6 +584,24 @@ export function SkyOneLoanView() {
         <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-semibold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{statusFeedback}</span>
+        </div>
+      )}
+
+      {/* Auto-Synced BIDV Banner */}
+      {skyoneAutoSyncedNotice && (
+        <div className="p-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs sm:text-sm font-semibold flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <BadgeCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <span>{skyoneAutoSyncedNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={dismissSkyoneAutoSyncedNotice}
+            aria-label="Đóng thông báo đồng bộ BIDV"
+            className="p-1 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shrink-0 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -903,6 +938,7 @@ export function SkyOneLoanView() {
                   className="w-full min-h-[42px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-600"
                 >
                   <option value="ALL">Tất cả ({schedule.rows.length} kỳ)</option>
+                  <option value="VERIFIED">Đã xác thực ({schedule.verifiedCount} kỳ sao kê BIDV)</option>
                   <option value="UNPAID">Chưa đóng ({schedule.unpaidCount})</option>
                   <option value="PAID">Đã đóng ({schedule.paidCount})</option>
                   <option value="DUE_OR_OVERDUE">
@@ -959,6 +995,23 @@ export function SkyOneLoanView() {
             {/* Batch Confirmation Bar */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                {schedule.verifiedCount > 0 && (
+                  <button
+                    type="button"
+                    data-testid="filter-verified-quick-btn"
+                    onClick={() =>
+                      setStatusFilter((prev) => (prev === "VERIFIED" ? "ALL" : "VERIFIED"))
+                    }
+                    className={`min-h-[38px] px-3 py-1.5 rounded-lg font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
+                      statusFilter === "VERIFIED"
+                        ? "bg-emerald-600 text-white"
+                        : "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                    }`}
+                  >
+                    <BadgeCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span>Sao kê Đã xác thực ({schedule.verifiedCount})</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={selectUpToCurrentPeriods}

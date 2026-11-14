@@ -83,6 +83,7 @@ import {
   createDefaultSkyOneLoan,
   generateMortgageSchedule,
   getTodayIsoDate,
+  reconcileBidvSkyOneContract,
   simulatePrepayment,
 } from "@/lib/mortgageEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -253,6 +254,8 @@ interface FinanceContextType {
 
   // Quản lý Vay căn hộ Phú Đông SKYONE
   skyoneLoan: MortgageContract;
+  skyoneAutoSyncedNotice: string | null;
+  dismissSkyoneAutoSyncedNotice: () => void;
   updateSkyOneContract: (patch: Partial<MortgageContract>) => void;
   confirmSkyOnePeriods: (
     periods: number[],
@@ -339,6 +342,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEFAULT_RECURRING_RULES);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [skyoneLoan, setSkyoneLoan] = useState<MortgageContract>(() => createDefaultSkyOneLoan());
+  const [skyoneAutoSyncedNotice, setSkyoneAutoSyncedNotice] = useState<string | null>(null);
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
@@ -400,7 +404,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setInvestments(data.investments);
     setRecurringRules(data.recurringRules || DEFAULT_RECURRING_RULES);
     setSettings(data.settings);
-    setSkyoneLoan(data.skyoneLoan || createDefaultSkyOneLoan());
+    const { contract: reconciledOnLoad } = reconcileBidvSkyOneContract(data.skyoneLoan);
+    setSkyoneLoan(reconciledOnLoad);
 
     // Chọn tháng mặc định thông minh: ưu tiên tháng hiện tại nếu có dữ liệu, ngược lại dùng tháng gần nhất có giao dịch
     const currentKey = getCurrentMonthKey();
@@ -488,6 +493,19 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const nextHighlight =
         options?.highlightPeriod !== undefined ? options.highlightPeriod : null;
 
+      if (app === "SKYONE") {
+        setSkyoneLoan((prev) => {
+          const { contract: reconciled, didAutoSync } = reconcileBidvSkyOneContract(prev);
+          if (didAutoSync) {
+            setSkyoneAutoSyncedNotice(
+              "Đã tự động nhận diện hồ sơ BIDV TK 8866102943 (5,5%/năm · 36 tháng) và đồng bộ 12 kỳ sao kê Đã xác thực."
+            );
+            return reconciled;
+          }
+          return prev;
+        });
+      }
+
       setActiveApp(app);
       if (options?.financeTab) {
         setActiveTabState(options.financeTab);
@@ -528,6 +546,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const clearSkyoneHighlightPeriod = useCallback(() => {
     setSkyoneHighlightPeriod(null);
+  }, []);
+
+  const dismissSkyoneAutoSyncedNotice = useCallback(() => {
+    setSkyoneAutoSyncedNotice(null);
   }, []);
 
   // Tự động lưu vào LocalStorage
@@ -1617,7 +1639,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setInvestments(res.data.investments);
         setRecurringRules(res.data.recurringRules || DEFAULT_RECURRING_RULES);
         setSettings(res.data.settings);
-        setSkyoneLoan(res.data.skyoneLoan || createDefaultSkyOneLoan());
+        setSkyoneLoan(reconcileBidvSkyOneContract(res.data.skyoneLoan).contract);
         saveStoredDataV3(res.data);
 
         if (isSupabaseConfigured) {
@@ -2235,6 +2257,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     applyRecurringRule,
     applyAllPendingRecurringRules,
     skyoneLoan,
+    skyoneAutoSyncedNotice,
+    dismissSkyoneAutoSyncedNotice,
     updateSkyOneContract,
     confirmSkyOnePeriods,
     undoSkyOnePeriod,

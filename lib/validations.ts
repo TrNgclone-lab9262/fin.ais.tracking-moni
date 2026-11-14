@@ -171,6 +171,8 @@ export const MortgagePaidInstallmentRecordSchema = z.object({
   appliedRate: z.number().min(0).max(50),
   linkedTransactionId: z.string().optional(),
   note: z.string().optional(),
+  isVerified: z.boolean().optional(),
+  verifiedSource: z.string().optional(),
 });
 
 export const MortgagePrepaymentEventSchema = z.object({

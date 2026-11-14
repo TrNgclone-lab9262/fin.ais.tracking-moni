@@ -9,6 +9,7 @@ import {
   evaluateSkyOneReminders,
   buildSkyOneAmortizationChartData,
   analyzeSkyOneStrategy,
+  reconcileBidvSkyOneContract,
   REAL_BIDV_SKYONE_SNAPSHOT,
 } from "./mortgageEngine";
 import { MortgageContract } from "@/types/finance";
@@ -17,9 +18,13 @@ test("createDefaultSkyOneLoan khớp chính xác 100% sao kê BIDV thực tế (
   const contract = createDefaultSkyOneLoan("2026-11-14");
   const schedule = generateMortgageSchedule(contract, "2026-11-14");
 
-  // 3 kỳ chuyển tiếp (09-11/2025) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026) = 15 kỳ PAID
+  // 3 kỳ chuyển tiếp (09-11/2025) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026) = 15 kỳ PAID, trong đó 12 kỳ Đã xác thực
   assert.equal(contract.paidRecords.length, 15);
   assert.equal(schedule.paidCount, 15);
+  assert.equal(schedule.verifiedCount, 12);
+  assert.equal(schedule.rows.find((r) => r.period === 3)?.isVerified, false);
+  assert.equal(schedule.rows.find((r) => r.period === 4)?.isVerified, true);
+  assert.equal(schedule.rows.find((r) => r.period === 15)?.isVerified, true);
   assert.equal(schedule.remainingBalance, REAL_BIDV_SKYONE_SNAPSHOT.verifiedRemainingBalanceNov2026);
   assert.equal(schedule.totalPrincipalPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidPrincipal12M);
   assert.equal(schedule.totalInterestPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidInterest12M);
@@ -172,6 +177,54 @@ test("analyzeSkyOneStrategy lượng hóa đúng lợi thế Positive Carry + Đ
   assert.ok(result.netStrategyAdvantage > 0);
   assert.ok(result.postResetMonthlyPaymentWithStrike < result.postResetMonthlyPaymentNoStrike);
   assert.ok(result.timelinePoints.length >= 40);
+
+  // Kiểm tra cảnh báo DTI 3 mốc + gợi ý giảm DTI (thu nhập 25tr để kích hoạt mốc 3 > 30%)
+  const tightIncomeResult = analyzeSkyOneStrategy(contract, {
+    nextDisbursementAmount: 437_933_807,
+    nextDisbursementAfterPeriod: 21,
+    projectedFloatingRate: 10.0,
+    safeSavingsYieldRate: 6.2,
+    monthlyBufferContribution: 8_000_000,
+    expectedMonthlyRent: 7_500_000,
+    monthlyFamilyIncome: 25_000_000,
+    referenceDate: "2026-11-14",
+  });
+  assert.equal(tightIncomeResult.dtiDiagnostics.currentStatus, "SAFE");
+  assert.equal(tightIncomeResult.dtiDiagnostics.hasWarningAtAnyStage, true);
+  assert.equal(tightIncomeResult.dtiDiagnostics.noStrikeStatus, "HIGH");
+  assert.ok(tightIncomeResult.dtiDiagnostics.recommendedMonthlyContributionForSafeDti > 0);
+  assert.ok(tightIncomeResult.dtiDiagnostics.requiredRentForSafeDti > 0);
+  assert.ok(tightIncomeResult.dtiDiagnostics.requiredIncomeForSafeDti > 25_000_000);
+});
+
+test("reconcileBidvSkyOneContract tự động nâng cấp hồ sơ mẫu cũ hoặc thiếu nhãn Đã xác thực nhưng bảo toàn hợp đồng tùy chỉnh", () => {
+  // 1. Hồ sơ mẫu cũ 1.505 tỷ / 6.8%
+  const legacyMock: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    accountNumber: undefined,
+    loanAmount: 1_505_000_000,
+    fixedInterestRate: 6.8,
+    disbursementDate: "2025-11-15",
+    paidRecords: [],
+  };
+  const upgraded = reconcileBidvSkyOneContract(legacyMock, "2026-11-14");
+  assert.equal(upgraded.didAutoSync, true);
+  assert.equal(upgraded.contract.accountNumber, "8866102943");
+  assert.equal(upgraded.contract.paidRecords.filter((r) => r.isVerified).length, 12);
+
+  // 2. Hợp đồng tùy chỉnh của ngân hàng khác không bị ghi đè
+  const customLoan: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    id: "custom_vcb",
+    bankName: "Vietcombank",
+    accountNumber: "999888777",
+    loanAmount: 900_000_000,
+    paidRecords: [],
+  };
+  const untouched = reconcileBidvSkyOneContract(customLoan, "2026-11-14");
+  assert.equal(untouched.didAutoSync, false);
+  assert.equal(untouched.contract.bankName, "Vietcombank");
+  assert.equal(untouched.contract.loanAmount, 900_000_000);
 });
 
 test("buildSkyOneAmortizationChartData chuẩn hóa tỷ lệ Gốc/Lãi, dư nợ giảm dần và 3 mốc tham chiếu", () => {

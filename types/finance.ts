@@ -183,6 +183,8 @@ export interface MortgagePaidInstallmentRecord {
   appliedRate: number;
   linkedTransactionId?: string;
   note?: string;
+  isVerified?: boolean;
+  verifiedSource?: string;
 }
 
 export interface MortgagePrepaymentEvent {

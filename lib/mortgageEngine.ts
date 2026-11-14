@@ -30,6 +30,8 @@ export interface MortgageScheduleRow {
   daysUntilDue: number;
   dayCountUsed: number;
   paidRecord?: MortgagePaidInstallmentRecord;
+  isVerified: boolean;
+  verifiedSource?: string;
 }
 
 export interface MortgageYearlyAggregate {
@@ -50,6 +52,7 @@ export interface MortgageScheduleSummary {
   remainingBalance: number;
   totalScheduledMonths: number;
   paidCount: number;
+  verifiedCount: number;
   unpaidCount: number;
   overdueCount: number;
   dueSoonCount: number;
@@ -223,6 +226,7 @@ export function generateMortgageSchedule(
   let totalInterestPaidActual = 0;
   let totalProjectedInterest = 0;
   let paidCount = 0;
+  let verifiedCount = 0;
   let overdueCount = 0;
   let dueSoonCount = 0;
   let prevDueDateForDays = contract.disbursementDate;
@@ -332,6 +336,9 @@ export function generateMortgageSchedule(
       totalPrincipalPaidActual += principal;
       totalInterestPaidActual += interest;
       paidCount += 1;
+      if (paidRec.isVerified) {
+        verifiedCount += 1;
+      }
     } else {
       cumulativePrincipalPaid += prepaidInPeriod;
     }
@@ -370,6 +377,8 @@ export function generateMortgageSchedule(
       daysUntilDue,
       dayCountUsed,
       paidRecord: paidRec,
+      isVerified: Boolean(paidRec?.isVerified),
+      verifiedSource: paidRec?.verifiedSource,
     });
 
     remainingBalance = closingBalance;
@@ -457,6 +466,7 @@ export function generateMortgageSchedule(
     remainingBalance: actualRemainingBalance,
     totalScheduledMonths: rows.length,
     paidCount,
+    verifiedCount,
     unpaidCount: rows.length - paidCount,
     overdueCount,
     dueSoonCount,
@@ -816,32 +826,96 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
 
 export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
   // 3 kỳ chuyển tiếp trước sao kê đầu tiên 10/12/2025 để giữ mốc kỳ #36 = 10/08/2028
-  { period: 1, paidAt: "2025-09-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp sau giải ngân 26/08/2025 (trước sao kê 10/12/2025)" },
-  { period: 2, paidAt: "2025-10-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
-  { period: 3, paidAt: "2025-11-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
+  { period: 1, paidAt: "2025-09-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp sau giải ngân 26/08/2025 (trước sao kê 10/12/2025)" },
+  { period: 2, paidAt: "2025-10-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
+  { period: 3, paidAt: "2025-11-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
   // 12 kỳ sao kê BIDV SmartBanking thực tế từ 10/12/2025 đến 10/11/2026
-  { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 695.842.193 đ" },
-  { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 692.786.193 đ" },
-  { period: 6, paidAt: "2026-02-10", paidPrincipal: 3_056_000, paidInterest: 3_027_381, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 689.730.193 đ" },
-  { period: 7, paidAt: "2026-03-10", paidPrincipal: 3_056_000, paidInterest: 2_910_095, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 686.674.193 đ" },
-  { period: 8, paidAt: "2026-04-11", paidPrincipal: 3_056_000, paidInterest: 3_194_351, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 683.618.193 đ" },
-  { period: 9, paidAt: "2026-05-11", paidPrincipal: 3_056_000, paidInterest: 3_193_800, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 680.562.193 đ" },
-  { period: 10, paidAt: "2026-06-10", paidPrincipal: 3_056_000, paidInterest: 3_076_514, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 677.506.193 đ" },
-  { period: 11, paidAt: "2026-07-10", paidPrincipal: 3_056_000, paidInterest: 3_062_699, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 674.450.193 đ" },
-  { period: 12, paidAt: "2026-08-10", paidPrincipal: 3_056_000, paidInterest: 3_150_514, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 671.394.193 đ" },
-  { period: 13, paidAt: "2026-09-10", paidPrincipal: 3_056_000, paidInterest: 3_136_239, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 668.338.193 đ" },
-  { period: 14, paidAt: "2026-10-12", paidPrincipal: 3_056_000, paidInterest: 3_222_671, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 665.282.193 đ" },
-  { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.193 đ" },
+  { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 695.842.193 đ" },
+  { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 692.786.193 đ" },
+  { period: 6, paidAt: "2026-02-10", paidPrincipal: 3_056_000, paidInterest: 3_027_381, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 689.730.193 đ" },
+  { period: 7, paidAt: "2026-03-10", paidPrincipal: 3_056_000, paidInterest: 2_910_095, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 686.674.193 đ" },
+  { period: 8, paidAt: "2026-04-11", paidPrincipal: 3_056_000, paidInterest: 3_194_351, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 683.618.193 đ" },
+  { period: 9, paidAt: "2026-05-11", paidPrincipal: 3_056_000, paidInterest: 3_193_800, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 680.562.193 đ" },
+  { period: 10, paidAt: "2026-06-10", paidPrincipal: 3_056_000, paidInterest: 3_076_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 677.506.193 đ" },
+  { period: 11, paidAt: "2026-07-10", paidPrincipal: 3_056_000, paidInterest: 3_062_699, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 674.450.193 đ" },
+  { period: 12, paidAt: "2026-08-10", paidPrincipal: 3_056_000, paidInterest: 3_150_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 671.394.193 đ" },
+  { period: 13, paidAt: "2026-09-10", paidPrincipal: 3_056_000, paidInterest: 3_136_239, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 668.338.193 đ" },
+  { period: 14, paidAt: "2026-10-12", paidPrincipal: 3_056_000, paidInterest: 3_222_671, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 665.282.193 đ" },
+  { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.193 đ" },
 ];
 
 export function isRealBidvProfileSynced(contract: MortgageContract): boolean {
+  const verifiedPeriods = new Set(
+    contract.paidRecords.filter((r) => r.isVerified).map((r) => r.period)
+  );
+  let hasAll12Verified = true;
+  for (let p = 4; p <= 15; p++) {
+    if (!verifiedPeriods.has(p)) {
+      hasAll12Verified = false;
+      break;
+    }
+  }
   return (
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
     contract.disbursementDate === "2025-08-26" &&
     contract.fixedRateMonths === 36 &&
     Math.abs(contract.fixedInterestRate - 5.5) < 0.01 &&
-    contract.paidRecords.length >= 15
+    contract.paidRecords.length >= 15 &&
+    hasAll12Verified
   );
+}
+
+export function reconcileBidvSkyOneContract(
+  contract?: MortgageContract | null,
+  referenceDate: string = getTodayIsoDate()
+): { contract: MortgageContract; didAutoSync: boolean } {
+  if (!contract) {
+    return { contract: createDefaultSkyOneLoan(referenceDate), didAutoSync: true };
+  }
+
+  const isLegacyMockDefault =
+    contract.id === "skyone_apartment_loan" &&
+    ((contract.loanAmount === 1_505_000_000 &&
+      Math.abs(contract.fixedInterestRate - 6.8) < 0.01 &&
+      contract.disbursementDate === "2025-11-15") ||
+      (!contract.accountNumber &&
+        contract.disbursementDate === "2025-11-15" &&
+        contract.paidRecords.length <= 3));
+
+  const isBidvUnverifiedOrIncomplete =
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    !isRealBidvProfileSynced(contract);
+
+  if (!isLegacyMockDefault && !isBidvUnverifiedOrIncomplete) {
+    return { contract, didAutoSync: false };
+  }
+
+  const base = createDefaultSkyOneLoan(referenceDate);
+  const existingByPeriod = new Map(contract.paidRecords.map((r) => [r.period, r]));
+
+  const reconciledBaseRecords = VERIFIED_BIDV_PAID_RECORDS.map((rec) => {
+    const existing = existingByPeriod.get(rec.period);
+    return existing?.linkedTransactionId
+      ? { ...rec, linkedTransactionId: existing.linkedTransactionId }
+      : rec;
+  });
+
+  // Preserve any future paid periods (>= 16) that the user may have already recorded
+  const extraFuturePaid = contract.paidRecords.filter((r) => r.period >= 16);
+  const mergedPaidRecords = [...reconciledBaseRecords, ...extraFuturePaid].sort(
+    (a, b) => a.period - b.period
+  );
+
+  const mergedContract: MortgageContract = {
+    ...base,
+    paidRecords: mergedPaidRecords,
+    prepayments: isLegacyMockDefault ? [] : contract.prepayments,
+    rateAdjustments: isLegacyMockDefault ? [] : contract.rateAdjustments,
+    plannedDisbursements: isLegacyMockDefault ? [] : contract.plannedDisbursements,
+    updatedAt: `${referenceDate}T08:00:00.000Z`,
+  };
+
+  return { contract: mergedContract, didAutoSync: true };
 }
 
 export function createDefaultSkyOneLoan(
@@ -1016,6 +1090,24 @@ export interface SkyOneStrategyTimelinePoint {
   balanceWithStrike: number;
 }
 
+export type SkyOneDtiStatus = "SAFE" | "WATCH" | "HIGH";
+
+export interface SkyOneDtiDiagnostics {
+  monthlyIncome: number;
+  safeMonthlyCeiling: number;
+  watchMonthlyCeiling: number;
+  currentStatus: SkyOneDtiStatus;
+  postDisbursementStatus: SkyOneDtiStatus;
+  noStrikeStatus: SkyOneDtiStatus;
+  withStrikeStatus: SkyOneDtiStatus;
+  hasWarningAtAnyStage: boolean;
+  worstStageLabel: string;
+  worstDtiPct: number;
+  recommendedMonthlyContributionForSafeDti: number;
+  requiredRentForSafeDti: number;
+  requiredIncomeForSafeDti: number;
+}
+
 export interface SkyOneStrategyAnalysis {
   monthsRemainingFixed: number;
   fixedEndPeriod: number;
@@ -1032,6 +1124,7 @@ export interface SkyOneStrategyAnalysis {
   dtiPostDisbursementPct: number;
   dtiNoStrikePct: number;
   dtiWithStrikePct: number;
+  dtiDiagnostics: SkyOneDtiDiagnostics;
   balanceAtResetBeforeStrike: number;
   balanceAtResetAfterStrike: number;
   bufferPrincipalSaved: number;
@@ -1273,6 +1366,123 @@ export function analyzeSkyOneStrategy(
       };
     });
 
+  const classifyDti = (pct: number): SkyOneDtiStatus =>
+    pct > 40 ? "HIGH" : pct > 30 ? "WATCH" : "SAFE";
+
+  const currentStatus = classifyDti(dtiCurrentPct);
+  const postDisbursementStatus = classifyDti(dtiPostDisbursementPct);
+  const noStrikeStatus = classifyDti(dtiNoStrikePct);
+  const withStrikeStatus = classifyDti(dtiWithStrikePct);
+
+  const stageRank: { label: string; pct: number }[] = [
+    { label: "Hiện tại (5,5%)", pct: dtiCurrentPct },
+    { label: "Sau giải ngân thêm (5,5%)", pct: dtiPostDisbursementPct },
+    {
+      label: `Thả nổi ${floatingRate.toFixed(1)}% (09/2028)`,
+      pct: dtiNoStrikePct,
+    },
+  ];
+  const worstStage = stageRank.reduce(
+    (max, item) => (item.pct > max.pct ? item : max),
+    stageRank[0]
+  );
+
+  const safeMonthlyCeiling = Math.round(income * 0.3);
+  const watchMonthlyCeiling = Math.round(income * 0.4);
+
+  // Find minimum monthly buffer (in 500k steps) so post-reset floating payment <= safeMonthlyCeiling
+  let recommendedMonthlyContributionForSafeDti = 0;
+  if (
+    postResetMonthlyPaymentNoStrike > safeMonthlyCeiling &&
+    monthsRemainingFixed > 0 &&
+    balanceAtResetBeforeStrike > 0
+  ) {
+    let unitAcc = 0;
+    for (let i = 0; i < monthsRemainingFixed; i++) {
+      unitAcc = (unitAcc + 1) * (1 + monthlySaveRate);
+    }
+    const maxContribNeeded = Math.ceil(
+      (balanceAtResetBeforeStrike * (1 + penaltyAtResetPct / 100)) /
+        Math.max(1, unitAcc) /
+        500_000
+    ) * 500_000;
+
+    // Step search in 500k increments with fast mathematical check on period firstFloatingPeriod
+    const basePrincipalAtReset =
+      firstFloatNoStrike?.principal ??
+      (contract.monthlyPrincipalOverride ||
+        Math.round(
+          balanceAtResetBeforeStrike /
+            Math.max(1, contract.termMonths - fixedEndPeriod)
+        ));
+    const dayCountAtFirstFloat = firstFloatNoStrike?.dayCountUsed || 31;
+
+    let found = Math.min(30_000_000, maxContribNeeded);
+    for (let cand = 500_000; cand <= Math.min(35_000_000, maxContribNeeded); cand += 500_000) {
+      const candBuffer = Math.round(cand * unitAcc);
+      const candStrike = Math.min(
+        balanceAtResetBeforeStrike,
+        Math.round(candBuffer / (1 + penaltyAtResetPct / 100))
+      );
+      const remainingAtReset = Math.max(0, balanceAtResetBeforeStrike - candStrike);
+      const candPrincipal =
+        remainingAtReset <= 0
+          ? 0
+          : Math.min(
+              remainingAtReset,
+              contract.monthlyPrincipalOverride && contract.monthlyPrincipalOverride > 0
+                ? contract.monthlyPrincipalOverride
+                : Math.round(
+                    remainingAtReset /
+                      Math.max(1, contract.termMonths - fixedEndPeriod)
+                  )
+            );
+      const candInterest =
+        contract.interestBasis === "THIRTY_360"
+          ? Math.round((remainingAtReset * (floatingRate / 100)) / 12)
+          : Math.round(
+              (remainingAtReset * (floatingRate / 100) * dayCountAtFirstFloat) / 365
+            );
+      if (candPrincipal + candInterest <= safeMonthlyCeiling) {
+        found = cand;
+        break;
+      }
+      // Keep baseline principal reference used when remaining > basePrincipalAtReset
+      void basePrincipalAtReset;
+    }
+    recommendedMonthlyContributionForSafeDti = found;
+  }
+
+  const requiredRentForSafeDti =
+    postResetMonthlyPaymentNoStrike > safeMonthlyCeiling
+      ? Math.ceil((postResetMonthlyPaymentNoStrike - safeMonthlyCeiling) / 500_000) *
+        500_000
+      : 0;
+
+  const requiredIncomeForSafeDti =
+    postResetMonthlyPaymentNoStrike > 0
+      ? Math.ceil(postResetMonthlyPaymentNoStrike / 0.3 / 1_000_000) * 1_000_000
+      : income;
+
+  const dtiDiagnostics: SkyOneDtiDiagnostics = {
+    monthlyIncome: income,
+    safeMonthlyCeiling,
+    watchMonthlyCeiling,
+    currentStatus,
+    postDisbursementStatus,
+    noStrikeStatus,
+    withStrikeStatus,
+    hasWarningAtAnyStage:
+      currentStatus !== "SAFE" ||
+      postDisbursementStatus !== "SAFE" ||
+      noStrikeStatus !== "SAFE",
+    worstStageLabel: worstStage.label,
+    worstDtiPct: worstStage.pct,
+    recommendedMonthlyContributionForSafeDti,
+    requiredRentForSafeDti,
+    requiredIncomeForSafeDti,
+  };
+
   return {
     monthsRemainingFixed,
     fixedEndPeriod,
@@ -1297,6 +1507,7 @@ export function analyzeSkyOneStrategy(
     dtiPostDisbursementPct,
     dtiNoStrikePct,
     dtiWithStrikePct,
+    dtiDiagnostics,
     balanceAtResetBeforeStrike,
     balanceAtResetAfterStrike,
     bufferPrincipalSaved,

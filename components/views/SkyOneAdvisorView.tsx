@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   SlidersHorizontal,
   Calendar,
+  BadgeCheck,
+  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -32,12 +34,43 @@ import {
 } from "@/lib/formatters";
 import {
   REAL_BIDV_SKYONE_SNAPSHOT,
+  SkyOneDtiStatus,
   analyzeSkyOneStrategy,
   calculateFamilyMonthlyIncome,
   generateMortgageSchedule,
   isRealBidvProfileSynced,
 } from "@/lib/mortgageEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+
+function getDtiStatusMeta(status: SkyOneDtiStatus): {
+  label: string;
+  toneClass: string;
+  badgeClass: string;
+  barClass: string;
+} {
+  if (status === "HIGH") {
+    return {
+      label: "Áp lực cao (> 40%)",
+      toneClass: "text-rose-700 dark:text-rose-300",
+      badgeClass: "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300",
+      barClass: "bg-rose-500",
+    };
+  }
+  if (status === "WATCH") {
+    return {
+      label: "Cảnh báo (31–40%)",
+      toneClass: "text-amber-700 dark:text-amber-300",
+      badgeClass: "bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300",
+      barClass: "bg-amber-500",
+    };
+  }
+  return {
+    label: "An toàn (≤ 30%)",
+    toneClass: "text-emerald-700 dark:text-emerald-300",
+    badgeClass: "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300",
+    barClass: "bg-emerald-500",
+  };
+}
 
 const TRANCHE_PRESETS = [
   { label: "Không vay thêm", amount: 0 },
@@ -51,6 +84,8 @@ const FLOATING_RATE_PRESETS = [8.5, 9.5, 10.0, 11.0];
 export function SkyOneAdvisorView() {
   const {
     skyoneLoan,
+    skyoneAutoSyncedNotice,
+    dismissSkyoneAutoSyncedNotice,
     setSkyoneTab,
     transactions,
     summary,
@@ -196,6 +231,23 @@ export function SkyOneAdvisorView() {
           </div>
         </div>
 
+        {skyoneAutoSyncedNotice && (
+          <div className="p-3 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs font-semibold flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <BadgeCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>{skyoneAutoSyncedNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={dismissSkyoneAutoSyncedNotice}
+              aria-label="Đóng thông báo đồng bộ BIDV"
+              className="p-1 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shrink-0 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {syncSuccessToast && (
           <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -219,8 +271,9 @@ export function SkyOneAdvisorView() {
         ) : (
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
-              <span className="text-slate-500 dark:text-slate-400 block">
-                Đã thanh toán 12 kỳ sao kê
+              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <BadgeCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Đã xác thực ({schedule.verifiedCount} kỳ sao kê)</span>
               </span>
               <span className="font-extrabold text-[#0F172A] dark:text-slate-100 tabular-nums mt-0.5 block">
                 {formatVNDMasked(REAL_BIDV_SKYONE_SNAPSHOT.verifiedTotalCashPaid12M, isPrivacyMode)}
@@ -236,10 +289,10 @@ export function SkyOneAdvisorView() {
             </div>
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">
-                Lãi đã trả BIDV (12 kỳ)
+                Tự động nhận diện hợp đồng
               </span>
               <span className="font-extrabold text-slate-800 dark:text-slate-200 tabular-nums mt-0.5 block">
-                {formatVNDMasked(REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidInterest12M, isPrivacyMode)}
+                TK {REAL_BIDV_SKYONE_SNAPSHOT.accountNumber} · 5,5% / 36T
               </span>
             </div>
             <div>
@@ -307,6 +360,240 @@ export function SkyOneAdvisorView() {
           </p>
         </div>
       </section>
+
+      {/* 2B. 3-MILESTONE DTI HEALTH WARNINGS & ACTIONABLE REDUCTION RECOMMENDATIONS */}
+      {(() => {
+        const { dtiDiagnostics } = strategy;
+        const m1 = getDtiStatusMeta(dtiDiagnostics.currentStatus);
+        const m2 = getDtiStatusMeta(dtiDiagnostics.postDisbursementStatus);
+        const m3Before = getDtiStatusMeta(dtiDiagnostics.noStrikeStatus);
+        const m3After = getDtiStatusMeta(dtiDiagnostics.withStrikeStatus);
+        const targetRentApplied = Math.min(15_000_000, dtiDiagnostics.requiredRentForSafeDti);
+
+        return (
+          <section
+            data-testid="dti-3milestone-panel"
+            className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 p-5 space-y-4"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  {dtiDiagnostics.hasWarningAtAnyStage ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
+                  <h3 className="text-base font-extrabold text-[#0F172A] dark:text-slate-100">
+                    Cảnh báo Sức khỏe DTI Gia đình (3 Mốc) &amp; Gợi ý giảm áp lực
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  Đo trên thu nhập hiện tại:{" "}
+                  <strong className="text-slate-700 dark:text-slate-200">
+                    {formatVNDMasked(dtiDiagnostics.monthlyIncome, isPrivacyMode)}/tháng
+                  </strong>{" "}
+                  ({incomeInfo.sourceLabel}) · Trần an toàn 30%:{" "}
+                  <strong className="text-emerald-700 dark:text-emerald-400">
+                    ≤ {formatShortVNDMasked(dtiDiagnostics.safeMonthlyCeiling, isPrivacyMode)}/th
+                  </strong>
+                </p>
+              </div>
+              <span
+                className={`text-xs font-bold px-2.5 py-1 rounded-lg border whitespace-nowrap self-start sm:self-center ${
+                  dtiDiagnostics.hasWarningAtAnyStage
+                    ? m3Before.badgeClass
+                    : m1.badgeClass
+                }`}
+              >
+                {dtiDiagnostics.hasWarningAtAnyStage
+                  ? `Đỉnh áp lực: ${dtiDiagnostics.worstDtiPct}% tại ${dtiDiagnostics.worstStageLabel}`
+                  : "An toàn ≤ 30% xuyên suốt 3 mốc"}
+              </span>
+            </div>
+
+            {/* 3 Milestones Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              {/* Milestone 1 */}
+              <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                    Mốc 1 · Hiện tại ({skyoneLoan.fixedInterestRate}%)
+                  </span>
+                  <span className={`font-extrabold ${m1.toneClass}`}>{m1.label}</span>
+                </div>
+                <div className="flex items-baseline justify-between tabular-nums">
+                  <span className={`text-xl font-black ${m1.toneClass}`}>
+                    {strategy.dtiCurrentPct}%
+                  </span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {formatVNDMasked(strategy.currentMonthlyPayment, isPrivacyMode)}/th
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${m1.barClass}`}
+                    style={{ width: `${Math.min(100, strategy.dtiCurrentPct)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Milestone 2 */}
+              <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                    Mốc 2 · Sau giải ngân thêm
+                  </span>
+                  <span className={`font-extrabold ${m2.toneClass}`}>{m2.label}</span>
+                </div>
+                <div className="flex items-baseline justify-between tabular-nums">
+                  <span className={`text-xl font-black ${m2.toneClass}`}>
+                    {strategy.dtiPostDisbursementPct}%
+                  </span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {formatVNDMasked(strategy.postDisbursementMonthlyPayment, isPrivacyMode)}/th
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${m2.barClass}`}
+                    style={{ width: `${Math.min(100, strategy.dtiPostDisbursementPct)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Milestone 3 */}
+              <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                    Mốc 3 · Thả nổi {projectedFloatingRate.toFixed(1)}% (09/2028)
+                  </span>
+                  <span className={`font-extrabold ${m3Before.toneClass}`}>
+                    {m3Before.label}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-2 tabular-nums">
+                  <span className={`text-xl font-black ${m3Before.toneClass}`}>
+                    {strategy.dtiNoStrikePct}%
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    Sau Quỹ Đệm:{" "}
+                    <strong className={m3After.toneClass}>{strategy.dtiWithStrikePct}%</strong>
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${m3Before.barClass}`}
+                    style={{ width: `${Math.min(100, strategy.dtiNoStrikePct)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Actionable Recommendations to Lower DTI */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              {/* Rec 1: Buffer strike */}
+              <div className="flex flex-col justify-between gap-2 p-3 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/30">
+                <div className="space-y-1">
+                  <p className="font-extrabold text-emerald-900 dark:text-emerald-200">
+                    1. Hạ DTI bằng Quỹ Đệm 08/2028
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed tabular-nums">
+                    {dtiDiagnostics.recommendedMonthlyContributionForSafeDti > 0 ? (
+                      <>
+                        Trích tối thiểu{" "}
+                        <strong className="text-emerald-700 dark:text-emerald-300">
+                          {formatShortVNDMasked(
+                            dtiDiagnostics.recommendedMonthlyContributionForSafeDti,
+                            isPrivacyMode
+                          )}
+                          /tháng
+                        </strong>{" "}
+                        để tất toán gốc đúng mốc 08/2028, đưa DTI thả nổi về ≤ 30%.
+                      </>
+                    ) : (
+                      <>DTI ở cả 3 mốc đã ở mức an toàn ≤ 30% ngay cả khi chưa dùng Quỹ Đệm.</>
+                    )}
+                  </p>
+                </div>
+                {dtiDiagnostics.recommendedMonthlyContributionForSafeDti > 0 && (
+                  <button
+                    type="button"
+                    data-testid="apply-recommended-buffer-btn"
+                    onClick={() =>
+                      setMonthlyBufferContribution(
+                        dtiDiagnostics.recommendedMonthlyContributionForSafeDti
+                      )
+                    }
+                    disabled={
+                      monthlyBufferContribution ===
+                      dtiDiagnostics.recommendedMonthlyContributionForSafeDti
+                    }
+                    className="self-start min-h-[34px] px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    {monthlyBufferContribution ===
+                    dtiDiagnostics.recommendedMonthlyContributionForSafeDti
+                      ? "Đang áp dụng mức này"
+                      : "Áp dụng mức trích này"}
+                  </button>
+                )}
+              </div>
+
+              {/* Rec 2: Rental offset */}
+              <div className="flex flex-col justify-between gap-2 p-3 rounded-lg bg-blue-50/60 dark:bg-blue-950/30">
+                <div className="space-y-1">
+                  <p className="font-extrabold text-blue-900 dark:text-blue-200">
+                    2. Bù dòng tiền bằng Cho thuê căn hộ
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed tabular-nums">
+                    {dtiDiagnostics.requiredRentForSafeDti > 0 ? (
+                      <>
+                        Doanh thu thuê từ{" "}
+                        <strong className="text-blue-700 dark:text-blue-300">
+                          {formatShortVNDMasked(dtiDiagnostics.requiredRentForSafeDti, isPrivacyMode)}
+                          /tháng
+                        </strong>{" "}
+                        giúp bù trực tiếp phần trả vượt trần 30% tại mốc thả nổi.
+                      </>
+                    ) : (
+                      <>Thu nhập gia đình hiện tại đủ gánh nghĩa vụ tháng mà không phụ thuộc tiền thuê.</>
+                    )}
+                  </p>
+                </div>
+                {dtiDiagnostics.requiredRentForSafeDti > 0 && (
+                  <button
+                    type="button"
+                    data-testid="apply-recommended-rent-btn"
+                    onClick={() => setExpectedMonthlyRent(targetRentApplied)}
+                    disabled={expectedMonthlyRent === targetRentApplied}
+                    className="self-start min-h-[34px] px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    {expectedMonthlyRent === targetRentApplied
+                      ? "Đang áp dụng giá thuê này"
+                      : "Áp dụng giá thuê này"}
+                  </button>
+                )}
+              </div>
+
+              {/* Rec 3: Income milestone */}
+              <div className="flex flex-col justify-between gap-2 p-3 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30">
+                <div className="space-y-1">
+                  <p className="font-extrabold text-indigo-900 dark:text-indigo-200">
+                    3. Mốc Thu nhập Gia đình trước 09/2028
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed tabular-nums">
+                    Để giữ DTI thả nổi ≤ 30% mà không cần trả gốc sớm, tổng thu nhập 2 vợ chồng cần đạt{" "}
+                    <strong className="text-indigo-700 dark:text-indigo-300">
+                      {formatShortVNDMasked(dtiDiagnostics.requiredIncomeForSafeDti, isPrivacyMode)}
+                      /tháng
+                    </strong>
+                    .
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* 3. INTERACTIVE DUAL-INFLECTION SIMULATOR + TIMELINE CHART */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -423,7 +710,7 @@ export function SkyOneAdvisorView() {
                 id="advisor-buffer-contrib"
                 type="range"
                 min={0}
-                max={30_000_000}
+                max={Math.max(30_000_000, monthlyBufferContribution)}
                 step={500_000}
                 value={monthlyBufferContribution}
                 onChange={(e) => setMonthlyBufferContribution(Number(e.target.value))}
@@ -478,7 +765,7 @@ export function SkyOneAdvisorView() {
                   id="advisor-rent-slider"
                   type="range"
                   min={0}
-                  max={12_000_000}
+                  max={15_000_000}
                   step={500_000}
                   value={expectedMonthlyRent}
                   onChange={(e) => setExpectedMonthlyRent(Number(e.target.value))}

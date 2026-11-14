@@ -23,7 +23,7 @@ import {
   DEFAULT_RECURRING_RULES,
 } from "@/constants/mockData";
 import { AppDataBackupSchema, MortgageContractSchema } from "./validations";
-import { createDefaultSkyOneLoan } from "./mortgageEngine";
+import { createDefaultSkyOneLoan, reconcileBidvSkyOneContract } from "./mortgageEngine";
 
 export const STORAGE_KEY_V3 = "HOME_MONI_DATA_V4";
 
@@ -133,7 +133,10 @@ export function loadStoredDataV3(): StoredAppStateV3 {
       const parsed = JSON.parse(rawV3);
       if (parsed.transactions && Array.isArray(parsed.transactions)) {
         const skyoneParsed = MortgageContractSchema.safeParse(parsed.skyoneLoan);
-        return {
+        const { contract: reconciledSkyOne, didAutoSync } = reconcileBidvSkyOneContract(
+          skyoneParsed.success ? skyoneParsed.data : undefined
+        );
+        const nextState: StoredAppStateV3 = {
           categories: parsed.categories?.length ? parsed.categories : DEFAULT_CATEGORIES,
           accounts: parsed.accounts?.length ? parsed.accounts : DEFAULT_ACCOUNTS,
           transactions: parsed.transactions || [],
@@ -145,8 +148,12 @@ export function loadStoredDataV3(): StoredAppStateV3 {
             ? parsed.recurringRules
             : DEFAULT_RECURRING_RULES,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-          skyoneLoan: skyoneParsed.success ? skyoneParsed.data : createDefaultSkyOneLoan(),
+          skyoneLoan: reconciledSkyOne,
         };
+        if (didAutoSync) {
+          saveStoredDataV3(nextState);
+        }
+        return nextState;
       }
     }
 
@@ -317,7 +324,7 @@ export function parseSyncBundleText(text: string): {
       investments: validData.investments ?? DEFAULT_INVESTMENTS,
       recurringRules: validData.recurringRules ?? DEFAULT_RECURRING_RULES,
       settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
-      skyoneLoan: validData.skyoneLoan ?? createDefaultSkyOneLoan(),
+      skyoneLoan: reconcileBidvSkyOneContract(validData.skyoneLoan).contract,
     };
 
     appState.accounts = recalculateAccountBalances(appState.accounts, appState.transactions);
