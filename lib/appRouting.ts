@@ -58,12 +58,14 @@ const SEGMENT_TO_SKYONE_TAB: Record<string, SkyOneRouteTab> = {
 };
 
 export function getSavedActiveApp(): SubAppId {
-  if (typeof window === "undefined") return "FINANCE";
+  if (typeof window === "undefined") return "LAUNCHER";
   try {
     const raw = window.localStorage.getItem(ACTIVE_APP_STORAGE_KEY);
-    return raw === "SKYONE" ? "SKYONE" : "FINANCE";
+    if (raw === "SKYONE") return "SKYONE";
+    if (raw === "FINANCE") return "FINANCE";
+    return "LAUNCHER";
   } catch {
-    return "FINANCE";
+    return "LAUNCHER";
   }
 }
 
@@ -98,11 +100,21 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
 
   if (parts[0] === "login") {
     return {
-      app: getSavedActiveApp(),
+      app: "LAUNCHER",
       financeTab: "overview",
       skyoneTab: "OVERVIEW",
       highlightPeriod: null,
       isLoginRoute: true,
+    };
+  }
+
+  if (parts[0] === "launcher") {
+    return {
+      app: "LAUNCHER",
+      financeTab: "overview",
+      skyoneTab: "OVERVIEW",
+      highlightPeriod: null,
+      isLoginRoute: false,
     };
   }
 
@@ -130,10 +142,9 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
     };
   }
 
-  // Root "/" hoặc đường dẫn cũ -> khôi phục sub-webapp đã dùng gần nhất hoặc mặc định FINANCE
-  const savedApp = parts.length === 0 ? getSavedActiveApp() : "FINANCE";
+  // Root "/" hoặc đường dẫn chưa phân định -> mở App Launcher tập trung
   return {
-    app: savedApp,
+    app: "LAUNCHER",
     financeTab: "overview",
     skyoneTab: "OVERVIEW",
     highlightPeriod: null,
@@ -147,6 +158,10 @@ export function buildAppPath(
   skyoneTab: SkyOneRouteTab,
   highlightPeriod?: number | null
 ): string {
+  if (app === "LAUNCHER") {
+    return "/launcher";
+  }
+
   if (app === "SKYONE") {
     const seg = SKYONE_TAB_TO_SEGMENT[skyoneTab] || "overview";
     const base = `/skyone/${seg}`;
@@ -165,6 +180,10 @@ export function getAppDocumentTitle(
   financeTab: FinanceTab,
   skyoneTab: SkyOneRouteTab
 ): string {
+  if (app === "LAUNCHER") {
+    return "App Launcher · HOME MONI";
+  }
+
   if (app === "SKYONE") {
     const map: Record<SkyOneRouteTab, string> = {
       OVERVIEW: "Tổng quan & Stress-Test · Phú Đông SKYONE",

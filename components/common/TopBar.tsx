@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { getMonthDisplayLabel } from "@/lib/formatters";
+import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 
 interface TopBarProps {
   onOpenAddModal: () => void;
@@ -82,6 +83,7 @@ export function TopBar({
         <div className="flex items-center justify-between h-18 sm:h-20 gap-3">
           {/* Bên Trái */}
           <div className="flex items-center gap-3 min-w-0">
+            <AppSwitcherWaffle align="left" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">
                 <h1 className="text-base sm:text-lg xl:text-xl font-black text-[#172B4D] dark:text-slate-100 tracking-tight truncate">

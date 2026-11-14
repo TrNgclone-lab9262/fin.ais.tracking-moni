@@ -97,7 +97,6 @@ export function SkyOneAdvisorView({
     themeMode,
     isPrivacyMode,
     resetSkyOneLoan,
-    switchSubApp,
   } = useFinance();
 
   const isDark = themeMode === "dark";
@@ -1127,20 +1126,20 @@ export function SkyOneAdvisorView({
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => switchSubApp("FINANCE", { financeTab: "planning" })}
+              onClick={() => setSkyoneTab("PREPAYMENT")}
               className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Lập Quỹ Đệm tại HOME MONI</span>
+              <TrendingDown className="w-4 h-4" />
+              <span>Thử trả gốc trước hạn</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => setSkyoneTab("PREPAYMENT")}
+              onClick={() => setSkyoneTab("SCHEDULE")}
               className="min-h-[40px] px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
             >
-              <TrendingDown className="w-4 h-4" />
-              <span>Thử trả gốc trước hạn</span>
+              <Calendar className="w-4 h-4" />
+              <span>Xem lịch trả nợ</span>
             </button>
           </div>
         </div>

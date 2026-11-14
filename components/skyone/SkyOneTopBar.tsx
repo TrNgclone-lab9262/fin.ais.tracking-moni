@@ -10,11 +10,11 @@ import {
   Lock,
   Sun,
   Moon,
-  Wallet,
   Building2,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { SkyOneRouteTab } from "@/types/finance";
+import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 
 interface SkyOneTopBarProps {
   onOpenBackupModal: () => void;
@@ -45,16 +45,17 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
     togglePrivacyMode,
     hasPasscodeProtection,
     lockApp,
-    switchSubApp,
   } = useFinance();
 
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20 shadow-xs transition-colors">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-18 sm:h-20 gap-3">
-          {/* Left: Context Title & Unit Metadata */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2.5 min-w-0">
+          {/* Left: Waffle Switcher + Context Title & Unit Metadata */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <AppSwitcherWaffle align="left" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5 min-w-0">
               <h1 className="text-base sm:text-lg xl:text-xl font-black text-[#172B4D] dark:text-slate-100 tracking-tight truncate">
                 {SKYONE_TITLES[skyoneTab]}
               </h1>
@@ -98,18 +99,11 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
               <span aria-hidden="true">·</span>
               <span>{skyoneLoan.bankName}</span>
             </div>
+            </div>
           </div>
 
           {/* Right Actions */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => switchSubApp("FINANCE", { financeTab: "overview" })}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>Sang HOME MONI Thu chi</span>
-            </button>
 
             <button
               type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   CreditCard,
   Scale,
@@ -11,8 +11,6 @@ import {
   Repeat,
   ChevronDown,
   ChevronUp,
-  Building2,
-  ArrowRight,
 } from "lucide-react";
 import { useFinance, CreditCardInfo } from "@/context/FinanceContext";
 import {
@@ -22,10 +20,6 @@ import {
   getCurrentMonthKey,
   getMonthDisplayLabel,
 } from "@/lib/formatters";
-import {
-  generateMortgageSchedule,
-  calculateRealEstateMetrics,
-} from "@/lib/mortgageEngine";
 import { generateMonthlyDigest, MonthlyAIDigest } from "@/lib/geminiReceiptService";
 import { Transaction } from "@/types/finance";
 import { MobileMonthSelector } from "@/components/mobile/MobileMonthSelector";
@@ -48,25 +42,11 @@ export function MobileOverviewView() {
     accounts,
     categoryExpenseStats,
     recurringRules,
-    skyoneLoan,
     addTransaction,
     applyAllPendingRecurringRules,
     setActiveTab,
-    switchSubApp,
     deleteTransaction,
   } = useFinance();
-
-  const skyoneSchedule = useMemo(() => generateMortgageSchedule(skyoneLoan), [skyoneLoan]);
-  const skyoneMetrics = useMemo(
-    () =>
-      calculateRealEstateMetrics(
-        skyoneLoan,
-        skyoneSchedule,
-        summary.monthlyIncome || 50_000_000,
-        "Thu nhập tháng"
-      ),
-    [skyoneLoan, skyoneSchedule, summary.monthlyIncome]
-  );
 
   const totalNetWorth = summary.netWorth;
   const monthlyIncome = summary.monthlyIncome;
@@ -274,59 +254,6 @@ export function MobileOverviewView() {
           )}
         </div>
       )}
-
-      {/* 1C. PHÚ ĐÔNG SKYONE QUICK ACCESS CARD */}
-      <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#0F172A] dark:bg-slate-800 text-white flex items-center justify-center shrink-0">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-xs font-extrabold text-[#0F172A] dark:text-slate-100 truncate">
-                {skyoneLoan.projectName}
-              </h4>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
-                {skyoneSchedule.paidCount}/{skyoneSchedule.totalScheduledMonths} kỳ · Equity{" "}
-                <strong className="text-emerald-700 dark:text-emerald-400">{skyoneMetrics.equityContractPct}%</strong>
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
-            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
-          >
-            <span>Mở SKYONE</span>
-            <ArrowRight className="w-3 h-3" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px]">
-          <div>
-            <span className="text-slate-400 dark:text-slate-500 block">Dư nợ còn lại</span>
-            <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">
-              {formatVNDMasked(skyoneSchedule.remainingBalance, isPrivacyMode)}
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-slate-400 dark:text-slate-500 block">
-              {skyoneSchedule.nextUnpaidInstallment
-                ? `Kỳ tới (${formatDateVN(skyoneSchedule.nextUnpaidInstallment.dueDate)})`
-                : "Trạng thái"}
-            </span>
-            <span className="font-black text-[#1E3A8A] dark:text-blue-400 tabular-nums">
-              {skyoneSchedule.nextUnpaidInstallment
-                ? formatShortVNDMasked(
-                    skyoneSchedule.nextUnpaidInstallment.totalPayment,
-                    isPrivacyMode
-                  )
-                : "Đã tất toán"}
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* 2. DUAL BIDV CREDIT CARDS MINI WIDGET */}
       <div className="space-y-2">

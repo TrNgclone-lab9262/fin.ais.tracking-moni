@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Menu, Building2, Eye, EyeOff, Lock, Sun, Moon, Wallet } from "lucide-react";
+import { Menu, Building2, Eye, EyeOff, Lock, Sun, Moon } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 
 interface SkyOneMobileHeaderProps {
   onOpenDrawer: () => void;
@@ -18,7 +19,6 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
     togglePrivacyMode,
     hasPasscodeProtection,
     lockApp,
-    switchSubApp,
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
@@ -39,6 +39,8 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
           )}
         </button>
 
+        <AppSwitcherWaffle variant="compact" align="left" />
+
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
             <Building2 className="w-4 h-4" />
@@ -54,16 +56,8 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
         </div>
       </div>
 
-      {/* Right: Quick switch to HOME MONI + Theme + Privacy + Lock */}
+      {/* Right: Theme + Privacy + Lock */}
       <div className="flex items-center gap-1 shrink-0">
-        <button
-          type="button"
-          onClick={() => switchSubApp("FINANCE", { financeTab: "overview" })}
-          className="h-8 px-2.5 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Wallet className="w-3.5 h-3.5" />
-          <span>Thu chi</span>
-        </button>
 
         <button
           type="button"

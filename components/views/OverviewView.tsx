@@ -1,19 +1,13 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2, Building2 } from "lucide-react";
+import React, { useState } from "react";
+import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import {
   formatVNDMasked,
-  formatShortVNDMasked,
-  formatDateVN,
   getCurrentMonthKey,
   getMonthDisplayLabel,
 } from "@/lib/formatters";
-import {
-  generateMortgageSchedule,
-  calculateRealEstateMetrics,
-} from "@/lib/mortgageEngine";
 import { generateMonthlyDigest, MonthlyAIDigest } from "@/lib/geminiReceiptService";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { DualCreditCardsWidget } from "@/components/dashboard/DualCreditCardsWidget";
@@ -35,23 +29,9 @@ export function OverviewView() {
     budgetSummary,
     recurringRules,
     applyRecurringRule,
-    skyoneLoan,
     setActiveTab,
-    switchSubApp,
     isPrivacyMode,
   } = useFinance();
-
-  const skyoneSchedule = useMemo(() => generateMortgageSchedule(skyoneLoan), [skyoneLoan]);
-  const skyoneMetrics = useMemo(
-    () =>
-      calculateRealEstateMetrics(
-        skyoneLoan,
-        skyoneSchedule,
-        summary.monthlyIncome || 50_000_000,
-        "Thu nhập tháng"
-      ),
-    [skyoneLoan, skyoneSchedule, summary.monthlyIncome]
-  );
 
   const [digest, setDigest] = useState<MonthlyAIDigest | null>(null);
   const [isGeneratingDigest, setIsGeneratingDigest] = useState(false);
@@ -235,75 +215,6 @@ export function OverviewView() {
                 </div>
               ))
             )}
-          </div>
-        </div>
-      </section>
-
-      {/* 1C. Thẻ truy cập nhanh Căn hộ Phú Đông SKYONE */}
-      <section aria-label="Theo dõi căn hộ Phú Đông SKYONE">
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#0F172A] dark:bg-blue-600 text-white flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] dark:text-slate-100">
-                  {skyoneLoan.projectName}
-                </h3>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
-                  {skyoneLoan.unitCode} · {skyoneSchedule.paidCount}/{skyoneSchedule.totalScheduledMonths} kỳ
-                </span>
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-400 tabular-nums">
-                <span>
-                  Dư nợ còn:{" "}
-                  <strong className="text-[#0F172A] dark:text-slate-100">
-                    {formatVNDMasked(skyoneSchedule.remainingBalance, isPrivacyMode)}
-                  </strong>
-                </span>
-                <span>
-                  Vốn chủ (Equity):{" "}
-                  <strong className="text-emerald-700 dark:text-emerald-400">{skyoneMetrics.equityContractPct}%</strong>
-                </span>
-                {skyoneSchedule.nextUnpaidInstallment && (
-                  <span>
-                    Kỳ tới ({formatDateVN(skyoneSchedule.nextUnpaidInstallment.dueDate)}):{" "}
-                    <strong className="text-[#1E3A8A] dark:text-blue-400">
-                      {formatShortVNDMasked(
-                        skyoneSchedule.nextUnpaidInstallment.totalPayment,
-                        isPrivacyMode
-                      )}
-                    </strong>
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {skyoneSchedule.nextUnpaidInstallment && (
-              <button
-                type="button"
-                onClick={() =>
-                  switchSubApp("SKYONE", {
-                    skyoneTab: "SCHEDULE",
-                    highlightPeriod: skyoneSchedule.nextUnpaidInstallment?.period,
-                  })
-                }
-                className="min-h-[42px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
-              >
-                <span>Lịch kỳ #{skyoneSchedule.nextUnpaidInstallment.period}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
-              className="min-h-[42px] px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-colors"
-            >
-              <span>Mở SKYONE</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </section>

@@ -13,17 +13,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
-  Wallet,
-  ArrowUpRight,
   Compass,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
 import { SkyOneRouteTab } from "@/types/finance";
-import { AppSwitcher } from "@/components/common/AppSwitcher";
 import { generateMortgageSchedule } from "@/lib/mortgageEngine";
-import { formatShortVNDMasked } from "@/lib/formatters";
 
 interface SkyOneNavItemDef {
   id: SkyOneRouteTab;
@@ -45,9 +41,6 @@ export function SkyOneSidebar() {
     skyoneTab,
     setSkyoneTab,
     skyoneLoan,
-    summary,
-    isPrivacyMode,
-    switchSubApp,
     lockApp,
   } = useFinance();
 
@@ -171,9 +164,6 @@ export function SkyOneSidebar() {
         </div>
       </div>
 
-      {/* App Switcher */}
-      <AppSwitcher collapsed={isCollapsed} />
-
       {/* Navigation Groups */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto" aria-label="Điều hướng SKYONE">
         {NAV_GROUPS.map((group, gIdx) => (
@@ -244,26 +234,9 @@ export function SkyOneSidebar() {
         ))}
       </nav>
 
-      {/* Footer: Linked Cash Balance & Lock */}
+      {/* Footer: Lock & Module Info */}
       {!isCollapsed ? (
         <div className="p-4 border-t border-indigo-800/40 dark:border-slate-800 text-[11px] text-indigo-200 bg-black/20 shrink-0 space-y-2.5">
-          <button
-            type="button"
-            onClick={() => switchSubApp("FINANCE", { financeTab: "accounts" })}
-            className="w-full p-2.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center justify-between text-[10px] text-indigo-200 font-semibold">
-              <span className="inline-flex items-center gap-1">
-                <Wallet className="w-3 h-3" />
-                Ví liên kết HOME MONI
-              </span>
-              <ArrowUpRight className="w-3 h-3 opacity-70 group-hover:opacity-100 transition-opacity" />
-            </div>
-            <p className="text-xs font-black text-white mt-0.5 tabular-nums">
-              {formatShortVNDMasked(summary.currentBalance, isPrivacyMode)} khả dụng
-            </p>
-          </button>
-
           <button
             type="button"
             onClick={lockApp}
@@ -275,7 +248,7 @@ export function SkyOneSidebar() {
 
           <div className="flex items-center justify-between text-[10px] text-indigo-200/75">
             <span>SKYONE Module · v{APP_VERSION}</span>
-            <span className="text-emerald-300 font-medium">Liên kết 2 chiều</span>
+            <span className="text-indigo-200 font-medium">Độc lập</span>
           </div>
         </div>
       ) : (

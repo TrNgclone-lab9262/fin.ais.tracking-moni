@@ -279,7 +279,7 @@ export interface CategoryExpenseStat {
   percentage: number;
 }
 
-export type SubAppId = 'FINANCE' | 'SKYONE';
+export type SubAppId = 'LAUNCHER' | 'FINANCE' | 'SKYONE';
 
 export type FinanceTab =
   | 'overview'

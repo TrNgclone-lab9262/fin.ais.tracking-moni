@@ -23,6 +23,7 @@ import { SkyOneLoanView } from "@/components/views/SkyOneLoanView";
 import { DataAdminView } from "@/components/views/DataAdminView";
 import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
+import { AppLauncherView } from "@/components/views/AppLauncherView";
 
 // 2. Mobile-Specific Views (Thu chi)
 import { MobileOverviewView } from "@/components/mobile/views/MobileOverviewView";
@@ -187,8 +188,10 @@ export default function HomePage() {
     <>
       {showUpdateBanner ? <PWAUpdateBanner /> : <PWAInstallBanner />}
 
-      {/* 1. UNIFIED DESKTOP SHELL (>= 768px) */}
-      {!isMobile ? (
+      {activeApp === "LAUNCHER" ? (
+        <AppLauncherView onOpenBackupModal={() => setIsBackupModalOpen(true)} />
+      ) : !isMobile ? (
+        /* 1. UNIFIED DESKTOP SHELL (>= 768px) */
         <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
           {activeApp === "SKYONE" ? <SkyOneSidebar /> : <Sidebar />}
           <div className="flex-1 flex flex-col min-w-0">

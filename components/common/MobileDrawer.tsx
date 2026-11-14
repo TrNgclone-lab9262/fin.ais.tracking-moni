@@ -25,7 +25,6 @@ import {
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
-import { AppSwitcher } from "@/components/common/AppSwitcher";
 import { SkyOneRouteTab } from "@/types/finance";
 
 interface MobileDrawerProps {
@@ -172,8 +171,6 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <X className="w-5 h-5" />
             </button>
           </div>
-
-          <AppSwitcher onSwitched={onClose} />
 
           {/* Family Mini Profile */}
           <div className="p-4 mx-3 my-3 rounded-xl bg-blue-950/40 dark:bg-slate-900/60 border border-blue-800/40 dark:border-slate-800 space-y-2.5">

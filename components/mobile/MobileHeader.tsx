@@ -4,6 +4,7 @@ import React from "react";
 import { Menu, Home, RefreshCw, Camera, Eye, EyeOff, Bell, Lock, Sun, Moon } from "lucide-react";
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 
 interface MobileHeaderProps {
   onOpenDrawer: () => void;
@@ -55,6 +56,8 @@ export function MobileHeader({
             />
           )}
         </button>
+
+        <AppSwitcherWaffle variant="compact" align="left" />
 
         <div className="flex items-center gap-1 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">

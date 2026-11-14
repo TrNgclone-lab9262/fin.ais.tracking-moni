@@ -157,6 +157,7 @@ interface FinanceContextType {
       highlightPeriod?: number | null;
     }
   ) => void;
+  openAppLauncher: () => void;
   getSkyOneLinkForTransaction: (txId: string) => SkyOneTransactionLink | undefined;
 
   // Trạng thái Cloud Database & Realtime
@@ -321,7 +322,7 @@ function createTxId(): string {
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
-  const [activeApp, setActiveApp] = useState<SubAppId>("FINANCE");
+  const [activeApp, setActiveApp] = useState<SubAppId>("LAUNCHER");
   const [activeTab, setActiveTabState] = useState<NavTab>("overview");
   const [skyoneTab, setSkyoneTabState] = useState<SkyOneRouteTab>("OVERVIEW");
   const [skyoneHighlightPeriod, setSkyoneHighlightPeriod] = useState<number | null>(null);
@@ -544,6 +545,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [switchSubApp]
   );
 
+  const openAppLauncher = useCallback(() => {
+    switchSubApp("LAUNCHER");
+  }, [switchSubApp]);
+
   const clearSkyoneHighlightPeriod = useCallback(() => {
     setSkyoneHighlightPeriod(null);
   }, []);
@@ -682,9 +687,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
       if (isValid) {
         setIsAppLocked(false);
+        setActiveApp("LAUNCHER");
+        saveActiveApp("LAUNCHER");
         setSettings((prev) => ({ ...prev, authActiveProfile: member }));
-        if (typeof window !== "undefined" && window.location.pathname === "/login") {
-          window.history.replaceState(null, "", "/");
+        if (typeof window !== "undefined") {
+          window.history.replaceState(null, "", "/launcher");
         }
         return true;
       }
@@ -696,12 +703,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const unlockWithBiometricSuccess = useCallback(
     (member: AuthMemberId, switchPerspective = false) => {
       setIsAppLocked(false);
+      setActiveApp("LAUNCHER");
+      saveActiveApp("LAUNCHER");
       setSettings((prev) => ({ ...prev, authActiveProfile: member }));
       if (switchPerspective) {
         setActivePerspective(member);
       }
-      if (typeof window !== "undefined" && window.location.pathname === "/login") {
-        window.history.replaceState(null, "", "/");
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/launcher");
       }
     },
     []
@@ -772,9 +781,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const bypassLockForFirstSetup = useCallback((member: AuthMemberId) => {
     setIsAppLocked(false);
+    setActiveApp("LAUNCHER");
+    saveActiveApp("LAUNCHER");
     setSettings((prev) => ({ ...prev, authActiveProfile: member }));
-    if (typeof window !== "undefined" && window.location.pathname === "/login") {
-      window.history.replaceState(null, "", "/");
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", "/launcher");
     }
   }, []);
 
@@ -2185,6 +2196,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     skyoneHighlightPeriod,
     clearSkyoneHighlightPeriod,
     switchSubApp,
+    openAppLauncher,
     getSkyOneLinkForTransaction,
     isCloudConnected,
     isSyncing,
