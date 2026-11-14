@@ -10,6 +10,7 @@ import {
   buildSkyOneAmortizationChartData,
   analyzeSkyOneStrategy,
   reconcileBidvSkyOneContract,
+  calculateSkyOneTabMetrics,
   REAL_BIDV_SKYONE_SNAPSHOT,
 } from "./mortgageEngine";
 import { MortgageContract } from "@/types/finance";
@@ -148,10 +149,24 @@ test("calculateRealEstateMetrics & calculateRateStressTest tính chuẩn Equity 
   assert.ok(stress[1].peakMonthlyPayment > stress[0].peakMonthlyPayment);
   assert.ok(stress[3].dtiPct > stress[0].dtiPct);
 
-  // Điều chỉnh ngày tham chiếu gần kỳ #16 (2026-12-10) để kích hoạt DUE_SOON
+  // > 10 ngày trước hạn (2026-11-14 -> 2026-12-10 là 26 ngày): không hiện thanh nhắc liên trang
+  const farReminders = evaluateSkyOneReminders(contract, schedule);
+  assert.equal(farReminders.length, 0);
+
+  // Điều chỉnh ngày tham chiếu gần kỳ #16 (2026-12-10, <= 10 ngày) để kích hoạt DUE_SOON
   const nearDueSchedule = generateMortgageSchedule(contract, "2026-12-05");
   const reminders = evaluateSkyOneReminders(contract, nearDueSchedule);
   assert.ok(reminders.some((r) => r.id.startsWith("skyone_due_soon_")));
+
+  // Kiểm tra các chỉ số chuyên biệt từng tab SKYONE
+  const tabMetrics = calculateSkyOneTabMetrics(contract, schedule, "2026-11-14");
+  assert.equal(tabMetrics.creditLimit, 1_100_160_000);
+  assert.ok(tabMetrics.disbursedRatioPct > 60 && tabMetrics.disbursedRatioPct < 70);
+  assert.equal(tabMetrics.currentLoanYear, 2);
+  assert.equal(tabMetrics.currentPenaltyPercent, 1.5);
+  assert.equal(tabMetrics.zeroPenaltyFromYear, 4);
+  assert.ok(tabMetrics.interestToPrincipalRatioPct > 0);
+  assert.ok(tabMetrics.principalExceedsInterestPeriod !== null);
 });
 
 test("analyzeSkyOneStrategy lượng hóa đúng lợi thế Positive Carry + Đánh chặn Quỹ Đệm 08/2028", () => {

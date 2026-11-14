@@ -772,16 +772,6 @@ export function evaluateSkyOneReminders(
       message: `Chuẩn bị nguồn tiền thanh toán cho ngân hàng ${contract.bankName} (kỳ thứ ${nextRow.period}/${schedule.totalScheduledMonths}).`,
       targetPeriod: nextRow.period,
     });
-  } else if (nextRow && nextRow.status === "UPCOMING") {
-    reminders.push({
-      id: `skyone_upcoming_${nextRow.period}`,
-      severity: "info",
-      title: `Kỳ tiếp theo #${nextRow.period} đến hạn ngày ${nextRow.dueDate}`,
-      message: `Còn ${nextRow.daysUntilDue} ngày tới kỳ thanh toán kế tiếp (${
-        nextRow.stage === "FIXED" ? "giai đoạn lãi cố định" : "giai đoạn lãi thả nổi"
-      }).`,
-      targetPeriod: nextRow.period,
-    });
   }
 
   if (
@@ -802,6 +792,90 @@ export function evaluateSkyOneReminders(
   }
 
   return reminders;
+}
+
+export interface SkyOneTabSpecificMetrics {
+  totalProjectedPrincipal: number;
+  interestToPrincipalRatioPct: number;
+  principalExceedsInterestPeriod: { period: number; dueDate: string } | null;
+  currentLoanYear: number;
+  currentPenaltyPercent: number;
+  zeroPenaltyFromYear: number | null;
+  actualPrepaymentInterestSaved: number;
+  creditLimit: number;
+  disbursedRatioPct: number;
+  remainingCreditHeadroom: number;
+}
+
+export function calculateSkyOneTabMetrics(
+  contract: MortgageContract,
+  schedule: MortgageScheduleSummary,
+  referenceDate: string = getTodayIsoDate()
+): SkyOneTabSpecificMetrics {
+  const totalProjectedPrincipal = schedule.rows.reduce(
+    (sum, r) => sum + r.principal + r.prepaidInPeriod,
+    0
+  );
+  const interestToPrincipalRatioPct =
+    totalProjectedPrincipal > 0
+      ? Math.round((schedule.totalProjectedInterest / totalProjectedPrincipal) * 1000) / 10
+      : 0;
+
+  const crossoverRow = schedule.rows.find(
+    (r) => r.principal > 0 && r.principal > r.interest
+  );
+  const principalExceedsInterestPeriod = crossoverRow
+    ? { period: crossoverRow.period, dueDate: crossoverRow.dueDate }
+    : null;
+
+  const currentLoanYear = schedule.nextUnpaidInstallment
+    ? schedule.nextUnpaidInstallment.yearIndex
+    : Math.max(1, Math.ceil(schedule.currentReferencePeriod / 12));
+  const currentPenaltyPercent = getPenaltyRateForYear(
+    currentLoanYear,
+    contract.prepaymentPenaltyTiers
+  );
+  const zeroPenaltyTier = [...contract.prepaymentPenaltyTiers]
+    .sort((a, b) => a.fromYear - b.fromYear)
+    .find((t) => t.feePercent === 0);
+  const zeroPenaltyFromYear = zeroPenaltyTier ? zeroPenaltyTier.fromYear : null;
+
+  let actualPrepaymentInterestSaved = 0;
+  if (contract.prepayments.length > 0) {
+    const noPrepaySchedule = generateMortgageSchedule(
+      { ...contract, prepayments: [] },
+      referenceDate
+    );
+    actualPrepaymentInterestSaved = Math.max(
+      0,
+      noPrepaySchedule.totalProjectedInterest -
+        schedule.totalProjectedInterest -
+        schedule.totalPrepaymentPenaltyPaid
+    );
+  }
+
+  const creditLimit = Math.max(
+    contract.loanAmount,
+    contract.creditLimit ?? contract.loanAmount
+  );
+  const disbursedRatioPct =
+    creditLimit > 0
+      ? Math.min(100, Math.round((contract.loanAmount / creditLimit) * 1000) / 10)
+      : 100;
+  const remainingCreditHeadroom = Math.max(0, creditLimit - contract.loanAmount);
+
+  return {
+    totalProjectedPrincipal,
+    interestToPrincipalRatioPct,
+    principalExceedsInterestPeriod,
+    currentLoanYear,
+    currentPenaltyPercent,
+    zeroPenaltyFromYear,
+    actualPrepaymentInterestSaved,
+    creditLimit,
+    disbursedRatioPct,
+    remainingCreditHeadroom,
+  };
 }
 
 export const REAL_BIDV_SKYONE_SNAPSHOT = {

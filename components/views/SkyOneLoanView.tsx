@@ -2,13 +2,11 @@
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
-  Building2,
   Calendar,
   CheckCircle2,
   AlertTriangle,
   Clock,
   ShieldCheck,
-  SlidersHorizontal,
   Plus,
   Trash2,
   RotateCcw,
@@ -17,7 +15,6 @@ import {
   Undo2,
   Percent,
   Wallet,
-  Compass,
   BadgeCheck,
   X,
 } from "lucide-react";
@@ -47,6 +44,7 @@ import {
   calculateRealEstateMetrics,
   calculateRateStressTest,
   evaluateSkyOneReminders,
+  calculateSkyOneTabMetrics,
   getTodayIsoDate,
   isRealBidvProfileSynced,
   MortgageScheduleRow,
@@ -218,8 +216,20 @@ export function SkyOneLoanView() {
     [skyoneLoan, schedule, incomeInfo.monthlyIncome]
   );
 
+  const [dismissedReminderIds, setDismissedReminderIds] = useState<string[]>([]);
+
   const internalReminders = useMemo(
     () => evaluateSkyOneReminders(skyoneLoan, schedule),
+    [skyoneLoan, schedule]
+  );
+
+  const visibleReminders = useMemo(
+    () => internalReminders.filter((item) => !dismissedReminderIds.includes(item.id)),
+    [internalReminders, dismissedReminderIds]
+  );
+
+  const tabMetrics = useMemo(
+    () => calculateSkyOneTabMetrics(skyoneLoan, schedule),
     [skyoneLoan, schedule]
   );
 
@@ -514,71 +524,8 @@ export function SkyOneLoanView() {
       ? "text-amber-700 dark:text-amber-300"
       : "text-emerald-700 dark:text-emerald-300";
 
-  if (subTab === "ADVISOR") {
-    return <SkyOneAdvisorView />;
-  }
-
   return (
     <div className="space-y-5 sm:space-y-6 animate-in fade-in duration-200">
-      {/* 1. HERO HEADER STRIP */}
-      <section className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5 min-w-0">
-          <div className="w-11 h-11 rounded-xl bg-[#0F172A] dark:bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <Building2 className="w-5 h-5" />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight">
-                {skyoneLoan.projectName}
-              </h2>
-              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-md tabular-nums">
-                {schedule.paidCount}/{schedule.totalScheduledMonths} kỳ
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium tabular-nums truncate">
-              {skyoneLoan.unitCode} · {skyoneLoan.bankName} · Giải ngân{" "}
-              {formatDateVN(skyoneLoan.disbursementDate)} · Ngày trả hàng tháng:{" "}
-              <strong className="text-slate-700 dark:text-slate-200">{skyoneLoan.paymentDayOfMonth}</strong>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {schedule.nextUnpaidInstallment && (
-            <button
-              type="button"
-              onClick={() =>
-                openConfirmPeriodsModal([schedule.nextUnpaidInstallment!.period])
-              }
-              className="min-h-[44px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Đóng kỳ #{schedule.nextUnpaidInstallment.period}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setSubTab("ADVISOR")}
-            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
-          >
-            <Compass className="w-4 h-4" />
-            <span>Cố vấn 08/2028</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setContractDraft(skyoneLoan);
-              setIsContractDirty(false);
-              setSubTab("CONTRACT");
-            }}
-            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span>Hợp đồng & Lãi suất</span>
-          </button>
-        </div>
-      </section>
-
       {/* Toast Feedback */}
       {statusFeedback && (
         <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-semibold flex items-center gap-2">
@@ -605,12 +552,13 @@ export function SkyOneLoanView() {
         </div>
       )}
 
-      {/* 2. INTERNAL REMINDER STACK */}
-      {internalReminders.length > 0 && (
+      {/* CROSS-TAB URGENT REMINDER NOTIFICATION STACK */}
+      {visibleReminders.length > 0 && (
         <section aria-label="Nhắc lịch thanh toán Phú Đông SKYONE" className="space-y-2">
-          {internalReminders.map((item) => (
+          {visibleReminders.map((item) => (
             <div
               key={item.id}
+              data-testid="skyone-reminder-banner"
               className={`rounded-xl border p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                 item.severity === "danger"
                   ? "bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200"
@@ -632,121 +580,146 @@ export function SkyOneLoanView() {
                   <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{item.message}</p>
                 </div>
               </div>
-              {item.targetPeriod && (
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                {item.targetPeriod && (
+                  <button
+                    type="button"
+                    onClick={() => jumpToPeriod(item.targetPeriod!)}
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Tới kỳ #{item.targetPeriod}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => jumpToPeriod(item.targetPeriod!)}
-                  className="min-h-[40px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer self-start sm:self-center"
+                  onClick={() => setDismissedReminderIds((prev) => [...prev, item.id])}
+                  aria-label="Đóng thông báo nhắc lịch"
+                  data-testid="skyone-reminder-close"
+                  className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 inline-flex items-center justify-center transition-colors cursor-pointer"
                 >
-                  <span>Tới kỳ #{item.targetPeriod}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
-              )}
+              </div>
             </div>
           ))}
         </section>
       )}
 
-      {/* 3. 4-KPI EXECUTIVE STRIP */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* KPI 1 */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2.5">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
-            <span>Dư nợ gốc còn lại</span>
-            <span className="tabular-nums font-bold text-blue-700 dark:text-blue-400">Đã trả {principalProgressPct}%</span>
-          </div>
-          <p className="text-xl sm:text-2xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
-            {formatVNDMasked(schedule.remainingBalance, isPrivacyMode)}
-          </p>
-          <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-            <div
-              className="h-full bg-blue-600 rounded-full transition-all"
-              style={{ width: `${principalProgressPct}%` }}
-            />
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-            Vay ban đầu: {formatShortVNDMasked(skyoneLoan.loanAmount, isPrivacyMode)} · Dự kiến tất toán{" "}
-            {formatDateVN(schedule.estimatedPayoffDate)}
-          </p>
-        </div>
+      {/* SUB-TAB CONTENT */}
+      {subTab === "ADVISOR" && <SkyOneAdvisorView hideAutoSyncNotice />}
 
-        {/* KPI 2 */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
-            <span>Vốn chủ sở hữu (Equity)</span>
-            <span className="tabular-nums font-bold text-emerald-700 dark:text-emerald-400">
-              LTV {realEstateMetrics.ltvPct}%
-            </span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <p className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
-              {realEstateMetrics.equityContractPct}%
-            </p>
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 tabular-nums">
-              ({formatShortVNDMasked(realEstateMetrics.equityContractAmount, isPrivacyMode)})
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug tabular-nums">
-            Gồm {formatShortVNDMasked(skyoneLoan.downPayment, isPrivacyMode)} tự có +{" "}
-            {formatShortVNDMasked(
-              Math.max(0, skyoneLoan.loanAmount - schedule.remainingBalance),
-              isPrivacyMode
-            )}{" "}
-            gốc đã trả
-          </p>
-        </div>
-
-        {/* KPI 3 */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
-            <span>
-              {schedule.nextUnpaidInstallment
-                ? `Kỳ sắp tới #${schedule.nextUnpaidInstallment.period}`
-                : "Trạng thái hợp đồng"}
-            </span>
-            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tabular-nums">
-              {schedule.currentApplicableRate.toFixed(2)}%/năm
-            </span>
-          </div>
-          <p className="text-xl sm:text-2xl font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
-            {schedule.nextUnpaidInstallment
-              ? formatVNDMasked(schedule.nextUnpaidInstallment.totalPayment, isPrivacyMode)
-              : "Đã tất toán 100%"}
-          </p>
-          {schedule.nextUnpaidInstallment ? (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-              Hạn {formatDateVN(schedule.nextUnpaidInstallment.dueDate)} · Gốc{" "}
-              {formatShortVNDMasked(schedule.nextUnpaidInstallment.principal, isPrivacyMode)} + Lãi{" "}
-              {formatShortVNDMasked(schedule.nextUnpaidInstallment.interest, isPrivacyMode)}
-            </p>
-          ) : (
-            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
-              Chúc mừng gia đình đã hoàn thành toàn bộ dư nợ!
-            </p>
-          )}
-        </div>
-
-        {/* KPI 4 */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
-            <span>Áp lực trả nợ / Thu nhập (DTI)</span>
-            <span className={`font-bold ${dtiColorClass}`}>{realEstateMetrics.dtiLabel}</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <p className={`text-xl sm:text-2xl font-black tabular-nums ${dtiColorClass}`}>
-              {realEstateMetrics.dtiPct}%
-            </p>
-            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-              / {formatShortVNDMasked(realEstateMetrics.monthlyFamilyIncome, isPrivacyMode)} thu nhập
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{realEstateMetrics.incomeSourceLabel}</p>
-        </div>
-      </section>
-
-      {/* 4. SUB-TAB CONTENT */}
       {subTab === "OVERVIEW" && (
         <div className="space-y-6">
+          {/* EXECUTIVE 4-KPI STRIP (OVERVIEW EXCLUSIVE) */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
+            {/* KPI 1 */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Dư nợ gốc còn lại</span>
+                <span className="tabular-nums font-bold text-blue-700 dark:text-blue-400">Đã trả {principalProgressPct}%</span>
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
+                {formatVNDMasked(schedule.remainingBalance, isPrivacyMode)}
+              </p>
+              <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all"
+                  style={{ width: `${principalProgressPct}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Vay ban đầu: {formatShortVNDMasked(skyoneLoan.loanAmount, isPrivacyMode)} · Dự kiến tất toán{" "}
+                {formatDateVN(schedule.estimatedPayoffDate)}
+              </p>
+            </div>
+
+            {/* KPI 2 */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Vốn chủ sở hữu (Equity)</span>
+                <span className="tabular-nums font-bold text-emerald-700 dark:text-emerald-400">
+                  LTV {realEstateMetrics.ltvPct}%
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <p className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {realEstateMetrics.equityContractPct}%
+                </p>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                  ({formatShortVNDMasked(realEstateMetrics.equityContractAmount, isPrivacyMode)})
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug tabular-nums">
+                Gồm {formatShortVNDMasked(skyoneLoan.downPayment, isPrivacyMode)} tự có +{" "}
+                {formatShortVNDMasked(
+                  Math.max(0, skyoneLoan.loanAmount - schedule.remainingBalance),
+                  isPrivacyMode
+                )}{" "}
+                gốc đã trả
+              </p>
+            </div>
+
+            {/* KPI 3 */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>
+                  {schedule.nextUnpaidInstallment
+                    ? `Kỳ sắp tới #${schedule.nextUnpaidInstallment.period}`
+                    : "Trạng thái hợp đồng"}
+                </span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tabular-nums">
+                  {schedule.currentApplicableRate.toFixed(2)}%/năm
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xl sm:text-2xl font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
+                  {schedule.nextUnpaidInstallment
+                    ? formatVNDMasked(schedule.nextUnpaidInstallment.totalPayment, isPrivacyMode)
+                    : "Đã tất toán 100%"}
+                </p>
+                {schedule.nextUnpaidInstallment && (
+                  <button
+                    type="button"
+                    onClick={() => openConfirmPeriodsModal([schedule.nextUnpaidInstallment!.period])}
+                    className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Đóng kỳ #{schedule.nextUnpaidInstallment.period}</span>
+                  </button>
+                )}
+              </div>
+              {schedule.nextUnpaidInstallment ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                  Hạn {formatDateVN(schedule.nextUnpaidInstallment.dueDate)} · Gốc{" "}
+                  {formatShortVNDMasked(schedule.nextUnpaidInstallment.principal, isPrivacyMode)} + Lãi{" "}
+                  {formatShortVNDMasked(schedule.nextUnpaidInstallment.interest, isPrivacyMode)}
+                </p>
+              ) : (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                  Chúc mừng gia đình đã hoàn thành toàn bộ dư nợ!
+                </p>
+              )}
+            </div>
+
+            {/* KPI 4 */}
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Áp lực trả nợ / Thu nhập (DTI)</span>
+                <span className={`font-bold ${dtiColorClass}`}>{realEstateMetrics.dtiLabel}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <p className={`text-xl sm:text-2xl font-black tabular-nums ${dtiColorClass}`}>
+                  {realEstateMetrics.dtiPct}%
+                </p>
+                <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  / {formatShortVNDMasked(realEstateMetrics.monthlyFamilyIncome, isPrivacyMode)} thu nhập
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{realEstateMetrics.incomeSourceLabel}</p>
+            </div>
+          </section>
+
           {/* Primary Combined Amortization Chart */}
           <SkyOneAmortizationChart
             contract={skyoneLoan}
@@ -925,6 +898,89 @@ export function SkyOneLoanView() {
 
       {subTab === "SCHEDULE" && (
         <div className="space-y-4">
+          {/* Statement Reconciliation 4-KPI Strip */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Tiến độ đối soát</span>
+                <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 tabular-nums">
+                  {schedule.verifiedCount} Đã xác thực
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
+                {schedule.paidCount}/{schedule.totalScheduledMonths} kỳ
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Còn {schedule.unpaidCount} kỳ dự kiến chưa thanh toán
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Tổng tiền đã thanh toán</span>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">Thực tế</span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {formatVNDMasked(schedule.totalPrincipalPaid + schedule.totalInterestPaid, isPrivacyMode)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Tổng dòng tiền gốc + lãi đã khấu trừ
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Khấu trừ Gốc &amp; Lãi đã đóng</span>
+                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400 tabular-nums">
+                  {schedule.paidCount} kỳ
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
+                Gốc {formatShortVNDMasked(schedule.totalPrincipalPaid, isPrivacyMode)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Đã trả lãi: {formatShortVNDMasked(schedule.totalInterestPaid, isPrivacyMode)}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>
+                  {schedule.nextUnpaidInstallment
+                    ? `Kỳ đối soát tiếp theo #${schedule.nextUnpaidInstallment.period}`
+                    : "Trạng thái đối soát"}
+                </span>
+                {schedule.nextUnpaidInstallment && (
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tabular-nums">
+                    {formatDateVN(schedule.nextUnpaidInstallment.dueDate)}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
+                  {schedule.nextUnpaidInstallment
+                    ? formatVNDMasked(schedule.nextUnpaidInstallment.totalPayment, isPrivacyMode)
+                    : "Hoàn tất 100%"}
+                </p>
+                {schedule.nextUnpaidInstallment && (
+                  <button
+                    type="button"
+                    onClick={() => openConfirmPeriodsModal([schedule.nextUnpaidInstallment!.period])}
+                    className="min-h-[30px] px-2.5 py-1 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Đóng kỳ #{schedule.nextUnpaidInstallment.period}</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {schedule.nextUnpaidInstallment
+                  ? `Gốc ${formatShortVNDMasked(schedule.nextUnpaidInstallment.principal, isPrivacyMode)} + Lãi ${formatShortVNDMasked(schedule.nextUnpaidInstallment.interest, isPrivacyMode)}`
+                  : "Toàn bộ các kỳ đã được đối soát hoàn chỉnh"}
+              </p>
+            </div>
+          </section>
+
           {/* Filter & Action Toolbar */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -1283,8 +1339,72 @@ export function SkyOneLoanView() {
       )}
 
       {subTab === "PREPAYMENT" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Simulator Form + Comparison */}
+        <div className="space-y-5">
+          {/* Prepayment Impact 4-KPI Strip */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Phí phạt năm vay thứ {tabMetrics.currentLoanYear}</span>
+                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300">Biểu phí thực tế</span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-amber-700 dark:text-amber-300 tabular-nums">
+                {tabMetrics.currentPenaltyPercent}%
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Tính trên số gốc trả trước hạn tại kỳ hiện tại
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Tổng gốc đã trả thêm</span>
+                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400 tabular-nums">
+                  {skyoneLoan.prepayments.length} đợt
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
+                {formatVNDMasked(schedule.totalPrepaidAmount, isPrivacyMode)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Phí phạt đã đóng: {formatShortVNDMasked(schedule.totalPrepaymentPenaltyPaid, isPrivacyMode)}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Lãi tiết kiệm ròng thực tế</span>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  -{schedule.monthsShortenedFromOriginal} tháng
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {formatVNDMasked(tabMetrics.actualPrepaymentInterestSaved, isPrivacyMode)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Sau khi trừ toàn bộ phí phạt trả sớm
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Mốc miễn phí phạt 0%</span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Chiến lược</span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
+                {tabMetrics.zeroPenaltyFromYear
+                  ? `Từ năm thứ ${tabMetrics.zeroPenaltyFromYear}`
+                  : "Theo hợp đồng"}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {tabMetrics.currentPenaltyPercent === 0
+                  ? "Hiện đã bước vào vùng miễn phí phạt"
+                  : `Còn ${Math.max(1, (tabMetrics.zeroPenaltyFromYear ?? 5) - tabMetrics.currentLoanYear)} năm tới mốc 0%`}
+              </p>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Simulator Form + Comparison */}
           <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-5 space-y-5">
             <div>
               <h3 className="text-base font-bold text-[#172B4D] dark:text-slate-100">
@@ -1495,11 +1615,74 @@ export function SkyOneLoanView() {
             )}
           </div>
         </div>
+        </div>
       )}
 
       {subTab === "CONTRACT" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Editable Contract Parameters */}
+        <div className="space-y-5">
+          {/* Contract Terms 4-KPI Strip */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Tỷ lệ đã giải ngân</span>
+                <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400 tabular-nums">
+                  {formatShortVNDMasked(skyoneLoan.loanAmount, isPrivacyMode)} / {formatShortVNDMasked(tabMetrics.creditLimit, isPrivacyMode)}
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
+                {tabMetrics.disbursedRatioPct}% hạn mức
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Dư hạn mức chờ giải ngân: {formatShortVNDMasked(tabMetrics.remainingCreditHeadroom, isPrivacyMode)}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Chuẩn tính lãi &amp; Ngày thu</span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 tabular-nums">
+                  Ngày {skyoneLoan.paymentDayOfMonth}
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100 tabular-nums">
+                {skyoneLoan.interestBasis === "THIRTY_360" ? "30 / 360" : "Actual / 365"}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Giải ngân đầu: {formatDateVN(skyoneLoan.disbursementDate)} · {skyoneLoan.termMonths} tháng
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Ưu đãi cố định còn lại</span>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  {skyoneLoan.fixedInterestRate.toFixed(2)}%/năm
+                </span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {schedule.remainingFixedMonths}/{skyoneLoan.fixedRateMonths} tháng
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Giai đoạn: {schedule.currentStage === "FIXED" ? "Ưu đãi cố định" : "Thả nổi"}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                <span>Lãi thả nổi dự kiến</span>
+                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300">Sau ưu đãi</span>
+              </div>
+              <p className="text-lg sm:text-xl font-black text-amber-700 dark:text-amber-300 tabular-nums">
+                {(skyoneLoan.floatingBaseRate + skyoneLoan.floatingSpread).toFixed(2)}%/năm
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Cơ sở {skyoneLoan.floatingBaseRate.toFixed(2)}% + Biên độ {skyoneLoan.floatingSpread.toFixed(2)}%
+              </p>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Editable Contract Parameters */}
           <form
             onSubmit={handleSaveContract}
             className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-5 space-y-4"
@@ -1844,33 +2027,50 @@ export function SkyOneLoanView() {
             </div>
           </div>
         </div>
+        </div>
       )}
 
       {subTab === "CASHFLOW" && (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4">
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Gốc vay ban đầu</p>
-              <p className="text-base sm:text-lg font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums mt-1">
-                {formatVNDMasked(skyoneLoan.loanAmount, isPrivacyMode)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Tổng gốc dự kiến trả</p>
+              <p className="text-base sm:text-lg font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums">
+                {formatVNDMasked(tabMetrics.totalProjectedPrincipal, isPrivacyMode)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Khấu trừ toàn bộ qua {schedule.totalScheduledMonths} kỳ
               </p>
             </div>
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1">
               <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Tổng lãi dự kiến toàn kỳ</p>
-              <p className="text-base sm:text-lg font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-1">
+              <p className="text-base sm:text-lg font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">
                 {formatVNDMasked(schedule.totalProjectedInterest, isPrivacyMode)}
               </p>
-            </div>
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4">
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Tổng nghĩa vụ thanh toán</p>
-              <p className="text-base sm:text-lg font-extrabold text-blue-700 dark:text-blue-300 tabular-nums mt-1">
-                {formatVNDMasked(schedule.totalProjectedCost, isPrivacyMode)}
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                Đã cộng kỳ sao kê thực tế &amp; dự phóng thả nổi
               </p>
             </div>
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4">
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Thời gian vay thực tế</p>
-              <p className="text-base sm:text-lg font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums mt-1">
-                {schedule.yearlySummary.length} năm ({schedule.totalScheduledMonths} kỳ)
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Tỷ lệ Chi phí Lãi / Vốn vay</p>
+              <p className="text-base sm:text-lg font-extrabold text-blue-700 dark:text-blue-300 tabular-nums">
+                {tabMetrics.interestToPrincipalRatioPct}%
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Hiệu suất chi phí vốn toàn vòng đời
+              </p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs p-4 space-y-1">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Kỳ hòa vốn Gốc &gt; Lãi</p>
+              <p className="text-base sm:text-lg font-extrabold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                {tabMetrics.principalExceedsInterestPeriod
+                  ? `Kỳ #${tabMetrics.principalExceedsInterestPeriod.period}`
+                  : "Chưa đạt mốc"}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {tabMetrics.principalExceedsInterestPeriod
+                  ? `Từ ${formatDateVN(tabMetrics.principalExceedsInterestPeriod.dueDate)} gốc trả vượt lãi`
+                  : "Lãi vẫn lớn hơn gốc hàng kỳ"}
               </p>
             </div>
           </div>

@@ -81,7 +81,11 @@ const TRANCHE_PRESETS = [
 
 const FLOATING_RATE_PRESETS = [8.5, 9.5, 10.0, 11.0];
 
-export function SkyOneAdvisorView() {
+export function SkyOneAdvisorView({
+  hideAutoSyncNotice = false,
+}: {
+  hideAutoSyncNotice?: boolean;
+}) {
   const {
     skyoneLoan,
     skyoneAutoSyncedNotice,
@@ -231,7 +235,7 @@ export function SkyOneAdvisorView() {
           </div>
         </div>
 
-        {skyoneAutoSyncedNotice && (
+        {!hideAutoSyncNotice && skyoneAutoSyncedNotice && (
           <div className="p-3 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs font-semibold flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <BadgeCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
