@@ -14,7 +14,11 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { generateMortgageSchedule } from "@/lib/mortgageEngine";
+import {
+  APP_ECOSYSTEM_REGISTRY,
+  EcosystemAppId,
+  getUrgentSkyOneAlert,
+} from "@/lib/appRegistry";
 import {
   FinanceAppIconSvg,
   SkyOneAppIconSvg,
@@ -23,6 +27,14 @@ import {
 interface AppLauncherViewProps {
   onOpenBackupModal: () => void;
 }
+
+const APP_ICON_MAP: Record<
+  EcosystemAppId,
+  React.ComponentType<{ className?: string }>
+> = {
+  FINANCE: FinanceAppIconSvg,
+  SKYONE: SkyOneAppIconSvg,
+};
 
 export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
   const {
@@ -39,26 +51,18 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     lockApp,
   } = useFinance();
 
-  const urgentSkyoneAlert = useMemo(() => {
-    const schedule = generateMortgageSchedule(skyoneLoan);
-    if (schedule.overdueCount > 0) {
-      return {
-        kind: "danger" as const,
-        text: `Có ${schedule.overdueCount} kỳ quá hạn cần đối soát`,
-      };
+  const urgentSkyoneAlert = useMemo(
+    () => getUrgentSkyOneAlert(skyoneLoan),
+    [skyoneLoan]
+  );
+
+  const handleOpenSubApp = (appId: EcosystemAppId) => {
+    if (appId === "FINANCE") {
+      switchSubApp("FINANCE", { financeTab: "overview" });
+    } else {
+      switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" });
     }
-    const nextInstallment = schedule.nextUnpaidInstallment;
-    if (nextInstallment && nextInstallment.status === "DUE_SOON") {
-      return {
-        kind: "warning" as const,
-        text:
-          nextInstallment.daysUntilDue === 0
-            ? `Hôm nay đến hạn đóng kỳ #${nextInstallment.period}`
-            : `Còn ${nextInstallment.daysUntilDue} ngày đến hạn kỳ #${nextInstallment.period}`,
-      };
-    }
-    return null;
-  }, [skyoneLoan]);
+  };
 
   return (
     <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 flex flex-col transition-colors duration-200">
@@ -154,83 +158,73 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
           </p>
         </div>
 
-        {/* 2 Streamlined App Cards */}
+        {/* 2 Streamlined App Cards driven by Declarative Registry */}
         <section
           aria-label="Danh sách ứng dụng"
           className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch"
         >
-          {/* App Card 1: Thu Chi Tổ Ấm */}
-          <button
-            type="button"
-            data-testid="launcher-card-finance"
-            onClick={() => switchSubApp("FINANCE", { financeTab: "overview" })}
-            className="group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 p-7 sm:p-8 text-center flex flex-col items-center justify-between gap-6 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-          >
-            <div className="flex flex-col items-center space-y-5">
-              <div className="w-24 h-24 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
-                <FinanceAppIconSvg className="w-16 h-16" />
-              </div>
+          {APP_ECOSYSTEM_REGISTRY.map((app) => {
+            const IconComponent = APP_ICON_MAP[app.id];
+            const isSkyOne = app.id === "SKYONE";
+            const displayTitle = isSkyOne ? skyoneLoan.projectName : app.title;
+            const hoverBorderClass =
+              app.accentTone === "indigo"
+                ? "hover:border-indigo-500 dark:hover:border-indigo-500 focus-visible:ring-indigo-600"
+                : "hover:border-blue-500 dark:hover:border-blue-500 focus-visible:ring-blue-600";
+            const ctaTextClass =
+              app.accentTone === "indigo"
+                ? "text-[#312E81] dark:text-indigo-300"
+                : "text-[#1E3A8A] dark:text-blue-400";
 
-              <div className="space-y-1.5">
-                <h2 className="text-xl font-black text-[#0F172A] dark:text-slate-100">
-                  Thu Chi Tổ Ấm
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Sổ giao dịch, thẻ tín dụng và ngân sách gia đình
-                </p>
-              </div>
-            </div>
+            return (
+              <button
+                key={app.id}
+                type="button"
+                data-testid={`launcher-card-${app.testIdKey}`}
+                onClick={() => handleOpenSubApp(app.id)}
+                className={`group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 ${hoverBorderClass} p-7 sm:p-8 text-center flex flex-col items-center justify-between gap-6 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2`}
+              >
+                <div className="flex flex-col items-center space-y-5">
+                  <div className="w-24 h-24 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
+                    <IconComponent className="w-16 h-16" />
+                  </div>
 
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1E3A8A] dark:text-blue-400 group-hover:translate-x-0.5 transition-transform duration-150">
-              <span>Mở Thu Chi</span>
-              <ArrowRight className="w-4 h-4" />
-            </span>
-          </button>
+                  <div className="space-y-1.5">
+                    <h2 className="text-xl font-black text-[#0F172A] dark:text-slate-100">
+                      {displayTitle}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {app.launcherDescription}
+                    </p>
 
-          {/* App Card 2: Phú Đông SKYONE */}
-          <button
-            type="button"
-            data-testid="launcher-card-skyone"
-            onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
-            className="group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 p-7 sm:p-8 text-center flex flex-col items-center justify-between gap-6 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
-          >
-            <div className="flex flex-col items-center space-y-5">
-              <div className="w-24 h-24 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
-                <SkyOneAppIconSvg className="w-16 h-16" />
-              </div>
-
-              <div className="space-y-1.5">
-                <h2 className="text-xl font-black text-[#0F172A] dark:text-slate-100">
-                  {skyoneLoan.projectName}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Khoản vay căn hộ BIDV, sao kê và cố vấn 08/2028
-                </p>
-
-                {urgentSkyoneAlert && (
-                  <p
-                    className={`pt-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold tabular-nums ${
-                      urgentSkyoneAlert.kind === "danger"
-                        ? "text-rose-700 dark:text-rose-300"
-                        : "text-amber-700 dark:text-amber-300"
-                    }`}
-                  >
-                    {urgentSkyoneAlert.kind === "danger" ? (
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                    {isSkyOne && urgentSkyoneAlert && (
+                      <p
+                        className={`pt-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold tabular-nums ${
+                          urgentSkyoneAlert.kind === "danger"
+                            ? "text-rose-700 dark:text-rose-300"
+                            : "text-amber-700 dark:text-amber-300"
+                        }`}
+                      >
+                        {urgentSkyoneAlert.kind === "danger" ? (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>{urgentSkyoneAlert.detailLabel}</span>
+                      </p>
                     )}
-                    <span>{urgentSkyoneAlert.text}</span>
-                  </p>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
 
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#312E81] dark:text-indigo-300 group-hover:translate-x-0.5 transition-transform duration-150">
-              <span>Mở SKYONE</span>
-              <ArrowRight className="w-4 h-4" />
-            </span>
-          </button>
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs font-bold whitespace-nowrap shrink-0 group-hover:translate-x-0.5 transition-transform duration-150 ${ctaTextClass}`}
+                >
+                  <span>{app.ctaLabel}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </span>
+              </button>
+            );
+          })}
         </section>
 
         {/* Quiet Shared Workspace Links */}
@@ -242,21 +236,21 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
             <button
               type="button"
               onClick={() => switchSubApp("FINANCE", { financeTab: "data_admin" })}
-              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline cursor-pointer"
+              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
             >
               Quản trị Dữ liệu
             </button>
             <button
               type="button"
               onClick={() => switchSubApp("FINANCE", { financeTab: "settings" })}
-              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline cursor-pointer"
+              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
             >
               Cài đặt &amp; Bảo mật
             </button>
             <button
               type="button"
               onClick={() => switchSubApp("FINANCE", { financeTab: "guide" })}
-              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline cursor-pointer"
+              className="hover:text-[#0F172A] dark:hover:text-slate-100 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
             >
               Cẩm nang tổ ấm
             </button>
