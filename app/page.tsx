@@ -7,12 +7,13 @@ import { Sidebar } from "@/components/common/Sidebar";
 import { TopBar } from "@/components/common/TopBar";
 import { MobileDrawer } from "@/components/common/MobileDrawer";
 import { BottomNavBar } from "@/components/common/BottomNavBar";
+import { MobileHeader } from "@/components/mobile/MobileHeader";
 import { SkyOneSidebar } from "@/components/skyone/SkyOneSidebar";
 import { SkyOneTopBar } from "@/components/skyone/SkyOneTopBar";
 import { SkyOneMobileHeader } from "@/components/skyone/SkyOneMobileHeader";
 import { SkyOneBottomNavBar } from "@/components/skyone/SkyOneBottomNavBar";
 
-// 1. Desktop Shell Views
+// 1. Sub-App & Shared Views
 import { OverviewView } from "@/components/views/OverviewView";
 import { TransactionsView } from "@/components/views/TransactionsView";
 import { AccountsView } from "@/components/views/AccountsView";
@@ -23,8 +24,7 @@ import { DataAdminView } from "@/components/views/DataAdminView";
 import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
 
-// 2. Mobile Shell Views
-import { MobileHeader } from "@/components/mobile/MobileHeader";
+// 2. Mobile-Specific Views (Thu chi)
 import { MobileOverviewView } from "@/components/mobile/views/MobileOverviewView";
 import { MobileTransactionsView } from "@/components/mobile/views/MobileTransactionsView";
 import { MobileAccountsView } from "@/components/mobile/views/MobileAccountsView";
@@ -87,7 +87,6 @@ export default function HomePage() {
     return () => window.removeEventListener("resize", checkIsMobile);
   }, []);
 
-  // Skeleton Loader khi chờ hydrate từ LocalStorage hoặc xác định viewport
   if (!isLoaded || isMobile === null) {
     return (
       <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] flex">
@@ -107,27 +106,40 @@ export default function HomePage() {
     );
   }
 
-  // Couple /login Security Gate (Profile + Access Code + Face ID + Personal Wallpaper)
   if (isAppLocked) {
     return <LoginGateView />;
   }
 
-  // Luồng render View cho Desktop (HOME MONI Thu chi)
-  const renderActiveDesktopView = () => {
+  const renderMainView = (mobileViewport: boolean) => {
+    if (activeApp === "SKYONE") {
+      if (skyoneTab === "DATA_ADMIN") return <DataAdminView />;
+      if (skyoneTab === "SETTINGS") {
+        return (
+          <SettingsView
+            onOpenBackupModal={() => setIsBackupModalOpen(true)}
+            onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
+          />
+        );
+      }
+      return <SkyOneLoanView />;
+    }
+
     switch (activeTab) {
       case "overview":
-        return <OverviewView />;
+        return mobileViewport ? <MobileOverviewView /> : <OverviewView />;
       case "transactions":
-        return (
+        return mobileViewport ? (
+          <MobileTransactionsView onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
+        ) : (
           <TransactionsView
             onOpenAddModal={() => setIsAddModalOpen(true)}
             onOpenBackupModal={() => setIsBackupModalOpen(true)}
           />
         );
       case "accounts":
-        return <AccountsView />;
+        return mobileViewport ? <MobileAccountsView /> : <AccountsView />;
       case "planning":
-        return <PlanningView />;
+        return mobileViewport ? <MobilePlanningView /> : <PlanningView />;
       case "debts_invest":
         return <DebtsInvestView />;
       case "data_admin":
@@ -142,57 +154,7 @@ export default function HomePage() {
           />
         );
       default:
-        return <OverviewView />;
-    }
-  };
-
-  // Luồng render View cho Mobile (HOME MONI Thu chi)
-  const renderActiveMobileView = () => {
-    switch (activeTab) {
-      case "overview":
-        return <MobileOverviewView />;
-      case "transactions":
-        return (
-          <MobileTransactionsView
-            onOpenAddModal={() => setIsMobileNumpadOpen(true)}
-          />
-        );
-      case "accounts":
-        return <MobileAccountsView />;
-      case "planning":
-        return <MobilePlanningView />;
-      case "debts_invest":
-        return <DebtsInvestView />;
-      case "data_admin":
-        return <DataAdminView />;
-      case "guide":
-        return <GuideView />;
-      case "settings":
-        return (
-          <SettingsView
-            onOpenBackupModal={() => setIsBackupModalOpen(true)}
-            onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
-          />
-        );
-      default:
-        return <MobileOverviewView />;
-    }
-  };
-
-  // Luồng render View cho Sub-WebApp Phú Đông SKYONE (Desktop & Mobile)
-  const renderActiveSkyOneView = () => {
-    switch (skyoneTab) {
-      case "DATA_ADMIN":
-        return <DataAdminView />;
-      case "SETTINGS":
-        return (
-          <SettingsView
-            onOpenBackupModal={() => setIsBackupModalOpen(true)}
-            onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
-          />
-        );
-      default:
-        return <SkyOneLoanView />;
+        return mobileViewport ? <MobileOverviewView /> : <OverviewView />;
     }
   };
 
@@ -225,92 +187,80 @@ export default function HomePage() {
     <>
       {showUpdateBanner ? <PWAUpdateBanner /> : <PWAInstallBanner />}
 
-      {/* 1. DESKTOP VIEW SHELL (>= 768px) */}
-      {!isMobile && activeApp === "FINANCE" && (
+      {/* 1. UNIFIED DESKTOP SHELL (>= 768px) */}
+      {!isMobile ? (
         <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
-          <Sidebar />
+          {activeApp === "SKYONE" ? <SkyOneSidebar /> : <Sidebar />}
           <div className="flex-1 flex flex-col min-w-0">
-            <TopBar
-              onOpenAddModal={() => setIsAddModalOpen(true)}
-              onOpenBackupModal={() => setIsBackupModalOpen(true)}
-              onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
-              onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
-              onOpenScanner={() => setIsGlobalScannerOpen(true)}
-            />
+            {activeApp === "SKYONE" ? (
+              <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />
+            ) : (
+              <TopBar
+                onOpenAddModal={() => setIsAddModalOpen(true)}
+                onOpenBackupModal={() => setIsBackupModalOpen(true)}
+                onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
+                onOpenScanner={() => setIsGlobalScannerOpen(true)}
+              />
+            )}
             <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
-              {renderActiveDesktopView()}
+              {renderMainView(false)}
             </main>
           </div>
         </div>
-      )}
-
-      {!isMobile && activeApp === "SKYONE" && (
-        <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
-          <SkyOneSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
-            <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />
-            <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
-              {renderActiveSkyOneView()}
-            </main>
-          </div>
-        </div>
-      )}
-
-      {/* 2. MOBILE VIEW SHELL (< 768px) */}
-      {isMobile && activeApp === "FINANCE" && (
+      ) : (
+        /* 2. UNIFIED MOBILE SHELL (< 768px) */
         <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
-          <MobileHeader
-            onOpenDrawer={() => setIsMobileMenuOpen(true)}
-            onOpenScanner={() => setIsGlobalScannerOpen(true)}
-            onOpenNotifications={() => setIsMobileNotifOpen(true)}
+          {activeApp === "SKYONE" ? (
+            <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
+          ) : (
+            <MobileHeader
+              onOpenDrawer={() => setIsMobileMenuOpen(true)}
+              onOpenScanner={() => setIsGlobalScannerOpen(true)}
+              onOpenNotifications={() => setIsMobileNotifOpen(true)}
+            />
+          )}
+
+          <main className="p-3.5 space-y-3.5">{renderMainView(true)}</main>
+
+          {activeApp === "SKYONE" ? (
+            <SkyOneBottomNavBar />
+          ) : (
+            <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
+          )}
+        </div>
+      )}
+
+      {/* 3. FINANCE-SCOPED MODALS & SHEETS */}
+      {activeApp === "FINANCE" && (
+        <>
+          <ReceiptScannerModal
+            isOpen={isGlobalScannerOpen}
+            onClose={() => setIsGlobalScannerOpen(false)}
+            onApplyReceipt={handleApplyGlobalReceipt}
+            onApplyTransactions={(batch) => addTransactionsBatch(batch)}
           />
 
-          <main className="p-3.5 space-y-3.5">
-            {renderActiveMobileView()}
-          </main>
+          <MobileNotificationSheet
+            isOpen={isMobileNotifOpen}
+            onClose={() => setIsMobileNotifOpen(false)}
+          />
 
-          <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
-        </div>
+          <MobileNumpadSheet
+            isOpen={isMobileNumpadOpen}
+            onClose={() => setIsMobileNumpadOpen(false)}
+          />
+
+          <TransactionFormModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+          />
+        </>
       )}
 
-      {isMobile && activeApp === "SKYONE" && (
-        <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
-          <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
-
-          <main className="p-3.5 space-y-3.5">
-            {renderActiveSkyOneView()}
-          </main>
-
-          <SkyOneBottomNavBar />
-        </div>
-      )}
-
-      {/* 3. GLOBAL MODALS & BOTTOM SHEETS */}
-      <ReceiptScannerModal
-        isOpen={isGlobalScannerOpen}
-        onClose={() => setIsGlobalScannerOpen(false)}
-        onApplyReceipt={handleApplyGlobalReceipt}
-        onApplyTransactions={(batch) => addTransactionsBatch(batch)}
-      />
-
+      {/* 4. SHARED SYSTEM MODALS & DRAWER */}
       <MobileDrawer
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
-      />
-
-      <MobileNotificationSheet
-        isOpen={isMobileNotifOpen}
-        onClose={() => setIsMobileNotifOpen(false)}
-      />
-
-      <MobileNumpadSheet
-        isOpen={isMobileNumpadOpen}
-        onClose={() => setIsMobileNumpadOpen(false)}
-      />
-
-      <TransactionFormModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
       />
 
       <ExportImportModal

@@ -1,22 +1,68 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Building2, Wallet } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { SubAppId } from "@/types/finance";
+import { generateMortgageSchedule } from "@/lib/mortgageEngine";
+import { formatDateVN, formatShortVNDMasked } from "@/lib/formatters";
 
 interface AppSwitcherProps {
   collapsed?: boolean;
   onSwitched?: () => void;
-  variant?: "sidebar" | "header";
 }
 
-export function AppSwitcher({
-  collapsed = false,
-  onSwitched,
-  variant = "sidebar",
-}: AppSwitcherProps) {
-  const { activeApp, switchSubApp } = useFinance();
+export function AppSwitcher({ collapsed = false, onSwitched }: AppSwitcherProps) {
+  const { activeApp, switchSubApp, skyoneLoan, isPrivacyMode } = useFinance();
+
+  const deadlineStatus = useMemo(() => {
+    const schedule = generateMortgageSchedule(skyoneLoan);
+    const overdueCount = schedule.overdueCount;
+    const nextDue = schedule.nextUnpaidInstallment;
+
+    if (overdueCount > 0) {
+      return {
+        tone: "danger" as const,
+        badgeText: `${overdueCount} trễ`,
+        compactBadge: `${overdueCount}!`,
+        tooltip: `Phú Đông SKYONE: ${overdueCount} kỳ quá hạn${
+          nextDue
+            ? ` · Kỳ #${nextDue.period} (${formatDateVN(nextDue.dueDate)} · ${formatShortVNDMasked(
+                nextDue.totalPayment,
+                isPrivacyMode
+              )})`
+            : ""
+        }`,
+      };
+    }
+
+    if (!nextDue) {
+      return {
+        tone: "success" as const,
+        badgeText: "Xong",
+        compactBadge: "✓",
+        tooltip: "Phú Đông SKYONE: Đã tất toán 100% dư nợ",
+      };
+    }
+
+    const shortDate = `${nextDue.dueDate.slice(8, 10)}/${nextDue.dueDate.slice(5, 7)}`;
+    const isDueSoon = nextDue.status === "DUE_SOON";
+    const daysText =
+      nextDue.daysUntilDue === 0
+        ? "hôm nay"
+        : nextDue.daysUntilDue === 1
+        ? "ngày mai"
+        : `còn ${nextDue.daysUntilDue} ngày`;
+
+    return {
+      tone: isDueSoon ? ("warning" as const) : ("neutral" as const),
+      badgeText: shortDate,
+      compactBadge: isDueSoon ? shortDate : null,
+      tooltip: `Kỳ #${nextDue.period} (${daysText}) · Hạn ${formatDateVN(
+        nextDue.dueDate
+      )} · ${formatShortVNDMasked(nextDue.totalPayment, isPrivacyMode)}`,
+    };
+  }, [skyoneLoan, isPrivacyMode]);
 
   const handleSelect = (app: SubAppId) => {
     if (app !== activeApp) {
@@ -25,52 +71,28 @@ export function AppSwitcher({
     onSwitched?.();
   };
 
-  if (variant === "header") {
+  const badgeClass =
+    deadlineStatus.tone === "danger"
+      ? "bg-rose-500 text-white"
+      : deadlineStatus.tone === "warning"
+      ? "bg-amber-400 text-amber-950"
+      : deadlineStatus.tone === "success"
+      ? "bg-emerald-500 text-white"
+      : activeApp === "SKYONE"
+      ? "bg-indigo-800/80 text-indigo-100 border border-indigo-300/30"
+      : "bg-white/15 text-blue-100";
+
+  if (collapsed) {
     return (
       <div
         role="tablist"
-        aria-label="Chuyển đổi ứng dụng HOME MONI"
-        className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 shrink-0"
+        aria-label="Chuyển đổi phân hệ ứng dụng"
+        className="px-2.5 pt-3 pb-1 flex flex-col items-center gap-1.5 shrink-0"
       >
         <button
           type="button"
           role="tab"
           aria-selected={activeApp === "FINANCE"}
-          data-testid="app-switcher-finance"
-          onClick={() => handleSelect("FINANCE")}
-          className={`min-h-[30px] px-2.5 py-1 rounded-md text-[11px] font-bold inline-flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-            activeApp === "FINANCE"
-              ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-2xs"
-              : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          <Wallet className="w-3.5 h-3.5 shrink-0" />
-          <span>Thu chi</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeApp === "SKYONE"}
-          data-testid="app-switcher-skyone"
-          onClick={() => handleSelect("SKYONE")}
-          className={`min-h-[30px] px-2.5 py-1 rounded-md text-[11px] font-bold inline-flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-            activeApp === "SKYONE"
-              ? "bg-indigo-600 text-white shadow-2xs"
-              : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5 shrink-0" />
-          <span>SKYONE</span>
-        </button>
-      </div>
-    );
-  }
-
-  if (collapsed) {
-    return (
-      <div className="px-2.5 pt-3 pb-1 flex flex-col items-center gap-1.5 shrink-0">
-        <button
-          type="button"
           data-testid="app-switcher-finance"
           onClick={() => handleSelect("FINANCE")}
           title="HOME MONI · Thu chi tổ ấm"
@@ -83,19 +105,36 @@ export function AppSwitcher({
         >
           <Wallet className="w-4 h-4" />
         </button>
+
         <button
           type="button"
+          role="tab"
+          aria-selected={activeApp === "SKYONE"}
           data-testid="app-switcher-skyone"
           onClick={() => handleSelect("SKYONE")}
-          title="Phú Đông SKYONE · Vay căn hộ"
-          aria-label="Chuyển sang Phú Đông SKYONE"
-          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+          title={deadlineStatus.tooltip}
+          aria-label={deadlineStatus.tooltip}
+          className={`relative w-10 h-10 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
             activeApp === "SKYONE"
               ? "bg-indigo-500 text-white shadow-md ring-1 ring-white/30"
               : "bg-white/10 text-blue-100 hover:bg-white/20"
           }`}
         >
           <Building2 className="w-4 h-4" />
+          {deadlineStatus.compactBadge && (
+            <span
+              data-testid="app-switcher-skyone-status"
+              className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-sm tabular-nums ring-2 ring-[#1E3A8A] dark:ring-slate-900 ${
+                deadlineStatus.tone === "danger"
+                  ? "bg-rose-500 text-white"
+                  : deadlineStatus.tone === "success"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-amber-400 text-amber-950"
+              }`}
+            >
+              {deadlineStatus.compactBadge}
+            </span>
+          )}
         </button>
       </div>
     );
@@ -129,8 +168,9 @@ export function AppSwitcher({
           role="tab"
           aria-selected={activeApp === "SKYONE"}
           data-testid="app-switcher-skyone"
+          title={deadlineStatus.tooltip}
           onClick={() => handleSelect("SKYONE")}
-          className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center justify-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+          className={`min-h-[36px] px-2 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center justify-center gap-1 transition-all whitespace-nowrap cursor-pointer ${
             activeApp === "SKYONE"
               ? "bg-indigo-500 text-white shadow-sm ring-1 ring-white/25"
               : "text-white/75 hover:text-white hover:bg-white/10"
@@ -138,6 +178,12 @@ export function AppSwitcher({
         >
           <Building2 className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">SKYONE</span>
+          <span
+            data-testid="app-switcher-skyone-status"
+            className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold leading-none shrink-0 tabular-nums ${badgeClass}`}
+          >
+            {deadlineStatus.badgeText}
+          </span>
         </button>
       </div>
     </div>

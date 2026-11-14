@@ -6,7 +6,6 @@ import {
   Plus,
   Download,
   Calendar,
-  Menu,
   X,
   AlertTriangle,
   RotateCcw,
@@ -27,7 +26,6 @@ interface TopBarProps {
   onOpenAddModal: () => void;
   onOpenBackupModal: () => void;
   onOpenResetConfirm: () => void;
-  onToggleMobileMenu: () => void;
   onOpenScanner?: () => void;
 }
 
@@ -35,7 +33,6 @@ export function TopBar({
   onOpenAddModal,
   onOpenBackupModal,
   onOpenResetConfirm,
-  onToggleMobileMenu,
   onOpenScanner,
 }: TopBarProps) {
   const {
@@ -85,14 +82,6 @@ export function TopBar({
         <div className="flex items-center justify-between h-18 sm:h-20 gap-3">
           {/* Bên Trái */}
           <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={onToggleMobileMenu}
-              className="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              aria-label="Mở menu"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">
                 <h1 className="text-base sm:text-lg xl:text-xl font-black text-[#172B4D] dark:text-slate-100 tracking-tight truncate">
