@@ -16,6 +16,9 @@ import {
   UploadCloud,
   UserCheck,
   UserPlus,
+  Mail,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { AuthMemberId } from "@/types/finance";
@@ -64,6 +67,23 @@ export function FamilyHub({ onStatusToast }: FamilyHubProps) {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Email Provider / Resend SMTP setup guide state
+  const [isSmtpGuideOpen, setIsSmtpGuideOpen] = useState(false);
+  const [copiedSmtpField, setCopiedSmtpField] = useState<string | null>(null);
+  const appOrigin =
+    typeof window !== "undefined" ? window.location.origin : "https://your-app-domain.run.app";
+
+  const copyGuideValue = async (key: string, value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedSmtpField(key);
+      notify(`Đã sao chép ${label}: ${value}`);
+      setTimeout(() => setCopiedSmtpField(null), 2000);
+    } catch {
+      notify(value);
+    }
+  };
 
   useEffect(() => {
     if (cloudProfile?.memberSlot) {
@@ -732,6 +752,119 @@ export function FamilyHub({ onStatusToast }: FamilyHubProps) {
           )}
         </div>
       )}
+
+      {/* Email Provider & Resend SMTP Configuration Guide */}
+      <div className="rounded-xl border border-[#E9EEF5] dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+        <button
+          type="button"
+          aria-expanded={isSmtpGuideOpen}
+          data-testid="familyhub-smtp-guide-toggle"
+          onClick={() => setIsSmtpGuideOpen((prev) => !prev)}
+          className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-[#172B4D] dark:text-slate-100 truncate">
+                Hướng dẫn cấu hình Email Provider (Resend Custom SMTP &amp; Supabase Auth)
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Khắc phục giới hạn 2 email/giờ của SMTP mặc định để gửi mail xác nhận ổn định
+              </p>
+            </div>
+          </div>
+          {isSmtpGuideOpen ? (
+            <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+          )}
+        </button>
+
+        {isSmtpGuideOpen && (
+          <div
+            data-testid="familyhub-smtp-guide-content"
+            className="px-4 pb-4 pt-3 border-t border-[#E9EEF5] dark:border-slate-800 space-y-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed"
+          >
+            <div className="space-y-1.5">
+              <p className="font-bold text-[#172B4D] dark:text-slate-100">
+                1. Cấu hình Resend Custom SMTP trên Supabase Dashboard
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Tại Resend: xác thực tên miền (SPF/DKIM) và tạo API Key (<code className="font-mono">re_...</code>). Sau đó mở{" "}
+                <strong>Supabase Dashboard → Authentication → Emails (hoặc Project Settings → Auth → SMTP Settings)</strong>, bật{" "}
+                <strong>Enable Custom SMTP</strong> và điền thông số dưới đây (API Key nhập trực tiếp trên Supabase Dashboard, không lưu trên trình duyệt):
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {(
+                [
+                  { key: "host", label: "SMTP Host", value: "smtp.resend.com", copyable: true },
+                  { key: "port", label: "Port (Implicit TLS / STARTTLS)", value: "465", note: "hoặc 587", copyable: true },
+                  { key: "user", label: "SMTP Username", value: "resend", copyable: true },
+                  { key: "redirect", label: "Redirect URL (URL Configuration)", value: appOrigin, copyable: true },
+                ] as const
+              ).map((item) => (
+                <div
+                  key={item.key}
+                  className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                      {item.label}
+                    </p>
+                    <p className="text-xs font-mono font-bold text-[#172B4D] dark:text-slate-100 tabular-nums truncate">
+                      {item.value}
+                      {"note" in item && item.note ? (
+                        <span className="font-sans font-normal text-[11px] text-slate-500 dark:text-slate-400">
+                          {" "}
+                          ({item.note})
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                  {item.copyable && (
+                    <button
+                      type="button"
+                      onClick={() => void copyGuideValue(item.key, item.value, item.label)}
+                      className="min-h-[32px] px-2.5 py-1 rounded-md bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 text-[11px] font-bold text-blue-700 dark:text-blue-300 inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-800"
+                    >
+                      {copiedSmtpField === item.key ? (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                      <span>{copiedSmtpField === item.key ? "Đã chép" : "Chép"}</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="font-bold text-[#172B4D] dark:text-slate-100 text-xs">
+                2. Kiểm tra Redirect URL &amp; Kích hoạt nhanh cho gia đình
+              </p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>
+                  <strong>URL Configuration:</strong> Vào <strong>Authentication → URL Configuration</strong>, thêm{" "}
+                  <code className="font-mono text-blue-600 dark:text-blue-400">{appOrigin}/**</code> vào danh sách{" "}
+                  <strong>Redirect URLs</strong> để bấm link xác nhận không bị chuyển nhầm về localhost.
+                </li>
+                <li>
+                  <strong>Sender Email:</strong> Dùng địa chỉ thuộc domain đã verify trên Resend (ví dụ{" "}
+                  <code className="font-mono">no-reply@tenmien-cuaban.com</code>), không dùng <code className="font-mono">@gmail.com</code> làm Sender khi gửi qua Resend.
+                </li>
+                <li>
+                  <strong>Xác nhận thủ công tức thì (nếu chỉ dùng 2 vợ chồng):</strong> Vào{" "}
+                  <strong>Authentication → Users → menu ⋯ → Confirm user</strong>, hoặc tắt tạm{" "}
+                  <strong>Confirm email</strong> tại <strong>Authentication → Providers → Email</strong>.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

@@ -201,7 +201,12 @@ export const supabaseService = {
     email: string,
     password: string,
     profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
-  ): Promise<{ user?: CloudUser; needsEmailConfirm?: boolean; error?: string }> {
+  ): Promise<{
+    user?: CloudUser;
+    needsEmailConfirm?: boolean;
+    alreadyRegistered?: boolean;
+    error?: string;
+  }> {
     if (!isSupabaseConfigured || !supabase) {
       return { error: "Supabase chưa được cấu hình biến môi trường." };
     }
@@ -224,6 +229,17 @@ export const supabaseService = {
     });
     if (error) {
       return { error: error.message };
+    }
+    if (
+      data.user &&
+      !data.session &&
+      Array.isArray(data.user.identities) &&
+      data.user.identities.length === 0
+    ) {
+      return {
+        user: { id: data.user.id, email: data.user.email || cleanEmail },
+        alreadyRegistered: true,
+      };
     }
     if (data.user && !data.session) {
       return {
@@ -250,6 +266,25 @@ export const supabaseService = {
       };
     }
     return { error: "Không thể tạo tài khoản mới." };
+  },
+
+  async resendConfirmationEmail(
+    email: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, error: "Supabase chưa được cấu hình." };
+    }
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: {
+        emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+      },
+    });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
   },
 
   async sendMagicLink(email: string): Promise<{ success: boolean; error?: string }> {

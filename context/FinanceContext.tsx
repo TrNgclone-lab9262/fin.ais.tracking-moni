@@ -192,7 +192,8 @@ interface FinanceContextType {
     email: string,
     password: string,
     profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
-  ) => Promise<{ ok: boolean; needsEmailConfirm?: boolean }>;
+  ) => Promise<{ ok: boolean; needsEmailConfirm?: boolean; alreadyRegistered?: boolean }>;
+  resendSignupConfirmationCloud: (email: string) => Promise<boolean>;
   updateCloudProfile: (patch: {
     displayName?: string;
     memberSlot?: AuthMemberId;
@@ -574,12 +575,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string,
       profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
-    ): Promise<{ ok: boolean; needsEmailConfirm?: boolean }> => {
+    ): Promise<{ ok: boolean; needsEmailConfirm?: boolean; alreadyRegistered?: boolean }> => {
       setCloudError(null);
       const res = await supabaseService.signUpWithPassword(email, password, profileMeta);
       if (res.error) {
         setCloudError(res.error);
         return { ok: false };
+      }
+      if (res.alreadyRegistered) {
+        return { ok: false, alreadyRegistered: true };
       }
       if (!res.needsEmailConfirm && res.user) {
         setCloudUser(res.user);
@@ -592,6 +596,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const resendSignupConfirmationCloud = useCallback(async (email: string): Promise<boolean> => {
+    setCloudError(null);
+    const res = await supabaseService.resendConfirmationEmail(email);
+    if (!res.success) {
+      setCloudError(res.error || "Không gửi lại được email xác nhận.");
+      return false;
+    }
+    return true;
+  }, []);
 
   const updateCloudProfile = useCallback(
     async (patch: { displayName?: string; memberSlot?: AuthMemberId }): Promise<boolean> => {
@@ -2863,6 +2877,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     syncWithCloud,
     signInCloud,
     signUpCloud,
+    resendSignupConfirmationCloud,
     updateCloudProfile,
     sendMagicLinkCloud,
     signOutCloud,

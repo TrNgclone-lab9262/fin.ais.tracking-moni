@@ -11,6 +11,7 @@ import {
   Settings,
   Users,
   Smartphone,
+  Mail,
 } from "lucide-react";
 
 interface GuideSection {
@@ -131,6 +132,29 @@ export function GuideView() {
             </li>
             <li>
               <strong>Kiểm tra thủ công:</strong> Mở mục <strong>Cài đặt & Tùy biến</strong> để xem số phiên bản hiện tại, đọc ghi chú thay đổi hoặc bấm <strong>Kiểm tra cập nhật</strong> bất cứ lúc nào.
+            </li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      id: "cloud_smtp",
+      title: "Đồng bộ Cloud FamilyHub & Cấu hình Email xác nhận (Resend SMTP)",
+      icon: Mail,
+      content: (
+        <div className="space-y-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+          <p>
+            Mặc định Supabase chỉ cho phép gửi khoảng <strong>2 email/giờ</strong> qua máy chủ thử nghiệm. Để gửi email xác nhận tài khoản ổn định cho hai vợ chồng:
+          </p>
+          <ul className="list-disc pl-5 space-y-1.5">
+            <li>
+              <strong>Dùng Resend Custom SMTP:</strong> Xác thực tên miền trên Resend và tạo API Key (<code className="font-mono">re_...</code>), sau đó vào <strong>Supabase Dashboard → Project Settings → Auth → SMTP Settings</strong> nhập Host <code className="font-mono">smtp.resend.com</code>, Port <code className="font-mono tabular-nums">465</code> (hoặc <code className="font-mono tabular-nums">587</code>), Username <code className="font-mono">resend</code>, Password là Resend API Key.
+            </li>
+            <li>
+              <strong>Cấu hình Redirect URLs:</strong> Thêm địa chỉ web hiện tại vào <strong>Authentication → URL Configuration → Redirect URLs</strong> để liên kết xác nhận điều hướng về đúng ứng dụng.
+            </li>
+            <li>
+              <strong>Kích hoạt nhanh cho 2 tài khoản gia đình:</strong> Có thể chọn <strong>Confirm user</strong> trực tiếp ở bảng <strong>Authentication → Users</strong> hoặc tắt tạm <strong>Confirm email</strong> trong mục <strong>Providers → Email</strong> nếu không cần bước xác nhận qua hộp thư.
             </li>
           </ul>
         </div>

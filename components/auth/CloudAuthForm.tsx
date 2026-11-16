@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   AlertCircle,
   Check,
@@ -8,6 +8,7 @@ import {
   EyeOff,
   Lock,
   Mail,
+  RefreshCw,
   User,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
@@ -17,12 +18,16 @@ interface CloudAuthFormProps {
   defaultMode?: "SIGNIN" | "SIGNUP";
   onAuthSuccess?: () => void;
   onStatusToast?: (msg: string) => void;
+  onSignupPendingConfirm?: (email: string) => void;
 }
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 export function CloudAuthForm({
   defaultMode = "SIGNIN",
   onAuthSuccess,
   onStatusToast,
+  onSignupPendingConfirm,
 }: CloudAuthFormProps) {
   const {
     settings,
@@ -30,6 +35,7 @@ export function CloudAuthForm({
     clearCloudError,
     signInCloud,
     signUpCloud,
+    resendSignupConfirmationCloud,
     sendMagicLinkCloud,
   } = useFinance();
 
@@ -42,21 +48,38 @@ export function CloudAuthForm({
     settings.authActiveProfile || "HUSBAND"
   );
   const [isBusy, setIsBusy] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
+  const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [localMessage, setLocalMessage] = useState<{
     type: "error" | "info";
     text: string;
   } | null>(null);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
   const switchMode = (next: "SIGNIN" | "SIGNUP") => {
     setMode(next);
     clearCloudError();
     setLocalMessage(null);
+    setAlreadyRegisteredEmail(null);
+    if (next === "SIGNIN") {
+      setPendingConfirmEmail(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearCloudError();
     setLocalMessage(null);
+    setAlreadyRegisteredEmail(null);
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
@@ -81,6 +104,7 @@ export function CloudAuthForm({
         const ok = await signInCloud(trimmedEmail, password);
         if (ok) {
           setPassword("");
+          setPendingConfirmEmail(null);
           onStatusToast?.("Đã đăng nhập Supabase Cloud.");
           onAuthSuccess?.();
         }
@@ -94,13 +118,19 @@ export function CloudAuthForm({
           memberSlot,
         });
 
+        if (res.alreadyRegistered) {
+          setPassword("");
+          setAlreadyRegisteredEmail(trimmedEmail);
+          return;
+        }
+
         if (res.ok) {
           setPassword("");
           if (res.needsEmailConfirm) {
-            setLocalMessage({
-              type: "info",
-              text: "Tài khoản & hồ sơ Profile đã được tạo! Hãy mở Email để xác nhận tài khoản rồi đăng nhập.",
-            });
+            setPendingConfirmEmail(trimmedEmail);
+            setResendCooldown(RESEND_COOLDOWN_SECONDS);
+            onSignupPendingConfirm?.(trimmedEmail);
+            onStatusToast?.("Vui lòng kiểm tra email để xác nhận tài khoản.");
           } else {
             onStatusToast?.("Đăng ký & lưu Profile cá nhân thành công.");
             onAuthSuccess?.();
@@ -112,11 +142,34 @@ export function CloudAuthForm({
     }
   };
 
-  const handleSendMagicLink = async () => {
+  const handleResendConfirmation = async (targetEmail: string) => {
+    if (isResending || resendCooldown > 0) return;
     clearCloudError();
     setLocalMessage(null);
+    setIsResending(true);
+    try {
+      const ok = await resendSignupConfirmationCloud(targetEmail);
+      if (ok) {
+        setPendingConfirmEmail(targetEmail);
+        setAlreadyRegisteredEmail(null);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setLocalMessage({
+          type: "info",
+          text: `Đã gửi lại email xác nhận tới ${targetEmail}.`,
+        });
+        onStatusToast?.(`Đã gửi lại email xác nhận tới ${targetEmail}.`);
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
 
-    const trimmedEmail = email.trim();
+  const handleSendMagicLink = async (overrideEmail?: string) => {
+    clearCloudError();
+    setLocalMessage(null);
+    setAlreadyRegisteredEmail(null);
+
+    const trimmedEmail = (overrideEmail ?? email).trim();
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
       setLocalMessage({
         type: "error",
@@ -205,6 +258,104 @@ export function CloudAuthForm({
           >
             Đóng
           </button>
+        </div>
+      )}
+
+      {pendingConfirmEmail && (
+        <div
+          role="status"
+          data-testid="cloud-auth-confirm-banner"
+          className="p-3.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs space-y-2.5"
+        >
+          <div className="flex items-start gap-2">
+            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-extrabold text-emerald-800 dark:text-emerald-100">
+                Vui lòng kiểm tra email để xác nhận tài khoản
+              </p>
+              <p className="text-[11px] text-emerald-800/90 dark:text-emerald-200/90 leading-relaxed">
+                Liên kết xác thực đã được yêu cầu gửi tới{" "}
+                <strong className="font-mono">{pendingConfirmEmail}</strong>. Hãy kiểm tra thêm
+                mục Thư rác (Spam) hoặc Cập nhật (Updates) trong hộp thư.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pl-6">
+            <button
+              type="button"
+              disabled={isResending || resendCooldown > 0}
+              data-testid="cloud-auth-resend-button"
+              onClick={() => void handleResendConfirmation(pendingConfirmEmail)}
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-emerald-100/70 dark:hover:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tabular-nums"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isResending ? "animate-spin" : ""}`} />
+              <span>
+                {isResending
+                  ? "Đang gửi lại..."
+                  : resendCooldown > 0
+                  ? `Gửi lại email xác nhận (${resendCooldown}s)`
+                  : "Gửi lại email xác nhận"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => switchMode("SIGNIN")}
+              className="min-h-[36px] px-3 py-1.5 rounded-lg text-[11px] font-bold text-emerald-800 dark:text-emerald-200 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Đã xác nhận? Đăng nhập ngay
+            </button>
+          </div>
+        </div>
+      )}
+
+      {alreadyRegisteredEmail && (
+        <div
+          role="alert"
+          data-testid="cloud-auth-duplicate-banner"
+          className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs space-y-2.5"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-extrabold">
+                Email <span className="font-mono">{alreadyRegisteredEmail}</span> đã tồn tại trên
+                Supabase
+              </p>
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-200/90 leading-relaxed">
+                Vì bảo mật chống dò tài khoản, Supabase không gửi lại mail đăng ký mới cho email đã
+                có sẵn. Bạn có thể chuyển sang Đăng nhập, dùng Magic Link, hoặc gửi lại mail kích
+                hoạt nếu trước đó chưa bấm xác nhận.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pl-6">
+            <button
+              type="button"
+              onClick={() => switchMode("SIGNIN")}
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Chuyển sang Đăng nhập
+            </button>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => void handleSendMagicLink(alreadyRegisteredEmail)}
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Gửi Magic Link
+            </button>
+            <button
+              type="button"
+              disabled={isResending || resendCooldown > 0}
+              onClick={() => void handleResendConfirmation(alreadyRegisteredEmail)}
+              className="min-h-[36px] px-2.5 py-1.5 text-[11px] font-bold underline text-amber-800 dark:text-amber-200 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 tabular-nums"
+            >
+              {resendCooldown > 0 ? `Gửi lại xác nhận (${resendCooldown}s)` : "Gửi lại email xác nhận"}
+            </button>
+          </div>
         </div>
       )}
 
