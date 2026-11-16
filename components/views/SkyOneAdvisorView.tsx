@@ -41,6 +41,7 @@ import {
   isRealBidvProfileSynced,
 } from "@/lib/mortgageEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { SkyOneTermReductionPanel } from "@/components/skyone/SkyOneTermReductionPanel";
 
 function getDtiStatusMeta(status: SkyOneDtiStatus): {
   label: string;
@@ -96,6 +97,7 @@ export function SkyOneAdvisorView({
     selectedMonth,
     themeMode,
     isPrivacyMode,
+    updateSkyOneContract,
     resetSkyOneLoan,
   } = useFinance();
 
@@ -939,6 +941,31 @@ export function SkyOneAdvisorView({
           </div>
         </div>
       </section>
+
+      {/* 3B. 30-YEAR MAX TERM-REDUCTION STRATEGY & P/I TRANSITION FLOW */}
+      <SkyOneTermReductionPanel
+        contract={skyoneLoan}
+        isPrivacyMode={isPrivacyMode}
+        isDark={isDark}
+        projectedFloatingRate={projectedFloatingRate}
+        extraDisbursementAmount={nextTrancheAmount}
+        extraDisbursementAfterPeriod={nextTranchePeriod}
+        onApplyTermPlan={({ years, months, monthlyPrincipal }) => {
+          updateSkyOneContract({
+            ...skyoneLoan,
+            termMonths: months,
+            fixedRateMonths: Math.min(skyoneLoan.fixedRateMonths, months),
+            monthlyPrincipalOverride: monthlyPrincipal,
+          });
+          setSyncSuccessToast(
+            `Đã cập nhật kỳ hạn mục tiêu ${years} năm (${months} tháng) với gốc đều ${formatVNDMasked(
+              monthlyPrincipal,
+              isPrivacyMode
+            )}/tháng.`
+          );
+          setTimeout(() => setSyncSuccessToast(null), 5000);
+        }}
+      />
 
       {/* 4. POSITIVE CARRY COMPARISON TABLE + REAL ESTATE YIELD COMPASS */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">

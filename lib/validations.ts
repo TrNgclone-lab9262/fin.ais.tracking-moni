@@ -195,6 +195,15 @@ export const MortgagePlannedDisbursementSchema = z.object({
   note: z.string().optional(),
 });
 
+export const MortgagePeriodCashflowOverrideSchema = z.object({
+  period: z.number().int().min(1).max(360),
+  principal: z.number().nonnegative().optional(),
+  interest: z.number().nonnegative().optional(),
+  appliedRate: z.number().min(0).max(50).optional(),
+  paidAt: z.string().optional(),
+  note: z.string().optional(),
+});
+
 export const MortgageContractSchema = z.object({
   id: z.string().min(1),
   projectName: z.string().min(1),
@@ -207,10 +216,10 @@ export const MortgageContractSchema = z.object({
   downPayment: z.number().nonnegative(),
   creditLimit: z.number().positive().optional(),
   loanAmount: z.number().positive(),
-  termMonths: z.number().int().min(1).max(480),
+  termMonths: z.number().int().min(1).max(360),
   disbursementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   paymentDayOfMonth: z.number().int().min(1).max(31),
-  fixedRateMonths: z.number().int().min(0).max(480),
+  fixedRateMonths: z.number().int().min(0).max(360),
   fixedInterestRate: z.number().min(0).max(50),
   floatingBaseRate: z.number().min(0).max(50),
   floatingSpread: z.number().min(0).max(30),
@@ -222,6 +231,8 @@ export const MortgageContractSchema = z.object({
   paidRecords: z.array(MortgagePaidInstallmentRecordSchema),
   prepayments: z.array(MortgagePrepaymentEventSchema),
   plannedDisbursements: z.array(MortgagePlannedDisbursementSchema).optional(),
+  cashflowLocked: z.boolean().optional(),
+  periodOverrides: z.array(MortgagePeriodCashflowOverrideSchema).optional(),
   updatedAt: z.string(),
 });
 

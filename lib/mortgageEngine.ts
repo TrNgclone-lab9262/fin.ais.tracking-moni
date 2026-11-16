@@ -2,11 +2,15 @@ import {
   MortgageContract,
   MortgageInstallmentStatus,
   MortgagePaidInstallmentRecord,
+  MortgagePeriodCashflowOverride,
   MortgagePrepayStrategy,
   MortgagePrepaymentPenaltyTier,
   MortgageStage,
   Transaction,
 } from "@/types/finance";
+
+export const MAX_MORTGAGE_TERM_YEARS = 30;
+export const MAX_MORTGAGE_TERM_MONTHS = MAX_MORTGAGE_TERM_YEARS * 12;
 
 export interface MortgageScheduleRow {
   period: number;
@@ -32,6 +36,8 @@ export interface MortgageScheduleRow {
   paidRecord?: MortgagePaidInstallmentRecord;
   isVerified: boolean;
   verifiedSource?: string;
+  isCashflowOverridden?: boolean;
+  overrideNote?: string;
 }
 
 export interface MortgageYearlyAggregate {
@@ -172,8 +178,17 @@ export function generateMortgageSchedule(
   contract: MortgageContract,
   referenceDate: string = getTodayIsoDate()
 ): MortgageScheduleSummary {
+  const effectiveTermMonths = Math.max(
+    1,
+    Math.min(MAX_MORTGAGE_TERM_MONTHS, Math.round(contract.termMonths || MAX_MORTGAGE_TERM_MONTHS))
+  );
+  const effectiveFixedMonths = Math.max(0, Math.min(effectiveTermMonths, contract.fixedRateMonths));
+
   const paidMap = new Map<number, MortgagePaidInstallmentRecord>();
   contract.paidRecords.forEach((rec) => paidMap.set(rec.period, rec));
+
+  const overrideMap = new Map<number, MortgagePeriodCashflowOverride>();
+  (contract.periodOverrides || []).forEach((ov) => overrideMap.set(ov.period, ov));
 
   const sortedAdjustments = [...contract.rateAdjustments].sort(
     (a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod
@@ -201,7 +216,7 @@ export function generateMortgageSchedule(
   let scheduledMonthlyPrincipal =
     contract.monthlyPrincipalOverride && contract.monthlyPrincipalOverride > 0
       ? Math.round(contract.monthlyPrincipalOverride)
-      : Math.round(contract.loanAmount / Math.max(1, contract.termMonths));
+      : Math.round(contract.loanAmount / effectiveTermMonths);
   let totalPrepaidAmount = 0;
   let cumulativeDisbursed = Math.max(0, contract.loanAmount);
 
@@ -214,7 +229,7 @@ export function generateMortgageSchedule(
       totalPrepaidAmount += applied;
       if (p.strategy === "REDUCE_MONTHLY" && remainingBalance > 0) {
         scheduledMonthlyPrincipal = Math.round(
-          remainingBalance / Math.max(1, contract.termMonths)
+          remainingBalance / effectiveTermMonths
         );
       }
     }
@@ -233,19 +248,21 @@ export function generateMortgageSchedule(
 
   for (
     let period = 1;
-    period <= contract.termMonths && remainingBalance > 0;
+    period <= effectiveTermMonths && remainingBalance > 0;
     period++
   ) {
-    const dueDate = addMonthsToDay(
+    const periodOverride = overrideMap.get(period);
+    const defaultDueDate = addMonthsToDay(
       contract.disbursementDate,
       period,
       contract.paymentDayOfMonth
     );
+    const dueDate = periodOverride?.paidAt || defaultDueDate;
     const dayCountUsed = Math.max(1, diffDaysIso(prevDueDateForDays, dueDate));
     const monthKey = dueDate.slice(0, 7);
     const yearIndex = Math.ceil(period / 12);
     const stage: MortgageStage =
-      period <= contract.fixedRateMonths ? "FIXED" : "FLOATING";
+      period <= effectiveFixedMonths ? "FIXED" : "FLOATING";
 
     const paidRec = paidMap.get(period);
     const openingBalance = remainingBalance;
@@ -261,10 +278,30 @@ export function generateMortgageSchedule(
     let interest = 0;
 
     if (paidRec) {
-      // Preserve historical snapshot untouched
-      appliedRate = paidRec.appliedRate;
-      principal = Math.min(openingBalance, Math.round(paidRec.paidPrincipal));
-      interest = Math.round(paidRec.paidInterest);
+      // Preserve historical snapshot unless explicitly overridden by unlocked cashflow edit
+      appliedRate =
+        periodOverride?.appliedRate !== undefined
+          ? periodOverride.appliedRate
+          : paidRec.appliedRate;
+      principal = Math.min(
+        openingBalance,
+        Math.max(
+          0,
+          Math.round(
+            periodOverride?.principal !== undefined
+              ? periodOverride.principal
+              : paidRec.paidPrincipal
+          )
+        )
+      );
+      interest = Math.max(
+        0,
+        Math.round(
+          periodOverride?.interest !== undefined
+            ? periodOverride.interest
+            : paidRec.paidInterest
+        )
+      );
     } else {
       const activeAdj = [...sortedAdjustments]
         .reverse()
@@ -275,7 +312,15 @@ export function generateMortgageSchedule(
         rateNote = activeAdj.note;
       }
 
-      if (contract.interestBasis === "ACTUAL_365") {
+      if (periodOverride?.appliedRate !== undefined) {
+        appliedRate = periodOverride.appliedRate;
+        isCustomRateAdjusted = true;
+        rateNote = periodOverride.note || "Điều chỉnh lãi suất thủ công";
+      }
+
+      if (periodOverride?.interest !== undefined) {
+        interest = Math.max(0, Math.round(periodOverride.interest));
+      } else if (contract.interestBasis === "ACTUAL_365") {
         interest = Math.round(
           (openingBalance * (appliedRate / 100) * dayCountUsed) / 365
         );
@@ -283,11 +328,15 @@ export function generateMortgageSchedule(
         interest = Math.round((openingBalance * (appliedRate / 100)) / 12);
       }
 
-      const isFinalTerm = period === contract.termMonths;
-      if (isFinalTerm || scheduledMonthlyPrincipal >= openingBalance) {
-        principal = openingBalance;
+      if (periodOverride?.principal !== undefined) {
+        principal = Math.min(openingBalance, Math.max(0, Math.round(periodOverride.principal)));
       } else {
-        principal = scheduledMonthlyPrincipal;
+        const isFinalTerm = period === effectiveTermMonths;
+        if (isFinalTerm || scheduledMonthlyPrincipal >= openingBalance) {
+          principal = openingBalance;
+        } else {
+          principal = scheduledMonthlyPrincipal;
+        }
       }
     }
 
@@ -304,7 +353,7 @@ export function generateMortgageSchedule(
         totalPrepaidAmount += applied;
 
         if (p.strategy === "REDUCE_MONTHLY" && closingBalance > 0) {
-          const remainingMonths = Math.max(1, contract.termMonths - period);
+          const remainingMonths = Math.max(1, effectiveTermMonths - period);
           scheduledMonthlyPrincipal = Math.round(closingBalance / remainingMonths);
         }
       }
@@ -320,7 +369,7 @@ export function generateMortgageSchedule(
           closingBalance += d.amount;
           cumulativeDisbursed += d.amount;
           if (!contract.monthlyPrincipalOverride) {
-            const remainingMonths = Math.max(1, contract.termMonths - period);
+            const remainingMonths = Math.max(1, effectiveTermMonths - period);
             scheduledMonthlyPrincipal = Math.round(closingBalance / remainingMonths);
           }
         }
@@ -379,6 +428,8 @@ export function generateMortgageSchedule(
       paidRecord: paidRec,
       isVerified: Boolean(paidRec?.isVerified),
       verifiedSource: paidRec?.verifiedSource,
+      isCashflowOverridden: Boolean(periodOverride),
+      overrideNote: periodOverride?.note,
     });
 
     remainingBalance = closingBalance;
@@ -481,7 +532,7 @@ export function generateMortgageSchedule(
     currentReferencePeriod,
     estimatedPayoffDate:
       rows[rows.length - 1]?.dueDate || contract.disbursementDate,
-    monthsShortenedFromOriginal: Math.max(0, contract.termMonths - rows.length),
+    monthsShortenedFromOriginal: Math.max(0, effectiveTermMonths - rows.length),
     currentApplicableRate,
     currentStage,
     remainingFixedMonths,
@@ -947,6 +998,14 @@ export function reconcileBidvSkyOneContract(
     return { contract: createDefaultSkyOneLoan(referenceDate), didAutoSync: true };
   }
 
+  // Bảo toàn tuyệt đối các chỉnh sửa dòng tiền thủ công hoặc trạng thái đang mở điều chỉnh
+  const hasManualCashflowAdjustments =
+    (contract.periodOverrides && contract.periodOverrides.length > 0) ||
+    contract.cashflowLocked === false;
+  if (hasManualCashflowAdjustments) {
+    return { contract, didAutoSync: false };
+  }
+
   const isLegacyMockDefault =
     contract.id === "skyone_apartment_loan" &&
     ((contract.loanAmount === 1_505_000_000 &&
@@ -986,6 +1045,8 @@ export function reconcileBidvSkyOneContract(
     prepayments: isLegacyMockDefault ? [] : contract.prepayments,
     rateAdjustments: isLegacyMockDefault ? [] : contract.rateAdjustments,
     plannedDisbursements: isLegacyMockDefault ? [] : contract.plannedDisbursements,
+    cashflowLocked: contract.cashflowLocked ?? true,
+    periodOverrides: contract.periodOverrides || [],
     updatedAt: `${referenceDate}T08:00:00.000Z`,
   };
 
@@ -1007,7 +1068,7 @@ export function createDefaultSkyOneLoan(
     downPayment: 645_000_000,
     creditLimit: REAL_BIDV_SKYONE_SNAPSHOT.creditLimit,
     loanAmount: REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025,
-    termMonths: 360,
+    termMonths: MAX_MORTGAGE_TERM_MONTHS,
     disbursementDate: "2025-08-26",
     paymentDayOfMonth: 10,
     fixedRateMonths: 36,
@@ -1021,12 +1082,14 @@ export function createDefaultSkyOneLoan(
       { fromYear: 1, toYear: 1, feePercent: 2.0 },
       { fromYear: 2, toYear: 2, feePercent: 1.5 },
       { fromYear: 3, toYear: 3, feePercent: 1.0 },
-      { fromYear: 4, toYear: 30, feePercent: 0 },
+      { fromYear: 4, toYear: MAX_MORTGAGE_TERM_YEARS, feePercent: 0 },
     ],
     rateAdjustments: [],
     paidRecords: [...VERIFIED_BIDV_PAID_RECORDS],
     prepayments: [],
     plannedDisbursements: [],
+    cashflowLocked: true,
+    periodOverrides: [],
     updatedAt: `${referenceDate}T08:00:00.000Z`,
   };
 }
@@ -1603,5 +1666,351 @@ export function analyzeSkyOneStrategy(
     timelinePoints,
   };
 }
+
+export interface TermReductionSimulationParams {
+  targetYears: number;
+  projectedFloatingRate?: number;
+  extraDisbursementAmount?: number;
+  extraDisbursementAfterPeriod?: number;
+  referenceDate?: string;
+}
+
+export interface TermReductionTransitionPoint {
+  yearIndex: number;
+  name: string;
+  stage: "FIXED" | "TRANSITION" | "FLOATING" | "PAID_OFF";
+  baselinePrincipal: number;
+  baselineInterest: number;
+  baselineTotalPayment: number;
+  baselineEndingBalance: number;
+  baselinePrincipalSharePct: number;
+  baselineInterestSharePct: number;
+  targetPrincipal: number;
+  targetInterest: number;
+  targetTotalPayment: number;
+  targetEndingBalance: number;
+  targetPrincipalSharePct: number;
+  targetInterestSharePct: number;
+  cumulativeInterestSaved: number;
+}
+
+export interface TermReductionSweepPoint {
+  years: number;
+  months: number;
+  requiredMonthlyPrincipal: number;
+  firstTargetMonthlyPayment: number;
+  totalProjectedInterest: number;
+  interestSavedVs30Y: number;
+  crossoverYear: number | null;
+}
+
+export interface TermReductionSimulationResult {
+  maxTermYears: number;
+  minSelectableYears: number;
+  targetYears: number;
+  targetMonths: number;
+  baseline30PayoffDate: string;
+  targetPayoffDate: string;
+  yearsSavedVs30Y: number;
+  monthsSavedVs30Y: number;
+  baseline30TotalInterest: number;
+  targetTotalInterest: number;
+  interestSavedVs30Y: number;
+  baselineMonthlyPrincipal: number;
+  requiredMonthlyPrincipal: number;
+  monthlyPrincipalDelta: number;
+  firstBaselineMonthlyPayment: number;
+  firstTargetMonthlyPayment: number;
+  peakTargetMonthlyPayment: number;
+  crossoverYearBaseline: number | null;
+  crossoverYearTarget: number | null;
+  transitionStartYear: number;
+  transitionEndYear: number;
+  transitionPoints: TermReductionTransitionPoint[];
+  sweepByYears: TermReductionSweepPoint[];
+}
+
+function buildScenarioScheduleForYears(
+  contract: MortgageContract,
+  years: number,
+  remainingBalanceAtRef: number,
+  lastPaidPeriod: number,
+  floatingRate: number,
+  extraDisbursementAmount: number,
+  extraDisbursementAfterPeriod: number,
+  refDate: string
+): {
+  schedule: MortgageScheduleSummary;
+  monthlyPrincipal: number;
+  months: number;
+} {
+  const months = Math.max(
+    lastPaidPeriod + 1,
+    Math.min(MAX_MORTGAGE_TERM_MONTHS, Math.round(years * 12))
+  );
+  const remainingMonths = Math.max(1, months - lastPaidPeriod);
+  const totalRemainingPool = Math.max(0, remainingBalanceAtRef + extraDisbursementAmount);
+  const monthlyPrincipal = Math.max(1, Math.round(totalRemainingPool / remainingMonths));
+
+  const scenarioContract: MortgageContract = {
+    ...contract,
+    termMonths: months,
+    floatingBaseRate: floatingRate,
+    floatingSpread: 0,
+    monthlyPrincipalOverride: monthlyPrincipal,
+    plannedDisbursements:
+      extraDisbursementAmount > 0
+        ? [
+            {
+              id: "term_sim_tranche",
+              afterPeriod: Math.max(
+                lastPaidPeriod,
+                Math.min(months - 1, extraDisbursementAfterPeriod)
+              ),
+              date: addMonthsToDay(
+                contract.disbursementDate,
+                Math.max(lastPaidPeriod, Math.min(months - 1, extraDisbursementAfterPeriod)),
+                contract.paymentDayOfMonth
+              ),
+              amount: extraDisbursementAmount,
+              note: "Giải ngân bổ sung mô phỏng dải chuyển",
+            },
+          ]
+        : [],
+  };
+
+  return {
+    schedule: generateMortgageSchedule(scenarioContract, refDate),
+    monthlyPrincipal,
+    months,
+  };
+}
+
+/**
+ * Mô phỏng chiến lược giảm số năm vay (trần tối đa 30 năm / 360 tháng)
+ * và chuyển động Lãi trả nợ / Gốc trả khi chạy trong dải chuyển.
+ */
+export function simulateTermReductionStrategy(
+  contract: MortgageContract,
+  params: TermReductionSimulationParams
+): TermReductionSimulationResult {
+  const refDate = params.referenceDate || getTodayIsoDate();
+  const baseSchedule = generateMortgageSchedule(contract, refDate);
+  const lastPaidPeriod =
+    contract.paidRecords.length > 0
+      ? Math.max(...contract.paidRecords.map((r) => r.period))
+      : 0;
+  const currentPeriod = baseSchedule.currentReferencePeriod;
+  const remainingAtRef = baseSchedule.remainingBalance;
+  const extraAmount = Math.max(0, params.extraDisbursementAmount ?? 0);
+  const extraPeriod = Math.max(
+    currentPeriod,
+    params.extraDisbursementAfterPeriod ?? Math.max(currentPeriod, contract.fixedRateMonths - 15)
+  );
+  const floatingRate = Math.max(
+    1,
+    params.projectedFloatingRate ?? contract.floatingBaseRate + contract.floatingSpread
+  );
+
+  const minSelectableYears = Math.min(
+    MAX_MORTGAGE_TERM_YEARS,
+    Math.max(3, Math.ceil((lastPaidPeriod + 6) / 12))
+  );
+  const clampedTargetYears = Math.min(
+    MAX_MORTGAGE_TERM_YEARS,
+    Math.max(minSelectableYears, Math.round(params.targetYears))
+  );
+
+  const baseline30 = buildScenarioScheduleForYears(
+    contract,
+    MAX_MORTGAGE_TERM_YEARS,
+    remainingAtRef,
+    lastPaidPeriod,
+    floatingRate,
+    extraAmount,
+    extraPeriod,
+    refDate
+  );
+
+  const targetScenario = buildScenarioScheduleForYears(
+    contract,
+    clampedTargetYears,
+    remainingAtRef,
+    lastPaidPeriod,
+    floatingRate,
+    extraAmount,
+    extraPeriod,
+    refDate
+  );
+
+  const fixedEndYear =
+    contract.fixedRateMonths > 0 ? Math.max(1, Math.ceil(contract.fixedRateMonths / 12)) : 1;
+  const transitionStartYear = Math.max(1, Math.ceil(currentPeriod / 12));
+  const transitionEndYear = Math.min(MAX_MORTGAGE_TERM_YEARS, fixedEndYear + 1);
+
+  const baselineByYear = new Map(
+    baseline30.schedule.yearlySummary.map((y) => [y.yearIndex, y])
+  );
+  const targetByYear = new Map(
+    targetScenario.schedule.yearlySummary.map((y) => [y.yearIndex, y])
+  );
+
+  const maxChartYears = Math.max(
+    baseline30.schedule.yearlySummary.length,
+    targetScenario.schedule.yearlySummary.length
+  );
+
+  const transitionPoints: TermReductionTransitionPoint[] = [];
+  let runningSaved = 0;
+
+  for (let yr = 1; yr <= maxChartYears; yr++) {
+    const b = baselineByYear.get(yr);
+    const t = targetByYear.get(yr);
+
+    const bPrincipal = b?.principalPaid ?? 0;
+    const bInterest = b?.interestPaid ?? 0;
+    const bTotal = b?.totalPaid ?? 0;
+    const bEnd = b?.endingBalance ?? 0;
+
+    const tPrincipal = t?.principalPaid ?? 0;
+    const tInterest = t?.interestPaid ?? 0;
+    const tTotal = t?.totalPaid ?? 0;
+    const tEnd = t?.endingBalance ?? 0;
+
+    runningSaved += bInterest - tInterest;
+
+    const bPrincipalShare =
+      bTotal > 0 ? Number(((bPrincipal / bTotal) * 100).toFixed(1)) : 0;
+    const bInterestShare =
+      bTotal > 0 ? Number(Math.max(0, 100 - bPrincipalShare).toFixed(1)) : 0;
+    const tPrincipalShare =
+      tTotal > 0 ? Number(((tPrincipal / tTotal) * 100).toFixed(1)) : 0;
+    const tInterestShare =
+      tTotal > 0 ? Number(Math.max(0, 100 - tPrincipalShare).toFixed(1)) : 0;
+
+    let stage: TermReductionTransitionPoint["stage"] = "FLOATING";
+    if (!t) {
+      stage = "PAID_OFF";
+    } else if (yr < fixedEndYear) {
+      stage = "FIXED";
+    } else if (yr >= fixedEndYear && yr <= transitionEndYear) {
+      stage = "TRANSITION";
+    }
+
+    transitionPoints.push({
+      yearIndex: yr,
+      name: `Năm ${yr}`,
+      stage,
+      baselinePrincipal: bPrincipal,
+      baselineInterest: bInterest,
+      baselineTotalPayment: bTotal,
+      baselineEndingBalance: bEnd,
+      baselinePrincipalSharePct: bPrincipalShare,
+      baselineInterestSharePct: bInterestShare,
+      targetPrincipal: tPrincipal,
+      targetInterest: tInterest,
+      targetTotalPayment: tTotal,
+      targetEndingBalance: tEnd,
+      targetPrincipalSharePct: tPrincipalShare,
+      targetInterestSharePct: tInterestShare,
+      cumulativeInterestSaved: Math.max(0, runningSaved),
+    });
+  }
+
+  const crossoverBaselineRow = baseline30.schedule.yearlySummary.find(
+    (y) => y.principalPaid > y.interestPaid
+  );
+  const crossoverTargetRow = targetScenario.schedule.yearlySummary.find(
+    (y) => y.principalPaid > y.interestPaid
+  );
+
+  const firstBaselineUnpaid = baseline30.schedule.rows.find(
+    (r) => r.period > lastPaidPeriod
+  );
+  const firstTargetUnpaid = targetScenario.schedule.rows.find(
+    (r) => r.period > lastPaidPeriod
+  );
+  const peakTargetMonthlyPayment = targetScenario.schedule.rows
+    .filter((r) => r.period > lastPaidPeriod)
+    .reduce((max, r) => (r.totalPayment > max ? r.totalPayment : max), 0);
+
+  const monthsSavedVs30Y = Math.max(
+    0,
+    baseline30.schedule.rows.length - targetScenario.schedule.rows.length
+  );
+  const yearsSavedVs30Y = Math.round((monthsSavedVs30Y / 12) * 10) / 10;
+
+  const interestSavedVs30Y = Math.max(
+    0,
+    baseline30.schedule.totalProjectedInterest -
+      targetScenario.schedule.totalProjectedInterest
+  );
+
+  const candidateYears = [5, 10, 15, 20, 25, 30].filter(
+    (y) => y >= minSelectableYears && y <= MAX_MORTGAGE_TERM_YEARS
+  );
+  if (!candidateYears.includes(minSelectableYears)) {
+    candidateYears.unshift(minSelectableYears);
+  }
+
+  const sweepByYears: TermReductionSweepPoint[] = candidateYears.map((yrs) => {
+    const s = buildScenarioScheduleForYears(
+      contract,
+      yrs,
+      remainingAtRef,
+      lastPaidPeriod,
+      floatingRate,
+      extraAmount,
+      extraPeriod,
+      refDate
+    );
+    const firstRow = s.schedule.rows.find((r) => r.period > lastPaidPeriod);
+    const cross = s.schedule.yearlySummary.find(
+      (y) => y.principalPaid > y.interestPaid
+    );
+    return {
+      years: yrs,
+      months: s.schedule.rows.length,
+      requiredMonthlyPrincipal: s.monthlyPrincipal,
+      firstTargetMonthlyPayment: firstRow?.totalPayment || 0,
+      totalProjectedInterest: s.schedule.totalProjectedInterest,
+      interestSavedVs30Y: Math.max(
+        0,
+        baseline30.schedule.totalProjectedInterest - s.schedule.totalProjectedInterest
+      ),
+      crossoverYear: cross?.yearIndex ?? null,
+    };
+  });
+
+  return {
+    maxTermYears: MAX_MORTGAGE_TERM_YEARS,
+    minSelectableYears,
+    targetYears: clampedTargetYears,
+    targetMonths: targetScenario.schedule.rows.length,
+    baseline30PayoffDate: baseline30.schedule.estimatedPayoffDate,
+    targetPayoffDate: targetScenario.schedule.estimatedPayoffDate,
+    yearsSavedVs30Y,
+    monthsSavedVs30Y,
+    baseline30TotalInterest: baseline30.schedule.totalProjectedInterest,
+    targetTotalInterest: targetScenario.schedule.totalProjectedInterest,
+    interestSavedVs30Y,
+    baselineMonthlyPrincipal: baseline30.monthlyPrincipal,
+    requiredMonthlyPrincipal: targetScenario.monthlyPrincipal,
+    monthlyPrincipalDelta: Math.max(
+      0,
+      targetScenario.monthlyPrincipal - baseline30.monthlyPrincipal
+    ),
+    firstBaselineMonthlyPayment: firstBaselineUnpaid?.totalPayment || 0,
+    firstTargetMonthlyPayment: firstTargetUnpaid?.totalPayment || 0,
+    peakTargetMonthlyPayment,
+    crossoverYearBaseline: crossoverBaselineRow?.yearIndex ?? null,
+    crossoverYearTarget: crossoverTargetRow?.yearIndex ?? null,
+    transitionStartYear,
+    transitionEndYear,
+    transitionPoints,
+    sweepByYears,
+  };
+}
+
 
 

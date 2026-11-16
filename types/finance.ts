@@ -217,6 +217,15 @@ export interface MortgagePlannedDisbursement {
   note?: string;
 }
 
+export interface MortgagePeriodCashflowOverride {
+  period: number;
+  principal?: number;
+  interest?: number;
+  appliedRate?: number;
+  paidAt?: string;
+  note?: string;
+}
+
 export interface MortgageContract {
   id: string;
   projectName: string;
@@ -244,6 +253,8 @@ export interface MortgageContract {
   paidRecords: MortgagePaidInstallmentRecord[];
   prepayments: MortgagePrepaymentEvent[];
   plannedDisbursements?: MortgagePlannedDisbursement[];
+  cashflowLocked?: boolean;
+  periodOverrides?: MortgagePeriodCashflowOverride[];
   updatedAt: string;
 }
 

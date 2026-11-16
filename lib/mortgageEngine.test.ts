@@ -11,6 +11,9 @@ import {
   analyzeSkyOneStrategy,
   reconcileBidvSkyOneContract,
   calculateSkyOneTabMetrics,
+  simulateTermReductionStrategy,
+  MAX_MORTGAGE_TERM_MONTHS,
+  MAX_MORTGAGE_TERM_YEARS,
   REAL_BIDV_SKYONE_SNAPSHOT,
 } from "./mortgageEngine";
 import { MortgageContract } from "@/types/finance";
@@ -267,3 +270,108 @@ test("buildSkyOneAmortizationChartData chuẩn hóa tỷ lệ Gốc/Lãi, dư n�
   assert.ok(dataset.milestones.equity50YearIndex !== null);
   assert.equal(dataset.milestones.alreadyAtEquity50AtStart, false);
 });
+
+test("giới hạn trần vay tối đa 30 năm (360 tháng) trong generateMortgageSchedule", () => {
+  assert.equal(MAX_MORTGAGE_TERM_YEARS, 30);
+  assert.equal(MAX_MORTGAGE_TERM_MONTHS, 360);
+
+  const oversized: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    loanAmount: 1_800_000_000,
+    termMonths: 420,
+    fixedRateMonths: 400,
+    monthlyPrincipalOverride: 0,
+    paidRecords: [],
+  };
+
+  const schedule = generateMortgageSchedule(oversized, "2026-11-14");
+  assert.equal(schedule.totalScheduledMonths, 360);
+  assert.equal(schedule.rows.length, 360);
+  assert.equal(schedule.rows[359].closingBalance, 0);
+});
+
+test("periodOverrides điều chỉnh trực tiếp Lãi trả nợ, Gốc, Lãi suất từng kỳ và được reconcile bảo toàn", () => {
+  const base = createDefaultSkyOneLoan("2026-11-14");
+  const modified: MortgageContract = {
+    ...base,
+    cashflowLocked: true,
+    periodOverrides: [
+      {
+        period: 15,
+        interest: 2_950_000,
+        note: "Điều chỉnh lãi kỳ 15",
+      },
+      {
+        period: 16,
+        principal: 5_000_000,
+        interest: 3_100_000,
+        appliedRate: 5.8,
+        note: "Trả thêm gốc kỳ 16",
+      },
+    ],
+  };
+
+  const schedule = generateMortgageSchedule(modified, "2026-11-14");
+  const p15 = schedule.rows.find((r) => r.period === 15);
+  const p16 = schedule.rows.find((r) => r.period === 16);
+  const p17 = schedule.rows.find((r) => r.period === 17);
+
+  assert.equal(p15?.interest, 2_950_000);
+  assert.equal(p15?.isCashflowOverridden, true);
+  assert.equal(p15?.overrideNote, "Điều chỉnh lãi kỳ 15");
+
+  assert.equal(p16?.principal, 5_000_000);
+  assert.equal(p16?.interest, 3_100_000);
+  assert.equal(p16?.appliedRate, 5.8);
+  assert.equal(p16?.totalPayment, 8_100_000);
+  assert.equal(p16?.isCashflowOverridden, true);
+  // Kiểm tra dư nợ chuyển tiếp từ kỳ 16 -> 17 khớp chính xác
+  assert.equal(p17?.openingBalance, p16?.closingBalance);
+
+  // Bảo toàn khi reconcile chạy
+  const recResult = reconcileBidvSkyOneContract(modified, "2026-11-14");
+  assert.equal(recResult.didAutoSync, false);
+  assert.equal(recResult.contract.periodOverrides?.length, 2);
+
+  // Cũng bảo toàn khi đang mở khóa (cashflowLocked === false)
+  const unlockedResult = reconcileBidvSkyOneContract(
+    { ...base, cashflowLocked: false, periodOverrides: [] },
+    "2026-11-14"
+  );
+  assert.equal(unlockedResult.didAutoSync, false);
+});
+
+test("simulateTermReductionStrategy mô phỏng giảm số năm vay từ trần 30 năm và chuyển động Lãi/Gốc trong dải chuyển", () => {
+  const contract = createDefaultSkyOneLoan("2026-11-14");
+
+  const sim20 = simulateTermReductionStrategy(contract, {
+    targetYears: 20,
+    projectedFloatingRate: 10.0,
+    extraDisbursementAmount: 437_933_807,
+    extraDisbursementAfterPeriod: 21,
+    referenceDate: "2026-11-14",
+  });
+
+  const sim10 = simulateTermReductionStrategy(contract, {
+    targetYears: 10,
+    projectedFloatingRate: 10.0,
+    extraDisbursementAmount: 437_933_807,
+    extraDisbursementAfterPeriod: 21,
+    referenceDate: "2026-11-14",
+  });
+
+  assert.equal(sim20.maxTermYears, 30);
+  assert.equal(sim20.targetYears, 20);
+  assert.equal(sim20.yearsSavedVs30Y, 10);
+  assert.ok(sim20.interestSavedVs30Y > 0);
+  assert.ok(sim10.interestSavedVs30Y > sim20.interestSavedVs30Y);
+  assert.ok(sim10.requiredMonthlyPrincipal > sim20.requiredMonthlyPrincipal);
+  assert.ok(sim20.transitionPoints.length === 30);
+  assert.ok(sim20.transitionPoints.some((pt) => pt.stage === "TRANSITION"));
+  assert.ok(sim20.transitionPoints.some((pt) => pt.stage === "PAID_OFF"));
+  assert.ok(sim20.sweepByYears.some((s) => s.years === 30 && s.interestSavedVs30Y === 0));
+  assert.ok(
+    (sim10.crossoverYearTarget ?? 99) <= (sim20.crossoverYearTarget ?? 99)
+  );
+});
+

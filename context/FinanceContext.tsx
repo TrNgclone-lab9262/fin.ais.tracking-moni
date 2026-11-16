@@ -38,6 +38,7 @@ import {
   SkyOneRouteTab,
   SkyOneTransactionLink,
   BudgetProgressItem,
+  MortgagePeriodCashflowOverride,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -82,6 +83,7 @@ import {
   getMemberAuthConfig,
 } from "@/lib/authSecurity";
 import {
+  MAX_MORTGAGE_TERM_MONTHS,
   createDefaultSkyOneLoan,
   generateMortgageSchedule,
   getTodayIsoDate,
@@ -319,6 +321,11 @@ interface FinanceContextType {
   deleteSkyOnePrepayment: (id: string) => void;
   addSkyOneRateAdjustment: (adj: Omit<MortgageRateAdjustment, "id">) => void;
   deleteSkyOneRateAdjustment: (id: string) => void;
+  setSkyOneCashflowLocked: (locked: boolean) => void;
+  saveAndLockSkyOneCashflow: (input: {
+    contractPatch?: Partial<MortgageContract>;
+    periodOverrides: MortgagePeriodCashflowOverride[];
+  }) => void;
   resetSkyOneLoan: () => void;
 
   // Cài đặt & Sao lưu
@@ -1986,9 +1993,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const updateSkyOneContract = useCallback(
     (patch: Partial<MortgageContract>) => {
       setSkyoneLoan((prev) => {
+        const rawTerm = patch.termMonths ?? prev.termMonths;
+        const cleanTerm = Math.max(12, Math.min(MAX_MORTGAGE_TERM_MONTHS, Math.round(rawTerm)));
+        const rawFixed = patch.fixedRateMonths ?? prev.fixedRateMonths;
+        const cleanFixed = Math.max(0, Math.min(cleanTerm, Math.round(rawFixed)));
         const next: MortgageContract = {
           ...prev,
           ...patch,
+          termMonths: cleanTerm,
+          fixedRateMonths: cleanFixed,
           updatedAt: new Date().toISOString(),
         };
         queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
@@ -1996,6 +2009,95 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       });
     },
     [queueCloudMutation]
+  );
+
+  const setSkyOneCashflowLocked = useCallback(
+    (locked: boolean) => {
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...prev,
+          cashflowLocked: locked,
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
+  const saveAndLockSkyOneCashflow = useCallback(
+    (input: {
+      contractPatch?: Partial<MortgageContract>;
+      periodOverrides: MortgagePeriodCashflowOverride[];
+    }) => {
+      const cleanedOverrides = input.periodOverrides
+        .filter(
+          (ov) =>
+            ov.principal !== undefined ||
+            ov.interest !== undefined ||
+            ov.appliedRate !== undefined ||
+            ov.paidAt !== undefined ||
+            (ov.note !== undefined && ov.note.trim().length > 0)
+        )
+        .sort((a, b) => a.period - b.period);
+
+      const overrideByPeriod = new Map(cleanedOverrides.map((ov) => [ov.period, ov]));
+
+      // Sync linked HOME MONI transactions if any paid record changed principal/interest
+      skyoneLoan.paidRecords.forEach((rec) => {
+        const ov = overrideByPeriod.get(rec.period);
+        if (!ov || !rec.linkedTransactionId) return;
+        const nextPrincipal =
+          ov.principal !== undefined ? Math.max(0, Math.round(ov.principal)) : rec.paidPrincipal;
+        const nextInterest =
+          ov.interest !== undefined ? Math.max(0, Math.round(ov.interest)) : rec.paidInterest;
+        updateTransaction(rec.linkedTransactionId, {
+          amount: nextPrincipal + nextInterest,
+          date: ov.paidAt || rec.paidAt,
+          note: `${skyoneLoan.projectName} · Kỳ #${rec.period} (Gốc ${nextPrincipal.toLocaleString(
+            "vi-VN"
+          )}đ + Lãi ${nextInterest.toLocaleString("vi-VN")}đ${ov.note ? ` · ${ov.note}` : ""})`,
+        });
+      });
+
+      setSkyoneLoan((prev) => {
+        const patch = input.contractPatch || {};
+        const rawTerm = patch.termMonths ?? prev.termMonths;
+        const cleanTerm = Math.max(12, Math.min(MAX_MORTGAGE_TERM_MONTHS, Math.round(rawTerm)));
+        const rawFixed = patch.fixedRateMonths ?? prev.fixedRateMonths;
+        const cleanFixed = Math.max(0, Math.min(cleanTerm, Math.round(rawFixed)));
+
+        const updatedPaidRecords = prev.paidRecords.map((rec) => {
+          const ov = overrideByPeriod.get(rec.period);
+          if (!ov) return rec;
+          return {
+            ...rec,
+            paidPrincipal:
+              ov.principal !== undefined ? Math.max(0, Math.round(ov.principal)) : rec.paidPrincipal,
+            paidInterest:
+              ov.interest !== undefined ? Math.max(0, Math.round(ov.interest)) : rec.paidInterest,
+            appliedRate: ov.appliedRate !== undefined ? ov.appliedRate : rec.appliedRate,
+            paidAt: ov.paidAt || rec.paidAt,
+            note: ov.note !== undefined ? ov.note : rec.note,
+          };
+        });
+
+        const next: MortgageContract = {
+          ...prev,
+          ...patch,
+          termMonths: cleanTerm,
+          fixedRateMonths: cleanFixed,
+          paidRecords: updatedPaidRecords,
+          periodOverrides: cleanedOverrides,
+          cashflowLocked: true,
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [skyoneLoan.paidRecords, skyoneLoan.projectName, updateTransaction, queueCloudMutation]
   );
 
   const confirmSkyOnePeriods = useCallback(
@@ -3019,6 +3121,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     deleteSkyOnePrepayment,
     addSkyOneRateAdjustment,
     deleteSkyOneRateAdjustment,
+    setSkyOneCashflowLocked,
+    saveAndLockSkyOneCashflow,
     resetSkyOneLoan,
     updateSettings,
     markNotificationRead,
