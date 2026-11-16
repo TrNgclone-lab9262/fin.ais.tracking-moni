@@ -280,6 +280,7 @@ export function SkyOneCashflowScheduleTable({
   const activeTotals = granularity === "YEARLY" ? yearlyTotals : monthlyTotals;
   const savedOverrideCount = (contract.periodOverrides || []).length;
   const draftOverrideCount = draftOverrides.length;
+  const interestDelta = activeSchedule.totalProjectedInterest - schedule.totalProjectedInterest;
 
   return (
     <section
@@ -389,6 +390,18 @@ export function SkyOneCashflowScheduleTable({
                 </p>
                 <p className="text-slate-600 dark:text-slate-300 mt-0.5 tabular-nums">
                   Sửa trực tiếp tham số dòng tiền chung bên dưới hoặc nhập số tiền <strong>Lãi trả nợ</strong>, <strong>Trả Gốc</strong>, <strong>Lãi suất (%)</strong> từng kỳ ở bảng Theo Tháng ({draftOverrideCount} kỳ đã chỉnh).
+                  {interestDelta !== 0 && (
+                    <span
+                      className={`ml-1.5 font-bold ${
+                        interestDelta < 0
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-amber-700 dark:text-amber-300"
+                      }`}
+                    >
+                      · Chênh lệch tổng lãi: {interestDelta > 0 ? "+" : "-"}
+                      {formatVNDMasked(Math.abs(interestDelta), isPrivacyMode)}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>

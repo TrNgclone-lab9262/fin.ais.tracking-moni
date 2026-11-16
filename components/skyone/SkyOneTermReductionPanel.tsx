@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
@@ -187,6 +186,7 @@ export function SkyOneTermReductionPanel({
           >
             <button
               type="button"
+              data-testid="skyone-term-chart-mode-vnd"
               onClick={() => setChartMode("VND")}
               aria-pressed={chartMode === "VND"}
               className={`min-h-[34px] px-3 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
@@ -199,6 +199,7 @@ export function SkyOneTermReductionPanel({
             </button>
             <button
               type="button"
+              data-testid="skyone-term-chart-mode-percent"
               onClick={() => setChartMode("PERCENT")}
               aria-pressed={chartMode === "PERCENT"}
               className={`min-h-[34px] px-3 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
@@ -376,12 +377,6 @@ export function SkyOneTermReductionPanel({
               data={sim.transitionPoints}
               margin={{ top: 20, right: 12, left: 0, bottom: 0 }}
             >
-              <defs>
-                <linearGradient id="skyoneTargetInterestFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#D97706" stopOpacity={0.28} />
-                  <stop offset="95%" stopColor="#D97706" stopOpacity={0.04} />
-                </linearGradient>
-              </defs>
               <CartesianGrid
                 strokeDasharray="3 3"
                 vertical={false}
@@ -440,8 +435,8 @@ export function SkyOneTermReductionPanel({
                 name="Gốc trả mục tiêu"
                 stackId="targetFlow"
                 fill="#1D4ED8"
-                maxBarSize={24}
-                radius={chartMode === "PERCENT" ? [0, 0, 0, 0] : [0, 0, 0, 0]}
+                maxBarSize={26}
+                radius={[0, 0, 0, 0]}
               />
               {chartMode === "PERCENT" ? (
                 <Bar
@@ -449,18 +444,18 @@ export function SkyOneTermReductionPanel({
                   name="Lãi trả mục tiêu"
                   stackId="targetFlow"
                   fill="#D97706"
-                  maxBarSize={24}
+                  maxBarSize={26}
                   radius={[4, 4, 0, 0]}
                 />
               ) : (
                 <>
-                  <Area
-                    type="monotone"
+                  <Bar
                     dataKey="targetInterest"
                     name="Lãi trả mục tiêu"
-                    stroke="#D97706"
-                    strokeWidth={2}
-                    fill="url(#skyoneTargetInterestFill)"
+                    stackId="targetFlow"
+                    fill="#D97706"
+                    maxBarSize={26}
+                    radius={[4, 4, 0, 0]}
                   />
                   <Line
                     type="monotone"
