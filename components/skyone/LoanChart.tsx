@@ -52,7 +52,7 @@ function LoanChartTooltip({
       : "Giai đoạn thả nổi";
 
   return (
-    <div className="bg-slate-900/95 backdrop-blur-md text-white text-xs p-3.5 rounded-xl shadow-xl border border-slate-700/80 min-w-[240px] space-y-2">
+    <div className="bg-slate-900/95 backdrop-blur-md text-white text-xs p-3.5 rounded-xl shadow-xl border border-slate-700/80 min-w-[260px] space-y-2">
       <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-1.5">
         <span className="font-bold text-slate-100">{pt.name}</span>
         <span className="text-[11px] font-semibold text-indigo-300">{stageText}</span>
@@ -72,9 +72,15 @@ function LoanChartTooltip({
           </span>
         </div>
         <div className="flex items-center justify-between gap-4 pt-1 border-t border-slate-800">
-          <span className="text-slate-400">Lãi trả nếu vay 30 năm:</span>
-          <span className="font-semibold text-rose-300">
+          <span className="text-slate-400">Lãi năm đó (30 năm):</span>
+          <span className="font-semibold text-slate-200">
             {formatVNDMasked(pt.baselineInterest, isPrivacyMode)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-400">Lũy kế lãi vay 30 năm:</span>
+          <span className="font-bold text-rose-300">
+            {formatShortVNDMasked(pt.cumulativeBaselineInterest, isPrivacyMode)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-4">
@@ -116,16 +122,16 @@ export function LoanChart({
         <div className="flex flex-wrap items-center gap-4">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs bg-[#1D4ED8] inline-block" />
-            {chartMode === "VND" ? "Gốc trả mục tiêu" : "Tỷ trọng Gốc (%)"}
+            {chartMode === "VND" ? "Gốc trả mục tiêu (Trục trái)" : "Tỷ trọng Gốc (%)"}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs bg-[#D97706] inline-block" />
-            {chartMode === "VND" ? "Lãi trả mục tiêu" : "Tỷ trọng Lãi (%)"}
+            {chartMode === "VND" ? "Lãi trả mục tiêu (Trục trái)" : "Tỷ trọng Lãi (%)"}
           </span>
           {chartMode === "VND" && (
             <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
               <span className="w-3.5 border-t-2 border-dashed border-rose-500 inline-block" />
-              Lãi vay chuẩn 30 năm
+              Lũy kế lãi vay 30 năm (Trục phải)
             </span>
           )}
         </div>
@@ -134,11 +140,11 @@ export function LoanChart({
         </span>
       </div>
 
-      <div className="h-[280px] sm:h-[310px] w-full">
+      <div className="h-[280px] sm:h-[310px] w-full min-w-0">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={data}
-            margin={{ top: 20, right: 12, left: 0, bottom: 0 }}
+            margin={{ top: 20, right: chartMode === "VND" ? 8 : 12, left: 0, bottom: 0 }}
           >
             <CartesianGrid
               strokeDasharray="3 3"
@@ -153,6 +159,7 @@ export function LoanChart({
               minTickGap={16}
             />
             <YAxis
+              yAxisId="annualFlow"
               domain={chartMode === "PERCENT" ? [0, 100] : [0, "auto"]}
               tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
               tickLine={false}
@@ -164,10 +171,23 @@ export function LoanChart({
                   : `${Math.round(Number(v))}%`
               }
             />
+            {chartMode === "VND" && (
+              <YAxis
+                yAxisId="cumulativeInterest"
+                orientation="right"
+                domain={[0, "auto"]}
+                tick={{ fontSize: 11, fill: isDark ? "#FDA4AF" : "#E11D48" }}
+                tickLine={false}
+                axisLine={false}
+                width={56}
+                tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
+              />
+            )}
             <Tooltip content={<LoanChartTooltip isPrivacyMode={isPrivacyMode} />} />
 
             {fixedEndYearLabel && (
               <ReferenceLine
+                yAxisId="annualFlow"
                 x={fixedEndYearLabel}
                 stroke={isDark ? "#FBBF24" : "#D97706"}
                 strokeDasharray="4 4"
@@ -182,6 +202,7 @@ export function LoanChart({
             )}
             {targetPayoffYearLabel && (
               <ReferenceLine
+                yAxisId="annualFlow"
                 x={targetPayoffYearLabel}
                 stroke={isDark ? "#34D399" : "#059669"}
                 strokeWidth={2}
@@ -196,6 +217,7 @@ export function LoanChart({
             )}
 
             <Bar
+              yAxisId="annualFlow"
               dataKey={chartMode === "VND" ? "targetPrincipal" : "targetPrincipalSharePct"}
               name="Gốc trả mục tiêu"
               stackId="targetFlow"
@@ -205,6 +227,7 @@ export function LoanChart({
             />
             {chartMode === "PERCENT" ? (
               <Bar
+                yAxisId="annualFlow"
                 dataKey="targetInterestSharePct"
                 name="Lãi trả mục tiêu"
                 stackId="targetFlow"
@@ -215,6 +238,7 @@ export function LoanChart({
             ) : (
               <>
                 <Bar
+                  yAxisId="annualFlow"
                   dataKey="targetInterest"
                   name="Lãi trả mục tiêu"
                   stackId="targetFlow"
@@ -223,11 +247,12 @@ export function LoanChart({
                   radius={[4, 4, 0, 0]}
                 />
                 <Line
+                  yAxisId="cumulativeInterest"
                   type="monotone"
-                  dataKey="baselineInterest"
-                  name="Lãi vay chuẩn 30 năm"
+                  dataKey="cumulativeBaselineInterest"
+                  name="Lũy kế lãi vay 30 năm"
                   stroke="#E11D48"
-                  strokeWidth={2}
+                  strokeWidth={2.2}
                   strokeDasharray="5 4"
                   dot={false}
                 />

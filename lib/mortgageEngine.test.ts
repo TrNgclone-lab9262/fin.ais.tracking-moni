@@ -373,5 +373,13 @@ test("simulateTermReductionStrategy mô phỏng giảm số năm vay từ trần
   assert.ok(
     (sim10.crossoverYearTarget ?? 99) <= (sim20.crossoverYearTarget ?? 99)
   );
+  assert.ok(
+    sim20.transitionPoints[29].cumulativeBaselineInterest >=
+      sim20.transitionPoints[0].cumulativeBaselineInterest
+  );
+  assert.equal(
+    sim20.transitionPoints[29].cumulativeBaselineInterest,
+    sim20.baseline30TotalInterest
+  );
 });
 

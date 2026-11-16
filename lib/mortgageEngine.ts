@@ -1691,6 +1691,7 @@ export interface TermReductionTransitionPoint {
   targetEndingBalance: number;
   targetPrincipalSharePct: number;
   targetInterestSharePct: number;
+  cumulativeBaselineInterest: number;
   cumulativeInterestSaved: number;
 }
 
@@ -1862,6 +1863,7 @@ export function simulateTermReductionStrategy(
 
   const transitionPoints: TermReductionTransitionPoint[] = [];
   let runningSaved = 0;
+  let runningBaselineInterest = 0;
 
   for (let yr = 1; yr <= maxChartYears; yr++) {
     const b = baselineByYear.get(yr);
@@ -1877,6 +1879,7 @@ export function simulateTermReductionStrategy(
     const tTotal = t?.totalPaid ?? 0;
     const tEnd = t?.endingBalance ?? 0;
 
+    runningBaselineInterest += bInterest;
     runningSaved += bInterest - tInterest;
 
     const bPrincipalShare =
@@ -1913,6 +1916,7 @@ export function simulateTermReductionStrategy(
       targetEndingBalance: tEnd,
       targetPrincipalSharePct: tPrincipalShare,
       targetInterestSharePct: tInterestShare,
+      cumulativeBaselineInterest: runningBaselineInterest,
       cumulativeInterestSaved: Math.max(0, runningSaved),
     });
   }
