@@ -22,6 +22,7 @@ import {
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { getMonthDisplayLabel } from "@/lib/formatters";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
+import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
 
 interface TopBarProps {
   onOpenAddModal: () => void;
@@ -45,11 +46,14 @@ export function TopBar({
     activeTab,
     activePerspective,
     setActivePerspective,
+    isSupabaseEnvReady,
+    cloudUser,
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
     pendingOutboxCount,
     syncWithCloud,
+    setActiveTab,
     themeMode,
     toggleThemeMode,
     isPrivacyMode,
@@ -62,6 +66,7 @@ export function TopBar({
   } = useFinance();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isCloudAuthOpen, setIsCloudAuthOpen] = useState(false);
 
   const pendingRecurringCount = recurringRules.filter(
     (r) => r.isActive && r.lastAppliedMonth !== (selectedMonth === "ALL" ? availableMonths[0] : selectedMonth)
@@ -111,6 +116,15 @@ export function TopBar({
                         ? `Chờ đẩy (${pendingOutboxCount})`
                         : "Cloud Realtime"}
                     </span>
+                  </button>
+                ) : isSupabaseEnvReady ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCloudAuthOpen(true)}
+                    className="hidden 2xl:inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800 cursor-pointer shrink-0"
+                  >
+                    <CloudOff className="w-3.5 h-3.5" />
+                    <span>{cloudUser ? "Ghép FamilyHub" : "Đăng nhập Cloud"}</span>
                   </button>
                 ) : (
                   <span
@@ -374,6 +388,12 @@ export function TopBar({
           </div>
         </div>
       </div>
+
+      <CloudAuthModal
+        isOpen={isCloudAuthOpen}
+        onClose={() => setIsCloudAuthOpen(false)}
+        onOpenFamilyHub={() => setActiveTab("settings")}
+      />
     </header>
   );
 }

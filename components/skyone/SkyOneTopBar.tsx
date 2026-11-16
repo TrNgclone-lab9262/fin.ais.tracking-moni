@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Download,
   RefreshCw,
@@ -15,6 +15,7 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { SkyOneRouteTab } from "@/types/finance";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
+import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
 
 interface SkyOneTopBarProps {
   onOpenBackupModal: () => void;
@@ -34,7 +35,10 @@ const SKYONE_TITLES: Record<SkyOneRouteTab, string> = {
 export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
   const {
     skyoneTab,
+    setSkyoneTab,
     skyoneLoan,
+    isSupabaseEnvReady,
+    cloudUser,
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
@@ -47,6 +51,8 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
     hasPasscodeProtection,
     lockApp,
   } = useFinance();
+
+  const [isCloudAuthOpen, setIsCloudAuthOpen] = useState(false);
 
   return (
     <header className="bg-white dark:bg-slate-900 border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20 shadow-xs transition-colors">
@@ -84,6 +90,15 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
                       ? `Chờ đẩy (${pendingOutboxCount})`
                       : "Cloud Realtime"}
                   </span>
+                </button>
+              ) : isSupabaseEnvReady ? (
+                <button
+                  type="button"
+                  onClick={() => setIsCloudAuthOpen(true)}
+                  className="hidden 2xl:inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800 cursor-pointer shrink-0"
+                >
+                  <CloudOff className="w-3 h-3" />
+                  <span>{cloudUser ? "Ghép FamilyHub" : "Đăng nhập Cloud"}</span>
                 </button>
               ) : (
                 <span
@@ -165,6 +180,11 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
           </div>
         </div>
       </div>
+      <CloudAuthModal
+        isOpen={isCloudAuthOpen}
+        onClose={() => setIsCloudAuthOpen(false)}
+        onOpenFamilyHub={() => setSkyoneTab("SETTINGS")}
+      />
     </header>
   );
 }

@@ -50,15 +50,31 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_slot text;
+  v_name text;
 begin
-  insert into public.profiles (id, email, display_name)
-  values (
-    new.id,
-    new.email,
-    coalesce(nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(new.email, ''), '@', 1), '')
-  )
+  v_slot := case
+    when upper(coalesce(new.raw_user_meta_data ->> 'member_slot', '')) in ('HUSBAND', 'WIFE')
+      then upper(new.raw_user_meta_data ->> 'member_slot')
+    else 'HUSBAND'
+  end;
+
+  v_name := coalesce(
+    nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''),
+    split_part(coalesce(new.email, ''), '@', 1),
+    ''
+  );
+
+  insert into public.profiles (id, email, display_name, member_slot)
+  values (new.id, new.email, v_name, v_slot)
   on conflict (id) do update
     set email = excluded.email,
+        display_name = case
+          when nullif(trim(public.profiles.display_name), '') is null then excluded.display_name
+          else public.profiles.display_name
+        end,
+        member_slot = coalesce(nullif(public.profiles.member_slot, ''), excluded.member_slot),
         updated_at = now();
   return new;
 end;

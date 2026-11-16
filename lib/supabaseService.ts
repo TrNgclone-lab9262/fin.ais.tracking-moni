@@ -199,16 +199,27 @@ export const supabaseService = {
 
   async signUpWithPassword(
     email: string,
-    password: string
+    password: string,
+    profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
   ): Promise<{ user?: CloudUser; needsEmailConfirm?: boolean; error?: string }> {
     if (!isSupabaseConfigured || !supabase) {
       return { error: "Supabase chưa được cấu hình biến môi trường." };
     }
+    const cleanEmail = email.trim();
+    const displayName =
+      profileMeta?.displayName?.trim() || cleanEmail.split("@")[0] || "Thành viên";
+    const memberSlot: AuthMemberId =
+      profileMeta?.memberSlot === "WIFE" ? "WIFE" : "HUSBAND";
+
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: cleanEmail,
       password,
       options: {
         emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+        data: {
+          display_name: displayName,
+          member_slot: memberSlot,
+        },
       },
     });
     if (error) {
@@ -216,13 +227,26 @@ export const supabaseService = {
     }
     if (data.user && !data.session) {
       return {
-        user: { id: data.user.id, email: data.user.email || email.trim() },
+        user: { id: data.user.id, email: data.user.email || cleanEmail },
         needsEmailConfirm: true,
       };
     }
     if (data.user) {
+      await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: data.user.id,
+            email: data.user.email || cleanEmail,
+            display_name: displayName,
+            member_slot: memberSlot,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+
       return {
-        user: { id: data.user.id, email: data.user.email || email.trim() },
+        user: { id: data.user.id, email: data.user.email || cleanEmail },
       };
     }
     return { error: "Không thể tạo tài khoản mới." };

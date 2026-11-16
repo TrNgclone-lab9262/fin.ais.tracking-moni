@@ -190,8 +190,13 @@ interface FinanceContextType {
   signInCloud: (email: string, password: string) => Promise<boolean>;
   signUpCloud: (
     email: string,
-    password: string
+    password: string,
+    profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
   ) => Promise<{ ok: boolean; needsEmailConfirm?: boolean }>;
+  updateCloudProfile: (patch: {
+    displayName?: string;
+    memberSlot?: AuthMemberId;
+  }) => Promise<boolean>;
   sendMagicLinkCloud: (email: string) => Promise<boolean>;
   signOutCloud: () => Promise<void>;
   createCloudHousehold: (name: string, memberSlot: AuthMemberId) => Promise<boolean>;
@@ -567,20 +572,40 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const signUpCloud = useCallback(
     async (
       email: string,
-      password: string
+      password: string,
+      profileMeta?: { displayName?: string; memberSlot?: AuthMemberId }
     ): Promise<{ ok: boolean; needsEmailConfirm?: boolean }> => {
       setCloudError(null);
-      const res = await supabaseService.signUpWithPassword(email, password);
+      const res = await supabaseService.signUpWithPassword(email, password, profileMeta);
       if (res.error) {
         setCloudError(res.error);
         return { ok: false };
       }
       if (!res.needsEmailConfirm && res.user) {
         setCloudUser(res.user);
+        const profile = await supabaseService.fetchMyProfile(res.user.id);
+        if (profile) {
+          setCloudProfile(profile);
+        }
       }
       return { ok: true, needsEmailConfirm: res.needsEmailConfirm };
     },
     []
+  );
+
+  const updateCloudProfile = useCallback(
+    async (patch: { displayName?: string; memberSlot?: AuthMemberId }): Promise<boolean> => {
+      if (!cloudUser) return false;
+      setCloudError(null);
+      const updated = await supabaseService.updateMyProfile(cloudUser.id, patch);
+      if (!updated) {
+        setCloudError("Không thể cập nhật hồ sơ cá nhân trên Cloud.");
+        return false;
+      }
+      setCloudProfile(updated);
+      return true;
+    },
+    [cloudUser]
   );
 
   const sendMagicLinkCloud = useCallback(async (email: string): Promise<boolean> => {
@@ -596,6 +621,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const signOutCloud = useCallback(async () => {
     await supabaseService.signOut();
     setCloudUser(null);
+    setCloudProfile(null);
     setHousehold(null);
     setLastSyncedAt(null);
     setCloudError(null);
@@ -2837,6 +2863,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     syncWithCloud,
     signInCloud,
     signUpCloud,
+    updateCloudProfile,
     sendMagicLinkCloud,
     signOutCloud,
     createCloudHousehold,

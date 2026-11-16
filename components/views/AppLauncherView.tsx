@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ArrowRight,
   Sun,
@@ -23,6 +23,7 @@ import {
   FinanceAppIconSvg,
   SkyOneAppIconSvg,
 } from "@/components/common/SubAppIcons";
+import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
 
 interface AppLauncherViewProps {
   onOpenBackupModal: () => void;
@@ -43,6 +44,8 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     switchSubApp,
     themeMode,
     toggleThemeMode,
+    isSupabaseEnvReady,
+    cloudUser,
     isCloudConnected,
     isSyncing,
     lastSyncedAt,
@@ -51,6 +54,8 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     hasPasscodeProtection,
     lockApp,
   } = useFinance();
+
+  const [isCloudAuthModalOpen, setIsCloudAuthModalOpen] = useState(false);
 
   const urgentSkyoneAlert = useMemo(
     () => getUrgentSkyOneAlert(skyoneLoan),
@@ -110,6 +115,15 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                     ? `Chờ đẩy (${pendingOutboxCount})`
                     : "Cloud Sync"}
                 </span>
+              </button>
+            ) : isSupabaseEnvReady ? (
+              <button
+                type="button"
+                onClick={() => setIsCloudAuthModalOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <CloudOff className="w-3.5 h-3.5" />
+                <span>{cloudUser ? "Ghép Tổ ấm" : "Đăng nhập Cloud"}</span>
               </button>
             ) : (
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 whitespace-nowrap shrink-0">
@@ -264,6 +278,12 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
           </div>
         </div>
       </main>
+
+      <CloudAuthModal
+        isOpen={isCloudAuthModalOpen}
+        onClose={() => setIsCloudAuthModalOpen(false)}
+        onOpenFamilyHub={() => switchSubApp("FINANCE", { financeTab: "settings" })}
+      />
     </div>
   );
 }
