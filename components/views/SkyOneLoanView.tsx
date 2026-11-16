@@ -34,6 +34,7 @@ import {
 import { SkyOneAmortizationChart } from "@/components/dashboard/SkyOneAmortizationChart";
 import { SkyOneCashflowScheduleTable } from "@/components/dashboard/SkyOneCashflowScheduleTable";
 import { SkyOneTermReductionPanel } from "@/components/skyone/SkyOneTermReductionPanel";
+import { LoanEditor } from "@/components/skyone/LoanEditor";
 import { SkyOneAdvisorView } from "@/components/views/SkyOneAdvisorView";
 import { useFinance } from "@/context/FinanceContext";
 import {
@@ -147,9 +148,15 @@ export function SkyOneLoanView() {
   const [prepayDate, setPrepayDate] = useState<string>(() => getTodayIsoDate());
   const [prepayNote, setPrepayNote] = useState<string>("");
 
-  // Contract Editing State (Draft synced lazily via button or reset)
+  // Contract Editing State (Draft synced lazily via button, reset, or LoanEditor saves)
   const [contractDraft, setContractDraft] = useState<MortgageContract>(() => skyoneLoan);
   const [isContractDirty, setIsContractDirty] = useState(false);
+
+  useEffect(() => {
+    if (!isContractDirty) {
+      setContractDraft(skyoneLoan);
+    }
+  }, [skyoneLoan, isContractDirty]);
 
   useEffect(() => {
     if (skyoneHighlightPeriod && skyoneHighlightPeriod > 0) {
@@ -1938,6 +1945,8 @@ export function SkyOneLoanView() {
             </div>
           </section>
 
+          <LoanEditor onSaved={showToast} />
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Editable Contract Parameters */}
           <form
@@ -2339,6 +2348,8 @@ export function SkyOneLoanView() {
               </p>
             </div>
           </div>
+
+          <LoanEditor onSaved={showToast} />
 
           <SkyOneCashflowScheduleTable
             contract={skyoneLoan}
