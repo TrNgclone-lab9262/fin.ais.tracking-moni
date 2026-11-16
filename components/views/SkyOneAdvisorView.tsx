@@ -42,6 +42,8 @@ import {
 } from "@/lib/mortgageEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SkyOneTermReductionPanel } from "@/components/skyone/SkyOneTermReductionPanel";
+import { useResponsive } from "@/src/hooks/useResponsive";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
 
 function getDtiStatusMeta(status: SkyOneDtiStatus): {
   label: string;
@@ -102,6 +104,7 @@ export function SkyOneAdvisorView({
   } = useFinance();
 
   const isDark = themeMode === "dark";
+  const { isMobile } = useResponsive();
   const isSyncedWithRealBidv = isRealBidvProfileSynced(skyoneLoan);
 
   const schedule = useMemo(() => generateMortgageSchedule(skyoneLoan), [skyoneLoan]);
@@ -823,16 +826,18 @@ export function SkyOneAdvisorView({
                 />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  interval={computeResponsiveXAxisInterval(strategy.timelinePoints.length, isMobile, 5)}
+                  tick={{ fontSize: isMobile ? 10 : 11, fill: isDark ? "#94A3B8" : "#64748B" }}
                   tickLine={false}
                   axisLine={{ stroke: isDark ? "#334155" : "#CBD5E1" }}
-                  minTickGap={20}
+                  minTickGap={isMobile ? 34 : 20}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                  tickCount={isMobile ? 4 : 6}
+                  tick={{ fontSize: isMobile ? 10 : 11, fill: isDark ? "#94A3B8" : "#64748B" }}
                   tickLine={false}
                   axisLine={false}
-                  width={56}
+                  width={isMobile ? 44 : 56}
                   tickFormatter={(val: number) =>
                     isPrivacyMode ? "•••" : `${(val / 1_000_000).toFixed(1)}tr`
                   }

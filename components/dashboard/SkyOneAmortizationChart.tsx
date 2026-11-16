@@ -21,6 +21,8 @@ import {
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 import { useFinance } from "@/context/FinanceContext";
 import { MortgageContract } from "@/types/finance";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export type SkyOneChartUnitMode = "VND" | "PERCENT";
 
@@ -171,6 +173,7 @@ export function SkyOneAmortizationChart({
 }: SkyOneAmortizationChartProps) {
   const { themeMode } = useFinance();
   const isDark = themeMode === "dark";
+  const { isMobile } = useResponsive();
   const [unitMode, setUnitMode] = useState<SkyOneChartUnitMode>("VND");
   const [isMounted, setIsMounted] = useState(false);
 
@@ -387,9 +390,9 @@ export function SkyOneAmortizationChart({
 
               <XAxis
                 dataKey="name"
-                tick={{ fontSize: 11, fill: "var(--chart-tick)" }}
-                interval="preserveStartEnd"
-                minTickGap={18}
+                tick={{ fontSize: isMobile ? 10 : 11, fill: "var(--chart-tick)" }}
+                interval={computeResponsiveXAxisInterval(points.length, isMobile, 5)}
+                minTickGap={isMobile ? 28 : 18}
                 tickLine={false}
                 axisLine={{ stroke: "var(--chart-grid)" }}
               />
@@ -397,10 +400,21 @@ export function SkyOneAmortizationChart({
               <YAxis
                 yAxisId="left"
                 domain={unitMode === "PERCENT" ? [0, 100] : [0, "auto"]}
-                tick={{ fontSize: 11, fill: "var(--chart-tick)" }}
+                tickCount={isMobile ? 4 : 6}
+                tick={{ fontSize: isMobile ? 10 : 11, fill: "var(--chart-tick)" }}
                 tickLine={false}
                 axisLine={false}
-                width={unitMode === "VND" ? (isPrivacyMode ? 48 : 56) : 42}
+                width={
+                  unitMode === "VND"
+                    ? isMobile
+                      ? 44
+                      : isPrivacyMode
+                        ? 48
+                        : 56
+                    : isMobile
+                      ? 34
+                      : 42
+                }
                 tickFormatter={(val) =>
                   unitMode === "VND"
                     ? formatShortVNDMasked(Number(val), isPrivacyMode)
@@ -412,11 +426,12 @@ export function SkyOneAmortizationChart({
                 yAxisId="right"
                 orientation="right"
                 domain={[0, 100]}
-                hide={unitMode === "PERCENT"}
+                hide={unitMode === "PERCENT" || isMobile}
+                tickCount={isMobile ? 4 : 6}
                 tick={{ fontSize: 11, fill: isDark ? "#F87171" : SKYONE_CHART_PALETTE.debtRatio }}
                 tickLine={false}
                 axisLine={false}
-                width={42}
+                width={isMobile ? 0 : 42}
                 tickFormatter={(val) => `${Math.round(Number(val))}%`}
               />
 
@@ -456,7 +471,7 @@ export function SkyOneAmortizationChart({
                 name="Trả Gốc"
                 stackId="cashflow"
                 fill={SKYONE_CHART_PALETTE.principal}
-                maxBarSize={28}
+                maxBarSize={isMobile ? 18 : 28}
                 radius={[0, 0, 0, 0]}
               />
               <Bar
@@ -465,7 +480,7 @@ export function SkyOneAmortizationChart({
                 name="Trả Lãi"
                 stackId="cashflow"
                 fill={SKYONE_CHART_PALETTE.interest}
-                maxBarSize={28}
+                maxBarSize={isMobile ? 18 : 28}
                 radius={[4, 4, 0, 0]}
               />
 

@@ -15,9 +15,11 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatShortVNDMasked } from "@/lib/formatters";
 import { Landmark } from "lucide-react";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export function AssetDebtGoalsWidgets() {
   const { accounts, investments, debts, goals, isPrivacyMode } = useFinance();
+  const { isMobile } = useResponsive();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -115,8 +117,8 @@ export function AssetDebtGoalsWidgets() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={65}
+                    innerRadius={isMobile ? 40 : 45}
+                    outerRadius={isMobile ? 58 : 65}
                     paddingAngle={2}
                     stroke="none"
                   >
@@ -169,11 +171,12 @@ export function AssetDebtGoalsWidgets() {
                 >
                   <XAxis
                     type="number"
+                    tickCount={isMobile ? 3 : 4}
                     stroke="#94A3B8"
                     fontSize={9}
                     tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
                   />
-                  <YAxis type="category" dataKey="name" stroke="#94A3B8" fontSize={9} />
+                  <YAxis type="category" dataKey="name" stroke="#94A3B8" fontSize={9} width={isMobile ? 64 : 74} />
                   <Tooltip
                     formatter={(v: unknown) => formatVNDMasked(Number(v), isPrivacyMode)}
                     contentStyle={{
@@ -186,8 +189,8 @@ export function AssetDebtGoalsWidgets() {
                     itemStyle={{ color: "#F8FAFC" }}
                     labelStyle={{ color: "#94A3B8" }}
                   />
-                  <Bar dataKey="principal" fill="#94A3B8" radius={[0, 4, 4, 0]} maxBarSize={12} />
-                  <Bar dataKey="estimated" fill="#2563EB" radius={[0, 4, 4, 0]} maxBarSize={12} />
+                  <Bar dataKey="principal" fill="#94A3B8" radius={[0, 4, 4, 0]} maxBarSize={isMobile ? 10 : 12} />
+                  <Bar dataKey="estimated" fill="#2563EB" radius={[0, 4, 4, 0]} maxBarSize={isMobile ? 10 : 12} />
                 </BarChart>
               </ResponsiveContainer>
             )}

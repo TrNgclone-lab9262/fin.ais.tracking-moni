@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatShortVNDMasked } from "@/lib/formatters";
 import { ArrowDownLeft, Info } from "lucide-react";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 interface IncomeTooltipEntry {
   payload: {
@@ -52,6 +53,7 @@ function CustomTooltip({ active, payload, isPrivacyMode }: CustomTooltipProps) {
 export function IncomePieChart() {
   const { transactions, selectedMonth, summary, getCategoryById, isPrivacyMode } =
     useFinance();
+  const { isMobile } = useResponsive();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -121,8 +123,8 @@ export function IncomePieChart() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={55}
-                      outerRadius={80}
+                      innerRadius={isMobile ? 48 : 55}
+                      outerRadius={isMobile ? 70 : 80}
                       paddingAngle={3}
                       stroke="none"
                     >

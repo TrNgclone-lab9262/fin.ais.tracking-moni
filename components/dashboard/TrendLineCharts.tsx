@@ -18,6 +18,8 @@ import {
 } from "@/lib/formatters";
 import { calculateBalanceAndCumulativeTrends } from "@/lib/financeEngine";
 import { Activity } from "lucide-react";
+import { useResponsive } from "@/src/hooks/useResponsive";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
 
 export function TrendLineCharts() {
   const {
@@ -28,6 +30,7 @@ export function TrendLineCharts() {
     budgetSummary,
     isPrivacyMode,
   } = useFinance();
+  const { isMobile } = useResponsive();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -74,8 +77,17 @@ export function TrendLineCharts() {
             {isMounted && (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={balanceTrend}>
-                  <XAxis dataKey="key" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                  <XAxis
+                    dataKey="key"
+                    interval={computeResponsiveXAxisInterval(balanceTrend.length, isMobile, 4)}
+                    minTickGap={isMobile ? 24 : 10}
+                    stroke="#94A3B8"
+                    fontSize={isMobile ? 10 : 11}
+                    tickLine={false}
+                  />
                   <YAxis
+                    tickCount={isMobile ? 4 : 5}
+                    width={isMobile ? 42 : 50}
                     stroke="#94A3B8"
                     fontSize={10}
                     tickLine={false}
@@ -122,8 +134,17 @@ export function TrendLineCharts() {
             {isMounted && (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={expenseCumulative}>
-                  <XAxis dataKey="day" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                  <XAxis
+                    dataKey="day"
+                    interval={computeResponsiveXAxisInterval(expenseCumulative.length, isMobile, 5)}
+                    minTickGap={isMobile ? 24 : 12}
+                    stroke="#94A3B8"
+                    fontSize={isMobile ? 10 : 11}
+                    tickLine={false}
+                  />
                   <YAxis
+                    tickCount={isMobile ? 4 : 5}
+                    width={isMobile ? 42 : 50}
                     stroke="#94A3B8"
                     fontSize={10}
                     tickLine={false}
@@ -178,8 +199,17 @@ export function TrendLineCharts() {
             {isMounted && (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={incomeCumulative}>
-                  <XAxis dataKey="day" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                  <XAxis
+                    dataKey="day"
+                    interval={computeResponsiveXAxisInterval(incomeCumulative.length, isMobile, 5)}
+                    minTickGap={isMobile ? 24 : 12}
+                    stroke="#94A3B8"
+                    fontSize={isMobile ? 10 : 11}
+                    tickLine={false}
+                  />
                   <YAxis
+                    tickCount={isMobile ? 4 : 5}
+                    width={isMobile ? 42 : 50}
                     stroke="#94A3B8"
                     fontSize={10}
                     tickLine={false}

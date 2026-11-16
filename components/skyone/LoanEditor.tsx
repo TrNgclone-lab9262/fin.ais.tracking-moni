@@ -135,10 +135,33 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
     [draftOverrides, selectedPeriod]
   );
 
+  const [overrideResetNotice, setOverrideResetNotice] = useState<string | null>(null);
+
+  const contextOverrides = useMemo(
+    () => skyoneLoan.periodOverrides || [],
+    [skyoneLoan.periodOverrides]
+  );
+
+  const hasOverrideDiffFromContext = useMemo(() => {
+    if (draftOverrides.length !== contextOverrides.length) return true;
+    return draftOverrides.some((ov, idx) => {
+      const ctxOv = contextOverrides[idx];
+      if (!ctxOv) return true;
+      return (
+        ov.period !== ctxOv.period ||
+        ov.principal !== ctxOv.principal ||
+        ov.interest !== ctxOv.interest ||
+        ov.appliedRate !== ctxOv.appliedRate ||
+        (ov.note ?? "") !== (ctxOv.note ?? "")
+      );
+    });
+  }, [draftOverrides, contextOverrides]);
+
   const upsertSelectedPeriodOverride = (
     patch: Partial<MortgagePeriodCashflowOverride>
   ) => {
     if (isLocked) return;
+    setOverrideResetNotice(null);
     setDraftOverrides((prev) => {
       const idx = prev.findIndex((ov) => ov.period === selectedPeriod);
       if (idx === -1) {
@@ -154,18 +177,26 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
 
   const clearPeriodOverride = (period: number) => {
     if (isLocked) return;
+    setOverrideResetNotice(null);
     setDraftOverrides((prev) => prev.filter((ov) => ov.period !== period));
   };
 
-  const clearAllPeriodOverrides = () => {
+  const resetOverridesToContext = () => {
     if (isLocked) return;
-    setDraftOverrides([]);
+    const baseline = skyoneLoan.periodOverrides || [];
+    setDraftOverrides(baseline);
+    setOverrideResetNotice(
+      baseline.length > 0
+        ? `Đã khôi phục toàn bộ ${baseline.length} kỳ về giá trị gốc của FinanceContext.`
+        : "Đã khôi phục các override về lịch trả nợ gốc của FinanceContext."
+    );
   };
 
   const interestDelta =
     previewSchedule.totalProjectedInterest - currentSchedule.totalProjectedInterest;
 
   const handleUnlock = () => {
+    setOverrideResetNotice(null);
     setSkyOneCashflowLocked(false);
   };
 
@@ -184,6 +215,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
     setPaymentDayOfMonth(skyoneLoan.paymentDayOfMonth);
     setInterestBasis(skyoneLoan.interestBasis || "ACTUAL_365");
     setDraftOverrides(skyoneLoan.periodOverrides || []);
+    setOverrideResetNotice(null);
     setSkyOneCashflowLocked(true);
   };
 
@@ -209,6 +241,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
       },
       periodOverrides: draftOverrides,
     });
+    setOverrideResetNotice(null);
 
     onSaved?.(
       "Đã lưu gốc hợp đồng, lãi suất và dòng tiền vào FinanceContext, đồng thời khóa lại giao diện chỉnh sửa."
@@ -640,20 +673,28 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
           </div>
 
           {/* Bảng tóm tắt các kỳ đã điều chỉnh dòng tiền */}
-          {draftOverrides.length > 0 && (
+          {(draftOverrides.length > 0 ||
+            (!isLocked && (hasOverrideDiffFromContext || overrideResetNotice !== null))) && (
             <div
               data-testid="loan-editor-overrides-summary"
               className="rounded-lg border border-[#DCE4EE] dark:border-slate-800 overflow-hidden"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50/90 dark:bg-slate-800/70 border-b border-[#E9EEF5] dark:border-slate-700">
-                <span className="text-[11px] font-bold text-[#172B4D] dark:text-slate-100 tabular-nums">
-                  Bảng tóm tắt các kỳ đã điều chỉnh ({draftOverrides.length} kỳ)
-                </span>
-                {!isLocked && (
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-bold text-[#172B4D] dark:text-slate-100 tabular-nums">
+                    Bảng tóm tắt các kỳ đã điều chỉnh ({draftOverrides.length} kỳ)
+                  </span>
+                  {overrideResetNotice && (
+                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      · {overrideResetNotice}
+                    </span>
+                  )}
+                </div>
+                {!isLocked && (draftOverrides.length > 0 || hasOverrideDiffFromContext) && (
                   <button
                     type="button"
                     data-testid="loan-editor-clear-all-btn"
-                    onClick={clearAllPeriodOverrides}
+                    onClick={resetOverridesToContext}
                     className="min-h-[32px] px-2.5 py-1 rounded-md border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -661,71 +702,73 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-[#E9EEF5] dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
-                      <th className="py-2 px-3">Kỳ đã sửa</th>
-                      <th className="py-2 px-3">Ngày thu</th>
-                      <th className="py-2 px-3 text-right">Gốc trả</th>
-                      <th className="py-2 px-3 text-right">Lãi trả nợ</th>
-                      <th className="py-2 px-3 text-right">Lãi suất</th>
-                      <th className="py-2 px-3">Ghi chú</th>
-                      {!isLocked && <th className="py-2 px-3 text-right">Thao tác</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E9EEF5] dark:divide-slate-800 tabular-nums">
-                    {draftOverrides.map((ov) => {
-                      const row = previewRowByPeriod.get(ov.period);
-                      const isFocused = ov.period === selectedPeriod;
-                      return (
-                        <tr
-                          key={ov.period}
-                          onClick={() => setSelectedPeriod(ov.period)}
-                          className={`cursor-pointer transition-colors ${
-                            isFocused
-                              ? "bg-blue-50/70 dark:bg-blue-950/35 font-semibold"
-                              : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                          }`}
-                        >
-                          <td className="py-2 px-3 font-bold text-[#172B4D] dark:text-slate-100 whitespace-nowrap">
-                            Kỳ #{ov.period}
-                          </td>
-                          <td className="py-2 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                            {row ? formatDateVN(row.dueDate) : "—"}
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold text-[#1E3A8A] dark:text-blue-300 whitespace-nowrap">
-                            {formatVNDMasked(ov.principal ?? row?.principal ?? 0, isPrivacyMode)}
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
-                            {formatVNDMasked(ov.interest ?? row?.interest ?? 0, isPrivacyMode)}
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                            {(ov.appliedRate ?? row?.appliedRate ?? 0).toFixed(2)}%
-                          </td>
-                          <td className="py-2 px-3 text-slate-600 dark:text-slate-400 max-w-[200px] truncate">
-                            {ov.note?.trim() || "Tùy chỉnh thủ công"}
-                          </td>
-                          {!isLocked && (
-                            <td
-                              className="py-2 px-3 text-right whitespace-nowrap"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => clearPeriodOverride(ov.period)}
-                                className="min-h-[30px] px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                              >
-                                Khôi phục
-                              </button>
+              {draftOverrides.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-[#E9EEF5] dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                        <th className="py-2 px-3">Kỳ đã sửa</th>
+                        <th className="py-2 px-3">Ngày thu</th>
+                        <th className="py-2 px-3 text-right">Gốc trả</th>
+                        <th className="py-2 px-3 text-right">Lãi trả nợ</th>
+                        <th className="py-2 px-3 text-right">Lãi suất</th>
+                        <th className="py-2 px-3">Ghi chú</th>
+                        {!isLocked && <th className="py-2 px-3 text-right">Thao tác</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E9EEF5] dark:divide-slate-800 tabular-nums">
+                      {draftOverrides.map((ov) => {
+                        const row = previewRowByPeriod.get(ov.period);
+                        const isFocused = ov.period === selectedPeriod;
+                        return (
+                          <tr
+                            key={ov.period}
+                            onClick={() => setSelectedPeriod(ov.period)}
+                            className={`cursor-pointer transition-colors ${
+                              isFocused
+                                ? "bg-blue-50/70 dark:bg-blue-950/35 font-semibold"
+                                : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <td className="py-2 px-3 font-bold text-[#172B4D] dark:text-slate-100 whitespace-nowrap">
+                              Kỳ #{ov.period}
                             </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              {row ? formatDateVN(row.dueDate) : "—"}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-[#1E3A8A] dark:text-blue-300 whitespace-nowrap">
+                              {formatVNDMasked(ov.principal ?? row?.principal ?? 0, isPrivacyMode)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
+                              {formatVNDMasked(ov.interest ?? row?.interest ?? 0, isPrivacyMode)}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                              {(ov.appliedRate ?? row?.appliedRate ?? 0).toFixed(2)}%
+                            </td>
+                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400 max-w-[200px] truncate">
+                              {ov.note?.trim() || "Tùy chỉnh thủ công"}
+                            </td>
+                            {!isLocked && (
+                              <td
+                                className="py-2 px-3 text-right whitespace-nowrap"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => clearPeriodOverride(ov.period)}
+                                  className="min-h-[30px] px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                >
+                                  Khôi phục
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

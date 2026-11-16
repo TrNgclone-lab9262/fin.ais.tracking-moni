@@ -20,6 +20,7 @@ import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
 import { SkyOneRouteTab } from "@/types/finance";
 import { generateMortgageSchedule } from "@/lib/mortgageEngine";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 interface SkyOneNavItemDef {
   id: SkyOneRouteTab;
@@ -45,26 +46,21 @@ export function SkyOneSidebar() {
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
+  const { isCompact } = useResponsive();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("HOME_MONI_SIDEBAR_COLLAPSED");
-    if (saved !== null) {
-      setIsCollapsed(saved === "true");
-    } else if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setIsCollapsed(true);
-    }
-
-    const handleResize = () => {
-      const savedPref = localStorage.getItem("HOME_MONI_SIDEBAR_COLLAPSED");
-      if (savedPref === null && window.innerWidth >= 768 && window.innerWidth < 1024) {
-        setIsCollapsed(true);
+    try {
+      const saved = localStorage.getItem("HOME_MONI_SIDEBAR_COLLAPSED");
+      if (saved !== null) {
+        setIsCollapsed(saved === "true");
+      } else {
+        setIsCollapsed(isCompact);
       }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    } catch {
+      setIsCollapsed(isCompact);
+    }
+  }, [isCompact]);
 
   const toggleCollapse = () => {
     const nextState = !isCollapsed;

@@ -15,6 +15,7 @@ import {
   getMonthDisplayLabel,
 } from "@/lib/formatters";
 import { PieChart as PieIcon, Info } from "lucide-react";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 interface ExpenseTooltipEntry {
   payload: {
@@ -61,6 +62,7 @@ function CustomTooltip({ active, payload, isPrivacyMode }: CustomTooltipProps) {
 
 export function ExpensePieChart() {
   const { categoryExpenseStats, summary, selectedMonth, isPrivacyMode } = useFinance();
+  const { isMobile } = useResponsive();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -116,8 +118,8 @@ export function ExpensePieChart() {
                       nameKey="categoryName"
                       cx="50%"
                       cy="50%"
-                      innerRadius={65}
-                      outerRadius={95}
+                      innerRadius={isMobile ? 54 : 65}
+                      outerRadius={isMobile ? 80 : 95}
                       paddingAngle={3}
                       stroke="none"
                     >

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   Bar,
   CartesianGrid,
@@ -14,6 +14,8 @@ import {
 } from "recharts";
 import { TermReductionTransitionPoint } from "@/lib/mortgageEngine";
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export type LoanChartMode = "VND" | "PERCENT";
 
@@ -105,23 +107,7 @@ export function LoanChart({
   isDark,
   isPrivacyMode,
 }: LoanChartProps) {
-  const [isCompactViewport, setIsCompactViewport] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-    const mq = window.matchMedia("(max-width: 639px)");
-    const syncViewport = () => setIsCompactViewport(mq.matches);
-    syncViewport();
-
-    if (typeof mq.addEventListener === "function") {
-      mq.addEventListener("change", syncViewport);
-      return () => mq.removeEventListener("change", syncViewport);
-    }
-    mq.addListener(syncViewport);
-    return () => mq.removeListener(syncViewport);
-  }, []);
+  const { isMobile } = useResponsive();
 
   if (data.length === 0) {
     return (
@@ -135,7 +121,7 @@ export function LoanChart({
   }
 
   const finalCumulative30Y = data[data.length - 1]?.cumulativeBaselineInterest ?? 0;
-  const compactXInterval = Math.max(1, Math.ceil(data.length / 5) - 1);
+  const xAxisInterval = computeResponsiveXAxisInterval(data.length, isMobile, 5);
 
   return (
     <div className="space-y-3 w-full min-w-0" data-testid="skyone-loan-chart">
@@ -144,7 +130,7 @@ export function LoanChart({
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs bg-[#1D4ED8] inline-block" />
             {chartMode === "VND"
-              ? isCompactViewport
+              ? isMobile
                 ? "Gốc trả"
                 : "Gốc trả mục tiêu (Trục trái)"
               : "Tỷ trọng Gốc (%)"}
@@ -152,7 +138,7 @@ export function LoanChart({
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs bg-[#D97706] inline-block" />
             {chartMode === "VND"
-              ? isCompactViewport
+              ? isMobile
                 ? "Lãi trả"
                 : "Lãi trả mục tiêu (Trục trái)"
               : "Tỷ trọng Lãi (%)"}
@@ -160,7 +146,7 @@ export function LoanChart({
           {chartMode === "VND" && (
             <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
               <span className="w-3.5 border-t-2 border-dashed border-rose-500 inline-block" />
-              {isCompactViewport
+              {isMobile
                 ? `Lãi lũy kế 30N (${formatShortVNDMasked(finalCumulative30Y, isPrivacyMode)})`
                 : "Tổng lãi lũy kế 30 năm (Trục phụ)"}
             </span>
@@ -168,19 +154,19 @@ export function LoanChart({
         </div>
         <span className="text-slate-500 dark:text-slate-400 tabular-nums">
           Dải chuyển: Năm {transitionStartYear} – Năm {transitionEndYear}
-          {!isCompactViewport && chartMode === "VND" && (
+          {!isMobile && chartMode === "VND" && (
             <> · Tổng lãi 30N: {formatShortVNDMasked(finalCumulative30Y, isPrivacyMode)}</>
           )}
         </span>
       </div>
 
       <div className="h-[250px] sm:h-[310px] w-full min-w-0">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <ComposedChart
             data={data}
             margin={{
               top: 20,
-              right: chartMode === "VND" ? (isCompactViewport ? 6 : 8) : 10,
+              right: chartMode === "VND" ? (isMobile ? 6 : 8) : 10,
               left: 0,
               bottom: 0,
             }}
@@ -192,31 +178,31 @@ export function LoanChart({
             />
             <XAxis
               dataKey="name"
-              interval={isCompactViewport ? compactXInterval : "preserveStartEnd"}
+              interval={xAxisInterval}
               tick={{
-                fontSize: isCompactViewport ? 10 : 11,
+                fontSize: isMobile ? 10 : 11,
                 fill: isDark ? "#94A3B8" : "#64748B",
               }}
               tickLine={false}
               axisLine={{ stroke: isDark ? "#334155" : "#CBD5E1" }}
-              minTickGap={isCompactViewport ? 34 : 14}
+              minTickGap={isMobile ? 34 : 14}
             />
             <YAxis
               yAxisId="annualFlow"
               domain={chartMode === "PERCENT" ? [0, 100] : [0, "auto"]}
-              tickCount={isCompactViewport ? 4 : 6}
+              tickCount={isMobile ? 4 : 6}
               tick={{
-                fontSize: isCompactViewport ? 10 : 11,
+                fontSize: isMobile ? 10 : 11,
                 fill: isDark ? "#94A3B8" : "#64748B",
               }}
               tickLine={false}
               axisLine={false}
               width={
                 chartMode === "VND"
-                  ? isCompactViewport
+                  ? isMobile
                     ? 44
                     : 56
-                  : isCompactViewport
+                  : isMobile
                   ? 34
                   : 40
               }
@@ -230,13 +216,13 @@ export function LoanChart({
               <YAxis
                 yAxisId="cumulativeInterest"
                 orientation="right"
-                hide={isCompactViewport}
+                hide={isMobile}
                 domain={[0, "auto"]}
                 tickCount={6}
                 tick={{ fontSize: 11, fill: isDark ? "#FDA4AF" : "#E11D48" }}
                 tickLine={false}
                 axisLine={false}
-                width={isCompactViewport ? 0 : 56}
+                width={isMobile ? 0 : 56}
                 tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}
               />
             )}
@@ -279,7 +265,7 @@ export function LoanChart({
               name="Gốc trả mục tiêu"
               stackId="targetFlow"
               fill="#1D4ED8"
-              maxBarSize={isCompactViewport ? 18 : 26}
+              maxBarSize={isMobile ? 18 : 26}
               radius={[0, 0, 0, 0]}
             />
             {chartMode === "PERCENT" ? (
@@ -289,7 +275,7 @@ export function LoanChart({
                 name="Lãi trả mục tiêu"
                 stackId="targetFlow"
                 fill="#D97706"
-                maxBarSize={isCompactViewport ? 18 : 26}
+                maxBarSize={isMobile ? 18 : 26}
                 radius={[4, 4, 0, 0]}
               />
             ) : (
@@ -300,7 +286,7 @@ export function LoanChart({
                   name="Lãi trả mục tiêu"
                   stackId="targetFlow"
                   fill="#D97706"
-                  maxBarSize={isCompactViewport ? 18 : 26}
+                  maxBarSize={isMobile ? 18 : 26}
                   radius={[4, 4, 0, 0]}
                 />
                 <Line

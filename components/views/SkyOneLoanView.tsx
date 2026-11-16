@@ -37,6 +37,8 @@ import { SkyOneTermReductionPanel } from "@/components/skyone/SkyOneTermReductio
 import { LoanEditor } from "@/components/skyone/LoanEditor";
 import { SkyOneAdvisorView } from "@/components/views/SkyOneAdvisorView";
 import { useFinance } from "@/context/FinanceContext";
+import { useResponsive } from "@/src/hooks/useResponsive";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
 import {
   formatVNDMasked,
   formatShortVNDMasked,
@@ -112,6 +114,7 @@ export function SkyOneLoanView() {
     resetSkyOneLoan,
   } = useFinance();
   const isDark = themeMode === "dark";
+  const { isMobile } = useResponsive();
 
   const subTab: SkyOneSubTab =
     skyoneTab === "ADVISOR" ||
@@ -822,12 +825,21 @@ export function SkyOneLoanView() {
               <ResponsiveContainer width="100%" height={260} minWidth={0} minHeight={0}>
                 <AreaChart
                   data={chartYearlyData}
-                  margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
+                  margin={{ top: 10, right: isMobile ? 6 : 12, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} axisLine={{ stroke: "var(--chart-grid)" }} tickLine={false} />
+                  <XAxis
+                    dataKey="name"
+                    interval={computeResponsiveXAxisInterval(chartYearlyData.length, isMobile, 5)}
+                    minTickGap={isMobile ? 28 : 14}
+                    tick={{ fontSize: isMobile ? 10 : 11, fill: "var(--chart-tick)" }}
+                    axisLine={{ stroke: "var(--chart-grid)" }}
+                    tickLine={false}
+                  />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "var(--chart-tick)" }}
+                    tickCount={isMobile ? 4 : 6}
+                    width={isMobile ? 44 : 56}
+                    tick={{ fontSize: isMobile ? 10 : 11, fill: "var(--chart-tick)" }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(v) => formatShortVNDMasked(Number(v), isPrivacyMode)}

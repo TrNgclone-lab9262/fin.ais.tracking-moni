@@ -12,6 +12,8 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, formatShortVNDMasked } from "@/lib/formatters";
 import { BarChart3 } from "lucide-react";
+import { useResponsive } from "@/src/hooks/useResponsive";
+import { computeResponsiveXAxisInterval } from "@/lib/viewport";
 
 interface BarTooltipEntry {
   color?: string;
@@ -60,6 +62,7 @@ function CustomBarTooltip({
 
 export function MonthlyTrendChart() {
   const { monthlyTrendData, isPrivacyMode } = useFinance();
+  const { isMobile } = useResponsive();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -95,18 +98,22 @@ export function MonthlyTrendChart() {
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart
               data={monthlyTrendData}
-              margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
+              margin={{ top: 10, right: isMobile ? 6 : 10, left: isMobile ? -18 : -10, bottom: 0 }}
             >
               <XAxis
                 dataKey="label"
+                interval={computeResponsiveXAxisInterval(monthlyTrendData.length, isMobile, 4)}
+                minTickGap={isMobile ? 20 : 10}
                 stroke="#94A3B8"
-                fontSize={12}
+                fontSize={isMobile ? 10 : 12}
                 tickLine={false}
                 axisLine={{ stroke: "#334155", strokeOpacity: 0.3 }}
               />
               <YAxis
+                tickCount={isMobile ? 4 : 6}
+                width={isMobile ? 42 : 52}
                 stroke="#94A3B8"
-                fontSize={11}
+                fontSize={isMobile ? 10 : 11}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(val) => formatShortVNDMasked(Number(val), isPrivacyMode)}
@@ -117,14 +124,14 @@ export function MonthlyTrendChart() {
                 name="Thu nhập"
                 fill="#10B981"
                 radius={[6, 6, 0, 0]}
-                maxBarSize={32}
+                maxBarSize={isMobile ? 22 : 32}
               />
               <Bar
                 dataKey="expense"
                 name="Chi tiêu"
                 fill="#F43F5E"
                 radius={[6, 6, 0, 0]}
-                maxBarSize={32}
+                maxBarSize={isMobile ? 22 : 32}
               />
             </BarChart>
           </ResponsiveContainer>
