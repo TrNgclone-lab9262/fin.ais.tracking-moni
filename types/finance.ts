@@ -77,6 +77,16 @@ export interface CategoryBudget {
   limitAmount: number;
 }
 
+export interface BudgetProgressItem {
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  limitAmount: number;
+  spentAmount: number;
+  remainingAmount: number;
+  percentage: number;
+}
+
 export interface SavingsGoal {
   id: string;
   name: string;

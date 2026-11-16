@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
-  Calendar,
   Tag,
   CreditCard,
   FileText,
@@ -18,6 +17,7 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { formatVND } from "@/lib/formatters";
 import { parseNaturalLanguageTransactions } from "@/lib/geminiReceiptService";
+import { DatePicker, SelectInput, TextInput } from "@/components/common/inputs";
 import { FamilyMember, ExpenseScope, TransactionType, Transaction } from "@/types/finance";
 
 interface TransactionFormModalProps {
@@ -435,95 +435,66 @@ export function TransactionFormModal({
           )}
 
           {/* 5. Chọn Tài Khoản Nguồn */}
-          <div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              {type === "TRANSFER" ? "Từ tài khoản (Nguồn)" : "Tài khoản / Thẻ thanh toán"}
-            </label>
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.name}{" "}
-                  {acc.type === "CREDIT_CARD"
-                    ? `(Dư nợ: ${formatVND(acc.currentBalance)})`
-                    : `(Số dư: ${formatVND(acc.currentBalance)})`}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            label={
+              type === "TRANSFER"
+                ? "Từ tài khoản (Nguồn)"
+                : "Tài khoản / Thẻ thanh toán"
+            }
+            value={accountId}
+            onChange={(val) => setAccountId(val)}
+            leadingIcon={<CreditCard className="w-3.5 h-3.5" />}
+            options={accounts.map((acc) => ({
+              value: acc.id,
+              label: `${acc.name} ${
+                acc.type === "CREDIT_CARD"
+                  ? `(Dư nợ: ${formatVND(acc.currentBalance)})`
+                  : `(Số dư: ${formatVND(acc.currentBalance)})`
+              }`,
+            }))}
+          />
 
           {/* Nếu là Chuyển Khoản -> Chọn Tài Khoản Nhận */}
           {type === "TRANSFER" ? (
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                Đến tài khoản (Đích)
-              </label>
-              <select
-                value={toAccountId}
-                onChange={(e) => setToAccountId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-              >
-                {accounts
-                  .filter((a) => a.id !== accountId)
-                  .map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
+            <SelectInput
+              label="Đến tài khoản (Đích)"
+              value={toAccountId}
+              onChange={(val) => setToAccountId(val)}
+              leadingIcon={<CreditCard className="w-3.5 h-3.5" />}
+              options={accounts
+                .filter((a) => a.id !== accountId)
+                .map((acc) => ({
+                  value: acc.id,
+                  label: acc.name,
+                }))}
+            />
           ) : (
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                Chọn danh mục
-              </label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-              >
-                {availableCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectInput
+              label="Chọn danh mục"
+              value={categoryId}
+              onChange={(val) => setCategoryId(val)}
+              leadingIcon={<Tag className="w-3.5 h-3.5" />}
+              options={availableCategories.map((cat) => ({
+                value: cat.id,
+                label: cat.name,
+              }))}
+            />
           )}
 
           {/* Ngày Giao dịch & Ghi chú */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                Ngày giao dịch
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                Ghi chú
-              </label>
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="VD: Tiền chợ, Tiền nhà..."
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
-              />
-            </div>
+            <DatePicker
+              label="Ngày giao dịch"
+              value={date}
+              onChange={(val) => setDate(val)}
+            />
+            <TextInput
+              label="Ghi chú"
+              value={note}
+              onChange={(val) => setNote(val)}
+              placeholder="VD: Tiền chợ, Tiền nhà..."
+              leadingIcon={<FileText className="w-3.5 h-3.5" />}
+            />
           </div>
 
           <div className="pt-2 flex gap-3">

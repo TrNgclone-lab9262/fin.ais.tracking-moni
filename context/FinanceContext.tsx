@@ -37,6 +37,7 @@ import {
   FinanceTab,
   SkyOneRouteTab,
   SkyOneTransactionLink,
+  BudgetProgressItem,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -109,6 +110,14 @@ import {
   getAppDocumentTitle,
   saveActiveApp,
 } from "@/lib/appRouting";
+import {
+  BrowserNotificationStatus,
+  getBrowserNotificationPermission,
+  isBrowserNotificationOptedIn,
+  requestBrowserNotificationAccess,
+  setBrowserNotificationOptIn,
+  triggerBudgetThresholdNotifications,
+} from "@/lib/browserNotifications";
 
 export type NavTab = FinanceTab;
 
@@ -132,16 +141,6 @@ interface MonthlyTrendItem {
   label: string;
   income: number;
   expense: number;
-}
-
-interface BudgetProgressItem {
-  categoryId: string;
-  categoryName: string;
-  categoryColor: string;
-  limitAmount: number;
-  spentAmount: number;
-  remainingAmount: number;
-  percentage: number;
 }
 
 interface BudgetSummary {
@@ -236,6 +235,12 @@ interface FinanceContextType {
   recurringRules: RecurringRule[];
   settings: AppSettings;
   notifications: AppNotification[];
+
+  // Browser Notifications (>80% hạn mức ngân sách tháng)
+  browserNotifStatus: BrowserNotificationStatus;
+  browserNotifEnabled: boolean;
+  enableBrowserNotifications: () => Promise<boolean>;
+  disableBrowserNotifications: () => void;
 
   // Bộ lọc
   selectedMonth: string;
@@ -392,6 +397,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [skyoneAutoSyncedNotice, setSkyoneAutoSyncedNotice] = useState<string | null>(null);
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
+  const [browserNotifStatus, setBrowserNotifStatus] =
+    useState<BrowserNotificationStatus>("default");
+  const [browserNotifEnabled, setBrowserNotifEnabled] = useState<boolean>(false);
 
   const householdRef = useRef<HouseholdInfo | null>(null);
   const ignoreRealtimeUntilRef = useRef<number>(0);
@@ -2806,15 +2814,19 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     }
 
     budgetSummary.items.forEach((b) => {
-      if (b.percentage >= 90) {
+      const ratio = b.limitAmount > 0 ? b.spentAmount / b.limitAmount : 0;
+      if (ratio > 0.8) {
         const nid = `budget_warn_${b.categoryId}_${activeMonth}`;
         list.push({
           id: nid,
-          title: `Ngân sách "${b.categoryName}" đạt ${b.percentage}%`,
+          title:
+            b.percentage >= 100
+              ? `Ngân sách "${b.categoryName}" đạt ${b.percentage}%`
+              : `Cảnh báo "${b.categoryName}" vượt 80% (${b.percentage}%)`,
           message:
             b.percentage >= 100
               ? `Danh mục ${b.categoryName} đã vượt ngân sách tháng ${activeMonth}.`
-              : `Danh mục ${b.categoryName} đã dùng ${b.percentage}% hạn mức tháng.`,
+              : `Danh mục ${b.categoryName} đã dùng ${b.percentage}% hạn mức tháng ${activeMonth}.`,
           type: b.percentage >= 100 ? "danger" : "warning",
           date: today,
           read: readNotifIds.has(nid),
@@ -2850,6 +2862,51 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const markNotificationRead = useCallback((id: string) => {
     setReadNotifIds((prev) => new Set(prev).add(id));
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    setBrowserNotifStatus(getBrowserNotificationPermission());
+    setBrowserNotifEnabled(
+      isBrowserNotificationOptedIn() && getBrowserNotificationPermission() === "granted"
+    );
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded || !browserNotifEnabled || browserNotifStatus !== "granted") return;
+    const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+    triggerBudgetThresholdNotifications({
+      monthKey: activeMonth,
+      items: budgetSummary.items,
+      isPrivacyMode,
+    });
+  }, [
+    isLoaded,
+    browserNotifEnabled,
+    browserNotifStatus,
+    budgetSummary.items,
+    selectedMonth,
+    isPrivacyMode,
+  ]);
+
+  const enableBrowserNotifications = useCallback(async (): Promise<boolean> => {
+    const res = await requestBrowserNotificationAccess();
+    setBrowserNotifStatus(res.status);
+    setBrowserNotifEnabled(res.granted);
+    if (res.granted) {
+      const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+      triggerBudgetThresholdNotifications({
+        monthKey: activeMonth,
+        items: budgetSummary.items,
+        isPrivacyMode,
+      });
+    }
+    return res.granted;
+  }, [selectedMonth, budgetSummary.items, isPrivacyMode]);
+
+  const disableBrowserNotifications = useCallback(() => {
+    setBrowserNotificationOptIn(false);
+    setBrowserNotifEnabled(false);
   }, []);
 
   const value: FinanceContextType = {
@@ -2965,6 +3022,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     resetSkyOneLoan,
     updateSettings,
     markNotificationRead,
+    browserNotifStatus,
+    browserNotifEnabled,
+    enableBrowserNotifications,
+    disableBrowserNotifications,
     resetToMockData,
     exportBackup,
     exportCsvReport,

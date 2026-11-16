@@ -1,26 +1,21 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
-  Trash2,
-  Pencil,
-  ArrowDownLeft,
-  ArrowUpRight,
-  ArrowLeftRight,
   Search,
   Download,
   Plus,
   ChevronLeft,
   ChevronRight,
   X,
-  AlertCircle,
-  Building2,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
-import { formatVNDMasked, formatDateVN, getMonthDisplayLabel } from "@/lib/formatters";
+import { formatVNDMasked, getMonthDisplayLabel } from "@/lib/formatters";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
+import { TransactionList } from "@/components/dashboard/TransactionList";
+import { SelectInput, TextInput } from "@/components/common/inputs";
 import { Transaction, TransactionType } from "@/types/finance";
 
 interface TransactionsViewProps {
@@ -47,13 +42,9 @@ export function TransactionsView({
     setSelectedAccount,
     searchQuery,
     setSearchQuery,
-    getCategoryById,
-    getAccountById,
     deleteTransaction,
     activePerspective,
     isPrivacyMode,
-    getSkyOneLinkForTransaction,
-    switchSubApp,
   } = useFinance();
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -61,6 +52,13 @@ export function TransactionsView({
   const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const filterSummary = useMemo(() => {
     let income = 0;
@@ -79,7 +77,6 @@ export function TransactionsView({
     };
   }, [filteredTransactions]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const paginatedList = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredTransactions.slice(start, start + pageSize);
@@ -137,70 +134,70 @@ export function TransactionsView({
           </div>
         </div>
 
-        {/* Dòng Dropdowns: Loại, Tài khoản, Danh mục, Search */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-[#E9EEF5] dark:border-slate-800">
-          <div>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value as "ALL" | TransactionType)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">Tất cả loại giao dịch</option>
-              <option value="INCOME">Thu nhập</option>
-              <option value="EXPENSE">Chi tiêu</option>
-              <option value="TRANSFER">Chuyển khoản</option>
-            </select>
-          </div>
+        {/* Dòng Dropdowns: Loại, Tài khoản, Danh mục, Search dùng bộ Input tái sử dụng */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-[#E9EEF5] dark:border-slate-800">
+          <SelectInput
+            value={selectedType}
+            onChange={(val) => {
+              setSelectedType(val as "ALL" | TransactionType);
+              setCurrentPage(1);
+            }}
+            options={[
+              { value: "ALL", label: "Tất cả loại giao dịch" },
+              { value: "INCOME", label: "Thu nhập" },
+              { value: "EXPENSE", label: "Chi tiêu" },
+              { value: "TRANSFER", label: "Chuyển khoản" },
+            ]}
+          />
 
-          <div>
-            <select
-              value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">Tất cả tài khoản (Ví)</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            value={selectedAccount}
+            onChange={(val) => {
+              setSelectedAccount(val);
+              setCurrentPage(1);
+            }}
+            options={[
+              { value: "ALL", label: "Tất cả tài khoản (Ví)" },
+              ...accounts.map((a) => ({ value: a.id, label: a.name })),
+            ]}
+          />
 
-          <div>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">Tất cả danh mục</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.type === "INCOME" ? "[Thu] " : "[Chi] "}
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            value={selectedCategory}
+            onChange={(val) => {
+              setSelectedCategory(val);
+              setCurrentPage(1);
+            }}
+            options={[
+              { value: "ALL", label: "Tất cả danh mục" },
+              ...categories.map((c) => ({
+                value: c.id,
+                label: `${c.type === "INCOME" ? "[Thu] " : "[Chi] "}${c.name}`,
+              })),
+            ]}
+          />
 
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo ghi chú..."
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500 placeholder:text-slate-400 dark:placeholder:text-slate-500 font-medium"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <TextInput
+            value={searchQuery}
+            onChange={(val) => {
+              setSearchQuery(val);
+              setCurrentPage(1);
+            }}
+            placeholder="Tìm theo ghi chú..."
+            leadingIcon={<Search className="w-4 h-4" />}
+            trailingElement={
+              searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Xóa từ khóa tìm kiếm"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : undefined
+            }
+          />
         </div>
       </div>
 
@@ -220,401 +217,15 @@ export function TransactionsView({
         </span>
       </div>
 
-      {/* 3. Bảng Giao Dịch Chi Tiết Đa Thiết Bị */}
+      {/* 3. Bảng Giao Dịch Chi Tiết Đa Thiết Bị (TransactionList có sắp xếp) */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs overflow-hidden">
-        {filteredTransactions.length === 0 ? (
-          <div className="p-12 text-center">
-            <AlertCircle className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">Không tìm thấy giao dịch nào phù hợp</p>
-          </div>
-        ) : (
-          <>
-            {/* VIEW 1: DESKTOP TABLE */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full text-left text-xs table-fixed">
-                <colgroup>
-                  <col className="w-[105px]" />
-                  <col className="w-[125px]" />
-                  <col className="w-[85px]" />
-                  <col className="w-[85px]" />
-                  <col className="w-[155px]" />
-                  <col className="w-[130px]" />
-                  <col className="w-[150px]" />
-                  <col className="w-auto" />
-                  <col className="w-[85px]" />
-                </colgroup>
-                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                  <tr>
-                    <th className="py-3.5 px-3.5">Ngày</th>
-                    <th className="py-3.5 px-3.5">Người chi</th>
-                    <th className="py-3.5 px-3">Loại</th>
-                    <th className="py-3.5 px-3">Mục đích</th>
-                    <th className="py-3.5 px-3.5">Danh mục</th>
-                    <th className="py-3.5 px-3.5 text-right">Số tiền</th>
-                    <th className="py-3.5 px-3.5">Nguồn tiền</th>
-                    <th className="py-3.5 px-3.5">Ghi chú</th>
-                    <th className="py-3.5 px-3 text-center">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {paginatedList.map((tx) => {
-                    const cat = getCategoryById(tx.categoryId);
-                    const acc = getAccountById(tx.accountId);
-                    const toAcc = tx.toAccountId ? getAccountById(tx.toAccountId) : undefined;
-                    const isExpense = tx.type === "EXPENSE";
-                    const isTransfer = tx.type === "TRANSFER";
-                    const skyoneLink = getSkyOneLinkForTransaction(tx.id);
-
-                    return (
-                      <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors group">
-                        <td className="py-3.5 px-3.5 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          {formatDateVN(tx.date)}
-                        </td>
-
-                        {/* Người chi */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                              tx.memberId === "HUSBAND"
-                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
-                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
-                            }`}
-                          >
-                            {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
-                          </span>
-                        </td>
-
-                        {/* Loại */}
-                        <td className="py-3.5 px-3 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                              isTransfer
-                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
-                                : isExpense
-                                ? "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30"
-                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
-                            }`}
-                          >
-                            {isTransfer ? (
-                              <>
-                                <ArrowLeftRight className="w-3 h-3" />
-                                Chuyển
-                              </>
-                            ) : isExpense ? (
-                              <>
-                                <ArrowUpRight className="w-3 h-3" />
-                                Chi
-                              </>
-                            ) : (
-                              <>
-                                <ArrowDownLeft className="w-3 h-3" />
-                                Thu
-                              </>
-                            )}
-                          </span>
-                        </td>
-
-                        {/* Mục đích */}
-                        <td className="py-3.5 px-3 whitespace-nowrap">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                              tx.scope === "FAMILY"
-                                ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                : "bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30"
-                            }`}
-                          >
-                            {tx.scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}
-                          </span>
-                        </td>
-
-                        {/* Danh mục */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 max-w-full">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: cat?.color || "#94A3B8" }}
-                            />
-                            <span className="truncate">{isTransfer ? "Chuyển khoản ví" : cat?.name || "Khác"}</span>
-                          </div>
-                        </td>
-
-                        {/* Số tiền */}
-                        <td
-                          className={`py-3.5 px-3.5 text-right font-black whitespace-nowrap ${
-                            isTransfer
-                              ? "text-blue-600 dark:text-blue-400"
-                              : isExpense
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-emerald-600 dark:text-emerald-400"
-                          }`}
-                        >
-                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
-                        </td>
-
-                        {/* Tài khoản nguồn */}
-                        <td className="py-3.5 px-3.5 text-slate-600 dark:text-slate-300 font-semibold whitespace-nowrap">
-                          <span
-                            className="inline-flex items-center gap-1 text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-slate-700 dark:text-slate-300 truncate max-w-full"
-                            title={isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name}
-                          >
-                            {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name || "Ví tiền"}
-                          </span>
-                        </td>
-
-                        {/* Ghi chú */}
-                        <td
-                          className="py-3.5 px-3.5 text-slate-600 dark:text-slate-300 font-medium"
-                          title={tx.note || ""}
-                        >
-                          <div className="truncate">
-                            {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
-                          </div>
-                          {skyoneLink && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                switchSubApp("SKYONE", {
-                                  skyoneTab:
-                                    skyoneLink.kind === "PREPAYMENT" ? "PREPAYMENT" : "SCHEDULE",
-                                  highlightPeriod: skyoneLink.period ?? null,
-                                })
-                              }
-                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                            >
-                              <Building2 className="w-3 h-3 shrink-0" />
-                              <span>{skyoneLink.label} →</span>
-                            </button>
-                          )}
-                        </td>
-
-                        {/* Thao tác */}
-                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => setEditingTx(tx)}
-                              title="Chỉnh sửa giao dịch"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTargetId(tx.id)}
-                              title="Xóa giao dịch"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* VIEW 2: TABLET TABLE (768px - 1023px) */}
-            <div className="hidden md:block lg:hidden overflow-x-auto">
-              <table className="w-full text-left text-xs table-fixed">
-                <colgroup>
-                  <col className="w-[100px]" />
-                  <col className="w-[140px]" />
-                  <col className="w-[80px]" />
-                  <col className="w-[140px]" />
-                  <col className="w-[125px]" />
-                  <col className="w-auto" />
-                  <col className="w-[80px]" />
-                </colgroup>
-                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                  <tr>
-                    <th className="py-3 px-3">Ngày</th>
-                    <th className="py-3 px-3">Người & Ví</th>
-                    <th className="py-3 px-2">Loại</th>
-                    <th className="py-3 px-3">Danh mục</th>
-                    <th className="py-3 px-3 text-right">Số tiền</th>
-                    <th className="py-3 px-3">Ghi chú</th>
-                    <th className="py-3 px-2 text-center">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {paginatedList.map((tx) => {
-                    const cat = getCategoryById(tx.categoryId);
-                    const acc = getAccountById(tx.accountId);
-                    const isExpense = tx.type === "EXPENSE";
-                    const isTransfer = tx.type === "TRANSFER";
-
-                    return (
-                      <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
-                        <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                          {formatDateVN(tx.date)}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
-                              {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-medium truncate">
-                              {acc?.name || "Ví"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 whitespace-nowrap">
-                          <span
-                            className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isTransfer
-                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300"
-                                : isExpense
-                                ? "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-300"
-                                : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-                            }`}
-                          >
-                            {isTransfer ? "Chuyển" : isExpense ? "Chi" : "Thu"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className="font-semibold text-slate-700 dark:text-slate-200 truncate block">
-                            {isTransfer ? "Chuyển khoản" : cat?.name || "Khác"}
-                          </span>
-                        </td>
-                        <td
-                          className={`py-3 px-3 text-right font-black whitespace-nowrap ${
-                            isTransfer
-                              ? "text-blue-600 dark:text-blue-400"
-                              : isExpense
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-emerald-600 dark:text-emerald-400"
-                          }`}
-                        >
-                          {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
-                        </td>
-                        <td className="py-3 px-3 truncate text-slate-500 dark:text-slate-400 font-medium" title={tx.note || ""}>
-                          {tx.note || <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
-                        </td>
-                        <td className="py-3 px-2 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => setEditingTx(tx)}
-                              className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/15 rounded-md transition-colors cursor-pointer"
-                              title="Sửa"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTargetId(tx.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded-md transition-colors cursor-pointer"
-                              title="Xóa"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* VIEW 3: MOBILE BENTO CARD VIEW */}
-            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-              {paginatedList.map((tx) => {
-                const cat = getCategoryById(tx.categoryId);
-                const acc = getAccountById(tx.accountId);
-                const toAcc = tx.toAccountId ? getAccountById(tx.toAccountId) : undefined;
-                const isExpense = tx.type === "EXPENSE";
-                const isTransfer = tx.type === "TRANSFER";
-
-                return (
-                  <div key={tx.id} onClick={() => setSelectedTxForDetail(tx)} className="p-4 space-y-2.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors cursor-pointer active:bg-blue-50/40 dark:active:bg-blue-500/10">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            tx.memberId === "HUSBAND"
-                              ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
-                              : "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
-                          }`}
-                        >
-                          {tx.memberId === "HUSBAND" ? "👨 Anh Chuột" : "👩 Bé Mèo"}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                            tx.scope === "FAMILY"
-                              ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                              : "bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30"
-                          }`}
-                        >
-                          {tx.scope === "FAMILY" ? "🏠 Chung" : "👤 Riêng"}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        {formatDateVN(tx.date)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span
-                          className="w-3.5 h-3.5 rounded-full shrink-0"
-                          style={{ backgroundColor: cat?.color || "#94A3B8" }}
-                        />
-                        <div className="min-w-0">
-                          <span className="font-bold text-sm text-[#172B4D] dark:text-slate-100 truncate block">
-                            {isTransfer ? "Chuyển khoản ví" : cat?.name || "Khác"}
-                          </span>
-                          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate block">
-                            {tx.note || (isExpense ? "Chi tiêu" : isTransfer ? "Chuyển tiền" : "Thu nhập")}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
-                        {isTransfer ? `${acc?.name} → ${toAcc?.name}` : acc?.name || "Ví tiền"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-50 dark:border-slate-800">
-                      <p
-                        className={`text-base font-black ${
-                          isTransfer
-                            ? "text-blue-600 dark:text-blue-400"
-                            : isExpense
-                            ? "text-rose-600 dark:text-rose-400"
-                            : "text-emerald-600 dark:text-emerald-400"
-                        }`}
-                      >
-                        {isExpense ? "-" : isTransfer ? "" : "+"} {formatVNDMasked(tx.amount, isPrivacyMode)}
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTx(tx);
-                          }}
-                          className="p-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
-                          aria-label="Sửa giao dịch"
-                          title="Sửa"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTargetId(tx.id);
-                          }}
-                          className="p-2 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/15 hover:bg-rose-100 dark:hover:bg-rose-500/25 rounded-md transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 cursor-pointer"
-                          aria-label="Xóa giao dịch"
-                          title="Xóa"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
+        <TransactionList
+          transactions={paginatedList}
+          onEdit={(tx) => setEditingTx(tx)}
+          onDelete={(tx) => setDeleteTargetId(tx.id)}
+          onSelect={(tx) => setSelectedTxForDetail(tx)}
+          emptyMessage="Không tìm thấy giao dịch nào phù hợp"
+        />
 
         {/* Phân trang */}
         {filteredTransactions.length > pageSize && (
