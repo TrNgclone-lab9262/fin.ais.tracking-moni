@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Menu, Building2, Eye, EyeOff, Lock, Sun, Moon } from "lucide-react";
+import { Menu, Building2, Eye, EyeOff, Lock, Sun, Moon, Sparkles } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
@@ -9,9 +9,10 @@ import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface SkyOneMobileHeaderProps {
   onOpenDrawer: () => void;
+  onOpenChatbot?: () => void;
 }
 
-export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
+export function SkyOneMobileHeader({ onOpenDrawer, onOpenChatbot }: SkyOneMobileHeaderProps) {
   const {
     skyoneLoan,
     themeMode,
@@ -62,8 +63,22 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
         </div>
       </div>
 
-      {/* Right: Theme + Privacy + Lock */}
+      {/* Right: AI + Theme + Privacy + Lock */}
       <div className="flex items-center gap-1 shrink-0">
+        {onOpenChatbot && (
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              onOpenChatbot();
+            }}
+            aria-label="Mở Trợ lý AI SKYONE"
+            title="Trợ lý AI Gemini"
+            className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         <button
           type="button"

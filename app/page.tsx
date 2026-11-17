@@ -44,6 +44,7 @@ import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerMod
 import { LoginGateView } from "@/components/auth/LoginGateView";
 import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
 import { MobileNotificationSheet } from "@/components/mobile/sheets/MobileNotificationSheet";
+import { GeminiChatbotDrawer } from "@/components/ai/GeminiChatbotDrawer";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
@@ -76,6 +77,7 @@ export default function HomePage() {
   const [isResetStepUpOpen, setIsResetStepUpOpen] = useState(false);
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
   const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
   const { isMobileShell } = useResponsive();
 
@@ -189,13 +191,17 @@ export default function HomePage() {
           {activeApp === "SKYONE" ? <SkyOneSidebar /> : <Sidebar />}
           <div className="flex-1 flex flex-col min-w-0">
             {activeApp === "SKYONE" ? (
-              <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />
+              <SkyOneTopBar
+                onOpenBackupModal={() => setIsBackupModalOpen(true)}
+                onOpenChatbot={() => setIsChatbotOpen(true)}
+              />
             ) : (
               <TopBar
                 onOpenAddModal={() => setIsAddModalOpen(true)}
                 onOpenBackupModal={() => setIsBackupModalOpen(true)}
                 onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
                 onOpenScanner={() => setIsGlobalScannerOpen(true)}
+                onOpenChatbot={() => setIsChatbotOpen(true)}
               />
             )}
             <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
@@ -207,12 +213,16 @@ export default function HomePage() {
         /* 2. UNIFIED MOBILE SHELL (< 768px) */
         <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-safe-main transition-colors duration-200">
           {activeApp === "SKYONE" ? (
-            <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
+            <SkyOneMobileHeader
+              onOpenDrawer={() => setIsMobileMenuOpen(true)}
+              onOpenChatbot={() => setIsChatbotOpen(true)}
+            />
           ) : (
             <MobileHeader
               onOpenDrawer={() => setIsMobileMenuOpen(true)}
               onOpenScanner={() => setIsGlobalScannerOpen(true)}
               onOpenNotifications={() => setIsMobileNotifOpen(true)}
+              onOpenChatbot={() => setIsChatbotOpen(true)}
             />
           )}
 
@@ -257,6 +267,12 @@ export default function HomePage() {
       <MobileDrawer
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        onOpenChatbot={() => setIsChatbotOpen(true)}
+      />
+
+      <GeminiChatbotDrawer
+        isOpen={isChatbotOpen}
+        onClose={() => setIsChatbotOpen(false)}
       />
 
       <ExportImportModal

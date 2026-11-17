@@ -21,6 +21,7 @@ import {
   Calculator,
   SlidersHorizontal,
   Compass,
+  Sparkles,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
@@ -31,9 +32,10 @@ import { useHaptic } from "@/src/hooks/useHaptic";
 interface MobileDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenChatbot?: () => void;
 }
 
-export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
+export function MobileDrawer({ isOpen, onClose, onOpenChatbot }: MobileDrawerProps) {
   const {
     activeApp,
     activeTab,
@@ -304,6 +306,21 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
         {/* Footer */}
         <div className="p-4 border-t border-blue-800/40 text-[11px] text-blue-300/80 bg-blue-950/40 space-y-2.5 shrink-0">
+          {onOpenChatbot && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onClose();
+                onOpenChatbot();
+              }}
+              className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-400 hover:to-blue-400 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Trợ lý AI Chatbot Gemini</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {

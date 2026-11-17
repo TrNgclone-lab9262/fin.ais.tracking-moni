@@ -4,13 +4,82 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, GenerateContentResponse, Type } from '@google/genai';
+import {
+  buildChatbotSystemInstruction,
+  buildGeminiChatHistory,
+  ChatbotModelMode,
+  ChatbotRoleId,
+  ChatbotThinkingLevelName,
+  FinancialChatContextSnapshot,
+  resolveChatbotModelRoute,
+} from './lib/geminiChatConfig';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const GEMINI_MODEL = 'gemini-4-hydrogen';
+
+function mapThinkingLevel(level: ChatbotThinkingLevelName): ThinkingLevel {
+  switch (level) {
+    case 'MINIMAL':
+      return ThinkingLevel.MINIMAL;
+    case 'LOW':
+      return ThinkingLevel.LOW;
+    case 'MEDIUM':
+      return ThinkingLevel.MEDIUM;
+    case 'XHIGH':
+      return ThinkingLevel.XHIGH;
+    case 'HIGH':
+    default:
+      return ThinkingLevel.HIGH;
+  }
+}
+
+function formatGeminiError(err: unknown): { status: number; code: string; message: string } {
+  const rawMessage = err instanceof Error ? err.message : String(err || 'Lỗi không xác định từ Gemini API');
+  const anyErr = err as { status?: number; code?: string | number } | undefined;
+  const status = typeof anyErr?.status === 'number' ? anyErr.status : 500;
+
+  if (status === 400 || /API_KEY_INVALID|API key not valid/i.test(rawMessage)) {
+    return {
+      status: 400,
+      code: 'API_KEY_INVALID',
+      message:
+        'API key Gemini không hợp lệ (400). Vui lòng kiểm tra hoặc chọn lại API key trong bảng Settings > Secrets.',
+    };
+  }
+  if (status === 403 || /PERMISSION_DENIED/i.test(rawMessage)) {
+    return {
+      status: 403,
+      code: 'PERMISSION_DENIED',
+      message:
+        'API key không đủ quyền truy cập Gemini API (403). Vui lòng kiểm tra API key trong bảng Settings > Secrets.',
+    };
+  }
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(rawMessage)) {
+    return {
+      status: 429,
+      code: 'RESOURCE_EXHAUSTED',
+      message:
+        'Đã vượt giới hạn hạn mức Gemini API (429). Vui lòng chờ một lát hoặc kiểm tra API key trong Settings > Secrets.',
+    };
+  }
+  if (status === 404 || /NOT_FOUND/i.test(rawMessage)) {
+    return {
+      status: 404,
+      code: 'MODEL_NOT_FOUND',
+      message: 'Model Gemini được yêu cầu hiện không khả dụng (404). Vui lòng thử chuyển sang chế độ Tổng quát.',
+    };
+  }
+
+  return {
+    status: status >= 400 && status < 600 ? status : 500,
+    code: 'GEMINI_UPSTREAM_ERROR',
+    message: `Không thể kết nối Gemini AI: ${rawMessage}`,
+  };
+}
 
 function getGeminiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -353,6 +422,113 @@ Hãy viết nhận xét ngắn gọn, thực tế, mang tính động viên bằ
         source: 'fallback',
         reason: 'GEMINI_REQUEST_FAILED',
       });
+    }
+  });
+
+  // 4. POST /api/ai/chat — Multi-turn Streaming Chatbot (SSE)
+  app.post('/api/ai/chat', async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({
+        code: 'GEMINI_API_KEY_NOT_CONFIGURED',
+        error:
+          'Chưa cấu hình GEMINI_API_KEY trên máy chủ. Vui lòng thiết lập hoặc chọn API key trong Settings > Secrets để sử dụng Trợ lý AI.',
+      });
+    }
+
+    const { message, history, roleId, mode, financialContext } = (req.body || {}) as {
+      message?: string;
+      history?: Array<{ role: string; text: string }>;
+      roleId?: ChatbotRoleId;
+      mode?: ChatbotModelMode;
+      financialContext?: FinancialChatContextSnapshot;
+    };
+
+    const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+    if (!trimmedMessage) {
+      return res.status(400).json({
+        code: 'EMPTY_MESSAGE',
+        error: 'Vui lòng nhập nội dung câu hỏi cho Chatbot.',
+      });
+    }
+
+    const route = resolveChatbotModelRoute(mode);
+    const resolvedRole: ChatbotRoleId = roleId || 'family_advisor';
+    const systemInstruction = buildChatbotSystemInstruction(resolvedRole, financialContext);
+    const geminiHistory = buildGeminiChatHistory(Array.isArray(history) ? history : []);
+    const thinkingLevel = mapThinkingLevel(route.thinkingLevel);
+
+    const abortController = new AbortController();
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        abortController.abort();
+      }
+    });
+
+    try {
+      const chat = ai.chats.create({
+        model: route.model,
+        history: geminiHistory,
+        config: {
+          systemInstruction,
+          thinkingConfig: { thinkingLevel },
+        },
+      });
+
+      const streamResponse = await chat.sendMessageStream({
+        message: trimmedMessage,
+      });
+
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'meta',
+          model: route.model,
+          thinkingLevel: route.thinkingLevel,
+        })}\n\n`
+      );
+
+      for await (const chunk of streamResponse) {
+        if (abortController.signal.aborted) break;
+        const c = chunk as GenerateContentResponse;
+        const text = c.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ type: 'chunk', text })}\n\n`);
+        }
+      }
+
+      if (!abortController.signal.aborted) {
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'done',
+            model: route.model,
+            thinkingLevel: route.thinkingLevel,
+          })}\n\n`
+        );
+      }
+      return res.end();
+    } catch (err) {
+      console.error('[AI Chat Stream Error]', err);
+      const formatted = formatGeminiError(err);
+      if (!res.headersSent) {
+        return res.status(formatted.status).json({
+          code: formatted.code,
+          error: formatted.message,
+        });
+      }
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          code: formatted.code,
+          status: formatted.status,
+          error: formatted.message,
+        })}\n\n`
+      );
+      return res.end();
     }
   });
 

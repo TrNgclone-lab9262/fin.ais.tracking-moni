@@ -11,14 +11,17 @@ import {
   Sun,
   Moon,
   Building2,
+  Sparkles,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { SkyOneRouteTab } from "@/types/finance";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface SkyOneTopBarProps {
   onOpenBackupModal: () => void;
+  onOpenChatbot?: () => void;
 }
 
 const SKYONE_TITLES: Record<SkyOneRouteTab, string> = {
@@ -32,7 +35,8 @@ const SKYONE_TITLES: Record<SkyOneRouteTab, string> = {
   SETTINGS: "Cài đặt & Bảo mật Tổ ấm",
 };
 
-export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
+export function SkyOneTopBar({ onOpenBackupModal, onOpenChatbot }: SkyOneTopBarProps) {
+  const haptic = useHaptic();
   const {
     skyoneTab,
     setSkyoneTab,
@@ -126,6 +130,20 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
 
           {/* Right Actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {onOpenChatbot && (
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  onOpenChatbot();
+                }}
+                title="Trò chuyện với Chiến lược gia AI SKYONE"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Trợ lý AI</span>
+              </button>
+            )}
 
             <button
               type="button"
