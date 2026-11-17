@@ -5,7 +5,7 @@ import { X, ShieldAlert, ScanFace, KeyRound, AlertCircle } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { AuthMemberId } from "@/types/finance";
 import { getMemberAuthConfig, verifyMemberBiometric } from "@/lib/authSecurity";
-import { triggerHaptic } from "@/lib/haptic";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface StepUpAuthModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ export function StepUpAuthModal({
   onCancel,
 }: StepUpAuthModalProps) {
   const { settings, unlockWithPasscode } = useFinance();
+  const haptic = useHaptic();
   const [selectedMember, setSelectedMember] = useState<AuthMemberId>(
     settings.authActiveProfile || "HUSBAND"
   );
@@ -42,7 +43,7 @@ export function StepUpAuthModal({
     if (isBusy) return;
     const cleaned = code.replace(/[^0-9]/g, "");
     if (cleaned.length < 4) {
-      triggerHaptic("error");
+      haptic.error();
       setError("Vui lòng nhập đủ 4–6 chữ số mã Code.");
       return;
     }
@@ -52,11 +53,11 @@ export function StepUpAuthModal({
     try {
       const ok = await unlockWithPasscode(selectedMember, cleaned);
       if (ok) {
-        triggerHaptic("success");
+        haptic.success();
         setCode("");
         onVerified();
       } else {
-        triggerHaptic("error");
+        haptic.error();
         setError("Mã Code chưa đúng. Vui lòng thử lại.");
       }
     } finally {
@@ -71,11 +72,11 @@ export function StepUpAuthModal({
     try {
       const res = await verifyMemberBiometric(memberConfig.webauthnCredentialId);
       if (res.success) {
-        triggerHaptic("success");
+        haptic.success();
         setCode("");
         onVerified();
       } else {
-        triggerHaptic("error");
+        haptic.error();
         setError(res.error || "Không xác thực được Face ID. Hãy nhập mã Code.");
       }
     } finally {

@@ -9,7 +9,7 @@ import {
   MAX_MORTGAGE_TERM_YEARS,
 } from "@/lib/mortgageEngine";
 import { formatDateVN, formatVNDMasked } from "@/lib/formatters";
-import { triggerHaptic } from "@/lib/haptic";
+import { useHaptic } from "@/src/hooks/useHaptic";
 import {
   MortgageContract,
   MortgageInterestBasis,
@@ -28,6 +28,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
     saveAndLockSkyOneCashflow,
   } = useFinance();
 
+  const haptic = useHaptic();
   const isLocked = skyoneLoan.cashflowLocked !== false;
 
   const [loanAmount, setLoanAmount] = useState<number>(skyoneLoan.loanAmount);
@@ -184,7 +185,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
 
   const resetOverridesToContext = () => {
     if (isLocked) return;
-    triggerHaptic("warning");
+    haptic.warning();
     const baseline = skyoneLoan.periodOverrides || [];
     setDraftOverrides(baseline);
     setOverrideResetNotice(
@@ -198,13 +199,13 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
     previewSchedule.totalProjectedInterest - currentSchedule.totalProjectedInterest;
 
   const handleUnlock = () => {
-    triggerHaptic("light");
+    haptic.light();
     setOverrideResetNotice(null);
     setSkyOneCashflowLocked(false);
   };
 
   const handleCancelAndLock = () => {
-    triggerHaptic("light");
+    haptic.light();
     const cleanTerm = Math.min(
       MAX_MORTGAGE_TERM_MONTHS,
       Math.max(12, skyoneLoan.termMonths || 360)
@@ -246,7 +247,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
       periodOverrides: draftOverrides,
     });
     setOverrideResetNotice(null);
-    triggerHaptic("success");
+    haptic.success();
 
     onSaved?.(
       "Đã lưu gốc hợp đồng, lãi suất và dòng tiền vào FinanceContext, đồng thời khóa lại giao diện chỉnh sửa."

@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { SkyOneSubTab } from "@/types/finance";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 export function SkyOneBottomNavBar() {
   const { skyoneTab, setSkyoneTab } = useFinance();
+  const haptic = useHaptic();
 
   const items: {
     id: SkyOneSubTab;
@@ -39,7 +41,10 @@ export function SkyOneBottomNavBar() {
             key={item.id}
             type="button"
             data-testid={`skyone-mobile-tab-${item.id.toLowerCase()}`}
-            onClick={() => setSkyoneTab(item.id)}
+            onClick={() => {
+              haptic.light();
+              setSkyoneTab(item.id);
+            }}
             className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-lg min-h-[44px] transition-colors cursor-pointer ${
               isActive
                 ? "text-indigo-700 dark:text-indigo-300 font-bold"

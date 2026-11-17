@@ -3,6 +3,7 @@
 import React from "react";
 import { Home, ArrowLeftRight, CreditCard, Target, Plus } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface BottomNavBarProps {
   onOpenAddModal: () => void;
@@ -10,6 +11,7 @@ interface BottomNavBarProps {
 
 export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
   const { activeTab, setActiveTab } = useFinance();
+  const haptic = useHaptic();
 
   const navItems: { id: NavTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "overview", label: "Tổng quan", icon: Home },
@@ -31,7 +33,10 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                haptic.light();
+                setActiveTab(item.id);
+              }}
               className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
                 isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
@@ -52,7 +57,10 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
       {/* Nút FAB trung tâm: Nhập nhanh 3 giây */}
       <div className="relative -top-4 px-2">
         <button
-          onClick={onOpenAddModal}
+          onClick={() => {
+            haptic.light();
+            onOpenAddModal();
+          }}
           aria-label="Thêm giao dịch nhanh 3 giây"
           className="w-13 h-13 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center shadow-lg shadow-blue-500/35 border-4 border-[#F6F8FB] dark:border-[#0B1220] transition-all cursor-pointer"
         >
@@ -68,7 +76,10 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                haptic.light();
+                setActiveTab(item.id);
+              }}
               className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
                 isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}

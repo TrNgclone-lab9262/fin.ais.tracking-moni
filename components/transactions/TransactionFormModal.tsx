@@ -18,7 +18,7 @@ import { useFinance } from "@/context/FinanceContext";
 import { formatVND } from "@/lib/formatters";
 import { parseNaturalLanguageTransactions } from "@/lib/geminiReceiptService";
 import { DatePicker, SelectInput, TextInput } from "@/components/common/inputs";
-import { triggerHaptic } from "@/lib/haptic";
+import { useHaptic } from "@/src/hooks/useHaptic";
 import { FamilyMember, ExpenseScope, TransactionType, Transaction } from "@/types/finance";
 
 interface TransactionFormModalProps {
@@ -43,6 +43,7 @@ export function TransactionFormModal({
     activePerspective,
     settings,
   } = useFinance();
+  const haptic = useHaptic();
 
   const [type, setType] = useState<TransactionType>(defaultType);
   const [amountInput, setAmountInput] = useState("");
@@ -183,13 +184,13 @@ export function TransactionFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (numericAmount <= 0) {
-      triggerHaptic("error");
+      haptic.error();
       setError("Vui lòng nhập số tiền lớn hơn 0");
       return;
     }
 
     if (type === "TRANSFER" && accountId === toAccountId) {
-      triggerHaptic("error");
+      haptic.error();
       setError("Tài khoản nguồn và tài khoản nhận phải khác nhau");
       return;
     }
@@ -211,7 +212,7 @@ export function TransactionFormModal({
     } else {
       addTransaction(payload);
     }
-    triggerHaptic("success");
+    haptic.success();
     onClose();
   };
 
