@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Menu, Home, RefreshCw, Camera, Eye, EyeOff, Bell, Lock, Sun, Moon, Sparkles } from "lucide-react";
+import { Menu, Home, RefreshCw, Camera, Eye, EyeOff, Bell, Lock, Sun, Moon } from "lucide-react";
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
@@ -11,14 +11,12 @@ interface MobileHeaderProps {
   onOpenDrawer: () => void;
   onOpenScanner?: () => void;
   onOpenNotifications?: () => void;
-  onOpenChatbot?: () => void;
 }
 
 export function MobileHeader({
   onOpenDrawer,
   onOpenScanner,
   onOpenNotifications,
-  onOpenChatbot,
 }: MobileHeaderProps) {
   const {
     activePerspective,
@@ -177,23 +175,6 @@ export function MobileHeader({
         >
           <Lock className="w-3.5 h-3.5" />
         </button>
-
-        {/* Nút Trợ lý AI Chatbot */}
-        {onOpenChatbot && (
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light();
-              onOpenChatbot();
-            }}
-            data-testid="mobile-chatbot-trigger"
-            aria-label="Mở Trợ lý AI Gemini"
-            title="Trò chuyện với Trợ lý AI"
-            className="w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-xs shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
-        )}
 
         {/* Nút Quét Hóa Đơn AI Nhanh */}
         {onOpenScanner && (

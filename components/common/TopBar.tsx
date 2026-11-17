@@ -18,7 +18,6 @@ import {
   Check,
   Sun,
   Moon,
-  Sparkles,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { getMonthDisplayLabel } from "@/lib/formatters";
@@ -31,7 +30,6 @@ interface TopBarProps {
   onOpenBackupModal: () => void;
   onOpenResetConfirm: () => void;
   onOpenScanner?: () => void;
-  onOpenChatbot?: () => void;
 }
 
 export function TopBar({
@@ -39,7 +37,6 @@ export function TopBar({
   onOpenBackupModal,
   onOpenResetConfirm,
   onOpenScanner,
-  onOpenChatbot,
 }: TopBarProps) {
   const {
     selectedMonth,
@@ -367,24 +364,6 @@ export function TopBar({
               <RotateCcw className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               <span className="hidden 2xl:inline">Mẫu demo</span>
             </button>
-
-            {/* Trợ lý AI Chatbot */}
-            {onOpenChatbot && (
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.light();
-                  onOpenChatbot();
-                }}
-                data-testid="desktop-chatbot-trigger"
-                title="Trò chuyện đa lượt với Trợ lý AI Gemini"
-                className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs font-bold text-indigo-700 dark:text-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/70 dark:to-blue-950/70 hover:from-indigo-100 hover:to-blue-100 dark:hover:from-indigo-900/70 dark:hover:to-blue-900/70 border border-indigo-200 dark:border-indigo-800 rounded-md transition-all shadow-xs cursor-pointer active:scale-95"
-              >
-                <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span className="hidden 2xl:inline">Trợ lý AI</span>
-                <span className="2xl:hidden">AI</span>
-              </button>
-            )}
 
             {/* Quét hóa đơn AI */}
             {onOpenScanner && (
