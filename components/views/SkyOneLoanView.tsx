@@ -854,7 +854,7 @@ export function SkyOneLoanView() {
                       fontSize: "12px",
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-tick)" }} />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? 11 : 12, color: "var(--chart-tick)" }} />
                   <Area
                     type="monotone"
                     dataKey="remainingBalance"

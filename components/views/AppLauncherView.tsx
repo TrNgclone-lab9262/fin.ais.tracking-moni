@@ -73,7 +73,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
   return (
     <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 flex flex-col transition-colors duration-200">
       {/* Top Utility Header */}
-      <header className="bg-white dark:bg-slate-900 border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20">
+      <header className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20 pt-safe">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-[#0F172A] dark:bg-blue-600 text-white flex items-center justify-center shrink-0">

@@ -22,7 +22,7 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#DCE4EE] dark:border-slate-800 px-3 py-2 flex items-center justify-between shadow-lg transition-colors">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#DCE4EE] dark:border-slate-800 px-3 pt-2 pb-safe-nav flex items-center justify-between shadow-lg transition-colors">
       {/* 2 tabs bên trái */}
       <div className="flex items-center justify-around flex-1">
         {navItems.map((item) => {

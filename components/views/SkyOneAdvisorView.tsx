@@ -887,10 +887,10 @@ export function SkyOneAdvisorView({
                   stroke={isDark ? "#F59E0B" : "#D97706"}
                   strokeDasharray="4 4"
                   label={{
-                    value: "Trần DTI an toàn 30%",
+                    value: isMobile ? "DTI 30%" : "Trần DTI an toàn 30%",
                     position: "insideTopRight",
                     fill: isDark ? "#FBBF24" : "#B45309",
-                    fontSize: 11,
+                    fontSize: isMobile ? 10 : 11,
                   }}
                 />
                 {expectedMonthlyRent > 0 && (

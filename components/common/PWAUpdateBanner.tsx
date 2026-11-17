@@ -22,7 +22,7 @@ export function PWAUpdateBanner() {
     return (
       <div
         role="status"
-        className="bg-emerald-600 text-white px-3 sm:px-4 py-2 shadow-sm flex items-center justify-between gap-2 text-xs border-b border-emerald-700 animate-in slide-in-from-top duration-200"
+        className="bg-emerald-600 text-white px-3 sm:px-4 pt-safe-header pb-2 sm:py-2 shadow-sm flex items-center justify-between gap-2 text-xs border-b border-emerald-700 animate-in slide-in-from-top duration-200"
       >
         <div className="flex items-center gap-2 min-w-0">
           <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />
@@ -60,7 +60,7 @@ export function PWAUpdateBanner() {
     <div
       role="region"
       aria-label="Thông báo cập nhật ứng dụng"
-      className="bg-gradient-to-r from-[#1E3A8A] via-[#1D4ED8] to-[#2563EB] text-white px-3 sm:px-4 py-2 shadow-md border-b border-blue-900/50 animate-in slide-in-from-top duration-200"
+      className="bg-gradient-to-r from-[#1E3A8A] via-[#1D4ED8] to-[#2563EB] text-white px-3 sm:px-4 pt-safe-header pb-2 sm:py-2 shadow-md border-b border-blue-900/50 animate-in slide-in-from-top duration-200"
     >
       <div className="max-w-7xl mx-auto flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">

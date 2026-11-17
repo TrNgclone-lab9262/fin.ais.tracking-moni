@@ -1162,9 +1162,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle("dark", isDark);
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      metaTheme.setAttribute("content", isDark ? "#0F172A" : "#1E3A8A");
+      metaTheme.setAttribute("content", isDark || isAppLocked ? "#0f172a" : "#ffffff");
     }
-  }, [themeMode]);
+  }, [themeMode, isAppLocked]);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
     setSettings((prev) => ({ ...prev, themeMode: mode }));

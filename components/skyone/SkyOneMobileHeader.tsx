@@ -24,7 +24,7 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
   const { hasUpdate } = usePWAUpdate();
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 px-2.5 py-2 flex items-center justify-between gap-2 shadow-xs transition-colors">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 px-2.5 pt-safe-header pb-2 flex items-center justify-between gap-2 shadow-xs transition-colors">
       {/* Left: Drawer + SKYONE Brand */}
       <div className="flex items-center gap-1.5 min-w-0">
         <button

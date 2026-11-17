@@ -135,7 +135,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
       {/* Drawer content */}
       <div
-        className={`relative w-full max-w-[320px] text-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none ${
+        className={`relative w-full max-w-[320px] text-white h-full pt-safe pb-safe shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none ${
           activeApp === "SKYONE"
             ? "bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D]"
             : "bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D]"

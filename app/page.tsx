@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
+import { useResponsive } from "@/src/hooks/useResponsive";
 import { Sidebar } from "@/components/common/Sidebar";
 import { TopBar } from "@/components/common/TopBar";
 import { MobileDrawer } from "@/components/common/MobileDrawer";
@@ -76,19 +77,9 @@ export default function HomePage() {
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
   const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
 
-  // Responsive layout detection to prevent mounting hidden DOM tree with 0x0 Recharts containers
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+  const { isMobileShell } = useResponsive();
 
-  useEffect(() => {
-    const checkIsMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkIsMobile();
-    window.addEventListener("resize", checkIsMobile);
-    return () => window.removeEventListener("resize", checkIsMobile);
-  }, []);
-
-  if (!isLoaded || isMobile === null) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] flex">
         <aside className="w-64 bg-[#1E3A8A] dark:bg-[#0F172A] dark:border-r dark:border-slate-800 hidden md:block animate-pulse" />
@@ -190,7 +181,7 @@ export default function HomePage() {
 
       {activeApp === "LAUNCHER" ? (
         <AppLauncherView onOpenBackupModal={() => setIsBackupModalOpen(true)} />
-      ) : !isMobile ? (
+      ) : !isMobileShell ? (
         /* 1. UNIFIED DESKTOP SHELL (>= 768px) */
         <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
           {activeApp === "SKYONE" ? <SkyOneSidebar /> : <Sidebar />}
@@ -212,7 +203,7 @@ export default function HomePage() {
         </div>
       ) : (
         /* 2. UNIFIED MOBILE SHELL (< 768px) */
-        <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-24 transition-colors duration-200">
+        <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-safe-main transition-colors duration-200">
           {activeApp === "SKYONE" ? (
             <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
           ) : (

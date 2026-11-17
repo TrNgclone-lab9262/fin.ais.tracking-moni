@@ -12,7 +12,8 @@
     <meta property="og:description" content="Nền tảng quản lý tài chính tổ ấm thông minh, bảo mật cho 2 vợ chồng (Anh Chuột & Bé Mèo)." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#1E3A8A" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="HOME MONI" />
@@ -31,6 +32,8 @@
           var parsed = JSON.parse(raw);
           if (parsed && parsed.settings && parsed.settings.themeMode === "dark") {
             document.documentElement.classList.add("dark");
+            var metaTheme = document.querySelector('meta[name="theme-color"]');
+            if (metaTheme) metaTheme.setAttribute("content", "#0f172a");
           }
         }
       } catch (e) {}

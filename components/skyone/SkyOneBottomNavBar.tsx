@@ -29,7 +29,7 @@ export function SkyOneBottomNavBar() {
   return (
     <nav
       aria-label="Điều hướng SKYONE di động"
-      className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#DCE4EE] dark:border-slate-800 px-1.5 py-1.5 grid grid-cols-5 gap-1 shadow-lg transition-colors"
+      className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#DCE4EE] dark:border-slate-800 px-1.5 pt-1.5 pb-safe-nav grid grid-cols-5 gap-1 shadow-lg transition-colors"
     >
       {items.map((item) => {
         const Icon = item.icon;

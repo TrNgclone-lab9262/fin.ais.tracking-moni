@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +42,7 @@ interface AccountHint {
 
 async function startServer() {
   const app = express();
+  const httpServer = http.createServer(app);
   app.use(express.json({ limit: '12mb' }));
 
   app.get('/api/health', (_req, res) => {
@@ -358,7 +360,11 @@ Hãy viết nhận xét ngắn gọn, thực tế, mang tính động viên bằ
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        ws: { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -370,7 +376,7 @@ Hãy viết nhận xét ngắn gọn, thực tế, mang tính động viên bằ
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`HOME MONI server listening on http://0.0.0.0:${PORT}`);
   });
 }

@@ -33,7 +33,7 @@ export function PWAInstallBanner() {
 
   return (
     <>
-      <div className="bg-gradient-to-r from-[#1E3A8A] via-[#1E40AF] to-[#2563EB] text-white px-3 sm:px-4 py-2 sm:py-2.5 shadow-md flex items-center justify-between gap-3 text-xs border-b border-blue-800 animate-in slide-in-from-top duration-300">
+      <div className="bg-gradient-to-r from-[#1E3A8A] via-[#1E40AF] to-[#2563EB] text-white px-3 sm:px-4 pt-safe-header pb-2 sm:py-2.5 shadow-md flex items-center justify-between gap-3 text-xs border-b border-blue-800 animate-in slide-in-from-top duration-300">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/20">
             {isIOS ? (

@@ -1,4 +1,5 @@
 export const MOBILE_BREAKPOINT_PX = 640;
+export const MOBILE_SHELL_BREAKPOINT_PX = 768;
 export const TABLET_BREAKPOINT_PX = 1024;
 export const WIDE_BREAKPOINT_PX = 1280;
 
@@ -10,6 +11,8 @@ export interface ViewportState {
   breakpoint: ViewportBreakpoint;
   /** Viewport width < 640px */
   isMobile: boolean;
+  /** Viewport width < 768px (matches Tailwind md: shell threshold) */
+  isMobileShell: boolean;
   /** 640px <= Viewport width < 1024px */
   isTablet: boolean;
   /** Viewport width < 1024px (Mobile or Tablet) */
@@ -23,6 +26,7 @@ export function classifyViewport(width: number, height = 800): ViewportState {
   const safeHeight = Number.isFinite(height) && height > 0 ? Math.round(height) : 800;
 
   const isMobile = safeWidth < MOBILE_BREAKPOINT_PX;
+  const isMobileShell = safeWidth < MOBILE_SHELL_BREAKPOINT_PX;
   const isTablet = safeWidth >= MOBILE_BREAKPOINT_PX && safeWidth < TABLET_BREAKPOINT_PX;
   const isCompact = safeWidth < TABLET_BREAKPOINT_PX;
   const isDesktop = safeWidth >= TABLET_BREAKPOINT_PX;
@@ -41,6 +45,7 @@ export function classifyViewport(width: number, height = 800): ViewportState {
     height: safeHeight,
     breakpoint,
     isMobile,
+    isMobileShell,
     isTablet,
     isCompact,
     isDesktop,

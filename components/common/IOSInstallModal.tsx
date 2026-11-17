@@ -3,8 +3,8 @@
  * @description Modal hướng dẫn cài đặt HOME MONI lên màn hình chính cho iPhone/iPad (Safari iOS)
  */
 
-import React from 'react';
-import { X, Share, PlusSquare, Smartphone } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { X, Share, PlusSquare, Smartphone, AlertTriangle } from 'lucide-react';
 
 interface IOSInstallModalProps {
   isOpen: boolean;
@@ -12,10 +12,27 @@ interface IOSInstallModalProps {
 }
 
 export function IOSInstallModal({ isOpen, onClose }: IOSInstallModalProps) {
+  const { isInIframe, isNonSafariBrowser } = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { isInIframe: false, isNonSafariBrowser: false };
+    }
+    let inIframe = false;
+    try {
+      inIframe = window.self !== window.top;
+    } catch {
+      inIframe = true;
+    }
+    const ua = window.navigator.userAgent.toLowerCase();
+    const isApple = /iphone|ipad|ipod/.test(ua);
+    const nonSafari =
+      isApple && /(crios|fxios|edgios|opios|zalo|fban|fbav|instagram|line)/.test(ua);
+    return { isInIframe: inIframe, isNonSafariBrowser: nonSafari };
+  }, []);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 pb-safe bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in slide-in-from-bottom duration-300">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-[#F6F8FB] dark:bg-slate-800/70">
@@ -25,7 +42,7 @@ export function IOSInstallModal({ isOpen, onClose }: IOSInstallModalProps) {
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Cài đặt HOME MONI trên iPhone</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sử dụng mượt mà không thanh địa chỉ</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sử dụng toàn màn hình chuẩn PWA</p>
             </div>
           </div>
           <button
@@ -36,15 +53,26 @@ export function IOSInstallModal({ isOpen, onClose }: IOSInstallModalProps) {
           </button>
         </div>
 
-        {/* Thân hướng dẫn 3 bước */}
-        <div className="p-5 space-y-4">
+        {/* Thân hướng dẫn */}
+        <div className="p-5 space-y-3.5">
+          {(isInIframe || isNonSafariBrowser) && (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 text-amber-900 dark:text-amber-200">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <p className="text-xs leading-relaxed">
+                {isInIframe
+                  ? 'Bạn đang xem ứng dụng trong khung xem trước. Hãy mở liên kết trực tiếp của HOME MONI bằng Safari rồi mới thực hiện 3 bước dưới đây để cài đúng chế độ toàn màn hình.'
+                  : 'Hãy mở liên kết HOME MONI bằng trình duyệt Safari (biểu tượng la bàn) trước khi thêm vào màn hình chính.'}
+              </p>
+            </div>
+          )}
+
           <div className="flex items-start gap-3.5 p-3 rounded-xl bg-blue-50/60 dark:bg-blue-500/15 border border-blue-100/80 dark:border-blue-500/30">
             <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
               1
             </div>
             <div>
               <p className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                Bấm nút Chia sẻ <Share className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 inline" />
+                Mở link trực tiếp trong Safari &amp; bấm Chia sẻ <Share className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 inline" />
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
                 Trên thanh công cụ phía dưới màn hình của trình duyệt Safari.
@@ -75,7 +103,7 @@ export function IOSInstallModal({ isOpen, onClose }: IOSInstallModalProps) {
                 Nhấn &quot;Thêm&quot; (Add) ở góc trên bên phải
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                Icon HOME MONI sẽ xuất hiện trên màn hình chính như một ứng dụng thật!
+                Icon HOME MONI sẽ xuất hiện trên màn hình chính với giao diện tràn viền chuẩn Dynamic Island!
               </p>
             </div>
           </div>

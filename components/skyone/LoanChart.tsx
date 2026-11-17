@@ -235,10 +235,10 @@ export function LoanChart({
                 stroke={isDark ? "#FBBF24" : "#D97706"}
                 strokeDasharray="4 4"
                 label={{
-                  value: "Hết ưu đãi",
+                  value: isMobile ? "Hết ƯĐ" : "Hết ưu đãi",
                   position: "top",
                   fill: isDark ? "#FBBF24" : "#B45309",
-                  fontSize: 10,
+                  fontSize: isMobile ? 9 : 10,
                   fontWeight: 700,
                 }}
               />
@@ -250,10 +250,10 @@ export function LoanChart({
                 stroke={isDark ? "#34D399" : "#059669"}
                 strokeWidth={2}
                 label={{
-                  value: `Xong (${targetYears}N)`,
+                  value: isMobile ? `Xong ${targetYears}N` : `Xong (${targetYears}N)`,
                   position: "insideTopRight",
                   fill: isDark ? "#34D399" : "#047857",
-                  fontSize: 10,
+                  fontSize: isMobile ? 9 : 10,
                   fontWeight: 700,
                 }}
               />

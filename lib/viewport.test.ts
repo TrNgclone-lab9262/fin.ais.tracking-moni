@@ -2,16 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyViewport, computeResponsiveXAxisInterval } from "./viewport";
 
-test("classifyViewport phân loại chính xác Mobile (<640), Tablet (640-1023) và Desktop (>=1024)", () => {
+test("classifyViewport phân loại chính xác Mobile (<640), MobileShell (<768), Tablet (640-1023) và Desktop (>=1024)", () => {
   const mobile = classifyViewport(375, 812);
   assert.equal(mobile.isMobile, true);
+  assert.equal(mobile.isMobileShell, true);
   assert.equal(mobile.isTablet, false);
   assert.equal(mobile.isCompact, true);
   assert.equal(mobile.isDesktop, false);
   assert.equal(mobile.breakpoint, "mobile");
 
+  const smallTablet = classifyViewport(700, 1024);
+  assert.equal(smallTablet.isMobile, false);
+  assert.equal(smallTablet.isMobileShell, true);
+  assert.equal(smallTablet.isTablet, true);
+
   const tablet = classifyViewport(768, 1024);
   assert.equal(tablet.isMobile, false);
+  assert.equal(tablet.isMobileShell, false);
   assert.equal(tablet.isTablet, true);
   assert.equal(tablet.isCompact, true);
   assert.equal(tablet.isDesktop, false);
@@ -19,6 +26,7 @@ test("classifyViewport phân loại chính xác Mobile (<640), Tablet (640-1023)
 
   const desktop = classifyViewport(1024, 768);
   assert.equal(desktop.isMobile, false);
+  assert.equal(desktop.isMobileShell, false);
   assert.equal(desktop.isTablet, false);
   assert.equal(desktop.isCompact, false);
   assert.equal(desktop.isDesktop, true);
@@ -26,6 +34,7 @@ test("classifyViewport phân loại chính xác Mobile (<640), Tablet (640-1023)
 
   const wide = classifyViewport(1440, 900);
   assert.equal(wide.isDesktop, true);
+  assert.equal(wide.isMobileShell, false);
   assert.equal(wide.breakpoint, "wide");
 });
 
