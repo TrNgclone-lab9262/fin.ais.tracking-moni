@@ -2,6 +2,7 @@
 
 import React from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { triggerHaptic } from "@/lib/haptic";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -66,7 +67,10 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => {
+              triggerHaptic(isDanger ? "warning" : "success");
+              onConfirm();
+            }}
             className={`px-4 py-2 text-sm font-semibold text-white rounded-md shadow-xs transition-all cursor-pointer ${
               isDanger
                 ? "bg-rose-600 hover:bg-rose-700 active:scale-95"

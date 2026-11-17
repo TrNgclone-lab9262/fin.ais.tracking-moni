@@ -11,6 +11,7 @@ import { useFinance } from "@/context/FinanceContext";
 import { FamilyMember, ExpenseScope, TransactionType } from "@/types/finance";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
 import { ParsedReceiptResult, parseNaturalLanguageTransactions } from "@/lib/geminiReceiptService";
+import { triggerHaptic } from "@/lib/haptic";
 
 interface MobileNumpadSheetProps {
   isOpen: boolean;
@@ -84,6 +85,7 @@ export function MobileNumpadSheet({
 
   // Numpad key tap handlers
   const handleDigit = (digit: string) => {
+    triggerHaptic("light");
     if (numericAmount === 0) {
       setNumericAmount(parseInt(digit, 10));
     } else {
@@ -95,6 +97,7 @@ export function MobileNumpadSheet({
   };
 
   const handleBackspace = () => {
+    triggerHaptic("light");
     const s = numericAmount.toString();
     if (s.length <= 1) {
       setNumericAmount(0);
@@ -104,10 +107,12 @@ export function MobileNumpadSheet({
   };
 
   const handleClear = () => {
+    triggerHaptic("light");
     setNumericAmount(0);
   };
 
   const handleAppendZeros = () => {
+    triggerHaptic("light");
     if (numericAmount > 0) {
       const next = numericAmount * 1000;
       if (next.toString().length <= 12) {
@@ -117,11 +122,13 @@ export function MobileNumpadSheet({
   };
 
   const handleAddQuick = (delta: number) => {
+    triggerHaptic("light");
     setNumericAmount((prev) => prev + delta);
   };
 
   const handleSave = () => {
     if (numericAmount <= 0) {
+      triggerHaptic("error");
       setError("Vui lòng nhập số tiền lớn hơn 0");
       return;
     }
@@ -138,9 +145,11 @@ export function MobileNumpadSheet({
         note: note.trim() || undefined,
       });
 
+      triggerHaptic("success");
       if (onSuccess) onSuccess();
       onClose();
     } catch {
+      triggerHaptic("error");
       setError("Lỗi khi ghi nhận giao dịch!");
     }
   };

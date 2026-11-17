@@ -21,6 +21,7 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { AuthMemberId } from "@/types/finance";
 import { CloudAuthForm } from "@/components/auth/CloudAuthForm";
+import { triggerHaptic } from "@/lib/haptic";
 import {
   BiometricAvailability,
   MemberWallpaperMap,
@@ -182,18 +183,21 @@ export function LoginGateView() {
             return;
           }
           await setMemberPasscode(selectedMember, candidateCode);
+          triggerHaptic("success");
           unlockWithBiometricSuccess(selectedMember, switchPerspectiveOnUnlock);
           return;
         }
 
         const ok = await unlockWithPasscode(selectedMember, candidateCode);
         if (ok) {
+          triggerHaptic("success");
           if (switchPerspectiveOnUnlock) {
             unlockWithBiometricSuccess(selectedMember, true);
           }
           setFailedCount(0);
           setCodeInput("");
         } else {
+          triggerHaptic("error");
           const nextFailed = failedCount + 1;
           setFailedCount(nextFailed);
           setCodeInput("");
@@ -230,6 +234,7 @@ export function LoginGateView() {
   const handleDigitPress = useCallback(
     (digit: string) => {
       if (lockoutRemaining > 0 || isSubmitting) return;
+      triggerHaptic("light");
       setAuthError(null);
       setCodeInput((prev) => {
         if (prev.length >= 6) return prev;
@@ -282,8 +287,10 @@ export function LoginGateView() {
     try {
       const res = await verifyMemberBiometric(memberConfig.webauthnCredentialId);
       if (res.success) {
+        triggerHaptic("success");
         unlockWithBiometricSuccess(selectedMember, switchPerspectiveOnUnlock);
       } else {
+        triggerHaptic("error");
         setAuthError(res.error || "Không xác thực được Face ID. Hãy nhập mã Code.");
       }
     } finally {
