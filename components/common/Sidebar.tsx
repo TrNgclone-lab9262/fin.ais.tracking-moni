@@ -141,7 +141,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-blue-900/40 dark:border-slate-800 shadow-xl shadow-blue-950/20 sticky top-0 h-screen select-none ${
+      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-blue-900/40 dark:border-slate-800 shadow-xl shadow-blue-950/20 sticky top-0 h-screen pt-safe pb-safe select-none ${
         isCollapsed ? "w-20" : "w-64"
       }`}
     >

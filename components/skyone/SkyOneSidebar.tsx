@@ -126,7 +126,7 @@ export function SkyOneSidebar() {
 
   return (
     <aside
-      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-indigo-900/40 dark:border-slate-800 shadow-xl shadow-indigo-950/25 sticky top-0 h-screen select-none ${
+      className={`hidden md:flex flex-col bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D] text-white transition-all duration-300 relative z-30 shrink-0 border-r border-indigo-900/40 dark:border-slate-800 shadow-xl shadow-indigo-950/25 sticky top-0 h-screen pt-safe pb-safe select-none ${
         isCollapsed ? "w-20" : "w-64"
       }`}
     >

@@ -84,7 +84,7 @@ export function TopBar({
   };
 
   return (
-    <header className="bg-white dark:bg-slate-900 border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20 shadow-xs transition-colors">
+    <header className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 sticky top-0 z-20 pt-safe shadow-xs transition-colors">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-18 sm:h-20 gap-3">
           {/* Bên Trái */}

@@ -1160,10 +1160,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     if (typeof document === "undefined") return;
     const isDark = themeMode === "dark";
     document.documentElement.classList.toggle("dark", isDark);
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) {
-      metaTheme.setAttribute("content", isDark || isAppLocked ? "#0f172a" : "#ffffff");
+    let metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (!metaTheme) {
+      metaTheme = document.createElement("meta");
+      metaTheme.setAttribute("name", "theme-color");
+      document.head.appendChild(metaTheme);
     }
+    metaTheme.setAttribute("content", isDark || isAppLocked ? "#0f172a" : "#ffffff");
   }, [themeMode, isAppLocked]);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {

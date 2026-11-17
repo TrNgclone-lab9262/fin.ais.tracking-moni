@@ -27,14 +27,30 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <script>
       try {
+        var metaTheme = document.querySelector('meta[name="theme-color"]');
+        var isDarkMode = false;
+        var isLockedOnOpen = window.location.pathname === "/login";
         var raw = localStorage.getItem("HOME_MONI_DATA_V4");
         if (raw) {
           var parsed = JSON.parse(raw);
-          if (parsed && parsed.settings && parsed.settings.themeMode === "dark") {
-            document.documentElement.classList.add("dark");
-            var metaTheme = document.querySelector('meta[name="theme-color"]');
-            if (metaTheme) metaTheme.setAttribute("content", "#0f172a");
+          var s = parsed && parsed.settings;
+          if (s) {
+            if (s.themeMode === "dark") {
+              isDarkMode = true;
+              document.documentElement.classList.add("dark");
+            }
+            if (
+              s.requireAuthOnOpen ||
+              Boolean(s.pinCode) ||
+              Boolean(s.husbandAuth && s.husbandAuth.passcodeHash) ||
+              Boolean(s.wifeAuth && s.wifeAuth.passcodeHash)
+            ) {
+              isLockedOnOpen = true;
+            }
           }
+        }
+        if (metaTheme) {
+          metaTheme.setAttribute("content", isDarkMode || isLockedOnOpen ? "#0f172a" : "#ffffff");
         }
       } catch (e) {}
     </script>
