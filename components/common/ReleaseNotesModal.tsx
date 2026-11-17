@@ -23,14 +23,14 @@ export function ReleaseNotesModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 pt-safe sm:p-4 animate-in fade-in duration-150"
       onClick={closeReleaseNotes}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="release-notes-title"
-        className="w-full sm:max-w-lg bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-[#DCE4EE] dark:border-slate-800 overflow-hidden max-h-[88vh] flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        className="w-full sm:max-w-lg bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-[#DCE4EE] dark:border-slate-800 overflow-hidden max-h-[88vh] pb-safe sm:pb-0 flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

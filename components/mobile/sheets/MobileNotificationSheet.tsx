@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Bell, Check, Repeat, AlertTriangle } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { getCurrentMonthKey } from "@/lib/formatters";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface MobileNotificationSheetProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export function MobileNotificationSheet({
   } = useFinance();
 
   const [appliedMsg, setAppliedMsg] = useState<string | null>(null);
+  const haptic = useHaptic();
 
   if (!isOpen) return null;
 
@@ -34,6 +36,7 @@ export function MobileNotificationSheet({
   const handleApplyAllRecurring = () => {
     const count = applyAllPendingRecurringRules(activeMonth);
     if (count > 0) {
+      haptic.success();
       setAppliedMsg(`Đã ghi sổ ${count} giao dịch định kỳ cho kỳ ${activeMonth}.`);
       setTimeout(() => setAppliedMsg(null), 3500);
     }
@@ -41,14 +44,14 @@ export function MobileNotificationSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end justify-center md:hidden animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end justify-center pt-safe md:hidden animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Cảnh báo và nhắc nhở gia đình"
-        className="w-full bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl border-t border-slate-200 dark:border-slate-800 max-h-[82vh] flex flex-col animate-in slide-in-from-bottom duration-200"
+        className="w-full bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl border-t border-slate-200 dark:border-slate-800 max-h-[82vh] pb-safe flex flex-col animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
@@ -129,9 +132,12 @@ export function MobileNotificationSheet({
                   </div>
                   <button
                     type="button"
-                    onClick={() => markNotificationRead(n.id)}
+                    onClick={() => {
+                      haptic.light();
+                      markNotificationRead(n.id);
+                    }}
                     aria-label="Đánh dấu đã đọc"
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center cursor-pointer shrink-0"
+                    className="min-w-[36px] min-h-[36px] rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
                   >
                     <Check className="w-4 h-4" />
                   </button>

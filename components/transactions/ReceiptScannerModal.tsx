@@ -21,6 +21,7 @@ import {
 import { formatVND } from "@/lib/formatters";
 import { useFinance, TransactionInput } from "@/context/FinanceContext";
 import { FamilyMember, ExpenseScope } from "@/types/finance";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface ReceiptScannerModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export function ReceiptScannerModal({
   onApplyTransactions,
 }: ReceiptScannerModalProps) {
   const { categories, accounts, activePerspective, settings } = useFinance();
+  const haptic = useHaptic();
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -163,12 +165,13 @@ export function ReceiptScannerModal({
       });
     }
 
+    haptic.success();
     onClose();
     handleReset();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-safe pb-safe bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-[#F6F8FB] dark:bg-slate-800/80">

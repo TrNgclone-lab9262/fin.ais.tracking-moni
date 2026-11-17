@@ -305,7 +305,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
               type="button"
               data-testid="loan-editor-unlock-btn"
               onClick={handleUnlock}
-              className="min-h-[40px] px-4 py-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="min-h-[40px] px-4 py-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-xs font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Unlock className="w-3.5 h-3.5" />
               <span>Mở khóa</span>
@@ -316,7 +316,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
                 type="button"
                 data-testid="loan-editor-cancel-btn"
                 onClick={handleCancelAndLock}
-                className="min-h-[40px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[40px] px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Hủy &amp; Khóa</span>
@@ -325,7 +325,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
                 type="submit"
                 form="skyone-loan-editor-form"
                 data-testid="loan-editor-save-btn"
-                className="min-h-[40px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[40px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Lưu &amp; Khóa</span>
@@ -701,7 +701,7 @@ export function LoanEditor({ onSaved }: LoanEditorProps) {
                     type="button"
                     data-testid="loan-editor-clear-all-btn"
                     onClick={resetOverridesToContext}
-                    className="min-h-[32px] px-2.5 py-1 rounded-md border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                    className="min-h-[32px] px-2.5 py-1 rounded-md border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-bold inline-flex items-center gap-1 transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>Khôi phục tất cả</span>

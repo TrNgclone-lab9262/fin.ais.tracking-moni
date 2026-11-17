@@ -26,6 +26,7 @@ import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
 import { SkyOneRouteTab } from "@/types/finance";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface MobileDrawerProps {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
+  const haptic = useHaptic();
 
   if (!isOpen) return null;
 
@@ -116,11 +118,13 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   ];
 
   const handleSelectTab = (tab: NavTab) => {
+    haptic.light();
     setActiveTab(tab);
     onClose();
   };
 
   const handleSelectSkyOneTab = (tab: SkyOneRouteTab) => {
+    haptic.light();
     setSkyoneTab(tab);
     onClose();
   };
@@ -164,9 +168,12 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             </div>
 
             <button
-              onClick={onClose}
+              onClick={() => {
+                haptic.light();
+                onClose();
+              }}
               aria-label="Đóng menu"
-              className="p-1.5 rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="p-1.5 rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition-all active:scale-95 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -190,8 +197,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             <div className="grid grid-cols-3 gap-1 bg-blue-900/40 dark:bg-slate-800/80 p-1 rounded-lg text-xs font-bold">
               <button
                 type="button"
-                onClick={() => setActivePerspective("ALL")}
-                className={`py-1 rounded-md transition-all cursor-pointer ${
+                onClick={() => {
+                  haptic.light();
+                  setActivePerspective("ALL");
+                }}
+                className={`py-1 rounded-md transition-all active:scale-95 cursor-pointer ${
                   activePerspective === "ALL"
                     ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
                     : "text-blue-200 dark:text-slate-300 hover:text-white"
@@ -201,8 +211,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setActivePerspective("HUSBAND")}
-                className={`py-1 rounded-md transition-all cursor-pointer ${
+                onClick={() => {
+                  haptic.light();
+                  setActivePerspective("HUSBAND");
+                }}
+                className={`py-1 rounded-md transition-all active:scale-95 cursor-pointer ${
                   activePerspective === "HUSBAND"
                     ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
                     : "text-blue-200 dark:text-slate-300 hover:text-white"
@@ -212,8 +225,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setActivePerspective("WIFE")}
-                className={`py-1 rounded-md transition-all cursor-pointer ${
+                onClick={() => {
+                  haptic.light();
+                  setActivePerspective("WIFE");
+                }}
+                className={`py-1 rounded-md transition-all active:scale-95 cursor-pointer ${
                   activePerspective === "WIFE"
                     ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-xs"
                     : "text-blue-200 dark:text-slate-300 hover:text-white"
@@ -234,7 +250,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                     <button
                       key={item.id}
                       onClick={() => handleSelectSkyOneTab(item.id)}
-                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
                         isActive
                           ? "bg-white dark:bg-indigo-600 text-indigo-950 dark:text-white shadow-md font-black"
                           : "text-indigo-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
@@ -259,7 +275,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                     <button
                       key={item.id}
                       onClick={() => handleSelectTab(item.id)}
-                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
                         isActive
                           ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
                           : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
@@ -291,10 +307,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
           <button
             type="button"
             onClick={() => {
+              haptic.medium();
               onClose();
               lockApp();
             }}
-            className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Khóa & Mở màn hình /login</span>

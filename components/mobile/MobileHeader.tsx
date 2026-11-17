@@ -5,6 +5,7 @@ import { Menu, Home, RefreshCw, Camera, Eye, EyeOff, Bell, Lock, Sun, Moon } fro
 import { useFinance, PerspectiveMode } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface MobileHeaderProps {
   onOpenDrawer: () => void;
@@ -33,6 +34,7 @@ export function MobileHeader({
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
+  const haptic = useHaptic();
 
   const perspectives: { id: PerspectiveMode; label: string; icon: string }[] = [
     { id: "ALL", label: "Chung", icon: "🏡" },
@@ -46,9 +48,12 @@ export function MobileHeader({
       {/* Nút Hamburger + Logo Brand */}
       <div className="flex items-center gap-1 min-[390px]:gap-1.5 shrink-0">
         <button
-          onClick={onOpenDrawer}
+          onClick={() => {
+            haptic.light();
+            onOpenDrawer();
+          }}
           aria-label={hasUpdate ? "Mở menu tổ ấm (Có bản cập nhật mới)" : "Mở menu tổ ấm"}
-          className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+          className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 active:scale-95 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-all cursor-pointer shrink-0"
         >
           <Menu className="w-4 h-4" />
           {hasUpdate && (
@@ -78,8 +83,11 @@ export function MobileHeader({
           return (
             <button
               key={p.id}
-              onClick={() => setActivePerspective(p.id)}
-              className={`flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+              onClick={() => {
+                haptic.light();
+                setActivePerspective(p.id);
+              }}
+              className={`flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
                 isActive
                   ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-300 shadow-xs"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
@@ -96,11 +104,14 @@ export function MobileHeader({
         {/* Light / Dark Toggle */}
         <button
           type="button"
-          onClick={toggleThemeMode}
+          onClick={() => {
+            haptic.light();
+            toggleThemeMode();
+          }}
           data-testid="mobile-theme-toggle"
           aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
           title={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             themeMode === "dark"
               ? "bg-slate-800 text-amber-300 border-slate-700"
               : "bg-slate-100 text-slate-700 border-slate-200/80"
@@ -111,10 +122,13 @@ export function MobileHeader({
 
         {/* Privacy Eye Toggle */}
         <button
-          onClick={togglePrivacyMode}
+          onClick={() => {
+            haptic.light();
+            togglePrivacyMode();
+          }}
           aria-label={isPrivacyMode ? "Hiện số tiền" : "Ẩn số tiền nhạy cảm"}
           title={isPrivacyMode ? "Hiện số tiền" : "Ẩn số tiền nhạy cảm"}
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             isPrivacyMode
               ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
@@ -127,10 +141,13 @@ export function MobileHeader({
         {onOpenNotifications && (
           <button
             type="button"
-            onClick={onOpenNotifications}
+            onClick={() => {
+              haptic.light();
+              onOpenNotifications();
+            }}
             aria-label="Thông báo & cảnh báo"
             title="Cảnh báo gia đình"
-            className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center transition-all cursor-pointer"
+            className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
           >
             <Bell className="w-3.5 h-3.5" />
             {notifications.length > 0 && (
@@ -144,10 +161,13 @@ export function MobileHeader({
         {/* Khóa /login */}
         <button
           type="button"
-          onClick={lockApp}
+          onClick={() => {
+            haptic.medium();
+            lockApp();
+          }}
           aria-label="Khóa ứng dụng"
           title="Mở màn hình khóa /login"
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             hasPasscodeProtection
               ? "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-800"
               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
@@ -159,9 +179,12 @@ export function MobileHeader({
         {/* Nút Quét Hóa Đơn AI Nhanh */}
         {onOpenScanner && (
           <button
-            onClick={onOpenScanner}
+            onClick={() => {
+              haptic.light();
+              onOpenScanner();
+            }}
             aria-label="Quét hóa đơn bằng AI"
-            className="w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 active:bg-indigo-100 text-indigo-600 dark:text-indigo-300 flex items-center justify-center transition-all cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
+            className="w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 active:bg-indigo-100 text-indigo-600 dark:text-indigo-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
             title="Quét hóa đơn thông minh"
           >
             <Camera className="w-3.5 h-3.5" />

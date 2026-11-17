@@ -37,7 +37,7 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
                 haptic.light();
                 setActiveTab(item.id);
               }}
-              className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
+              className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all active:scale-95 min-h-[44px] min-w-[56px] justify-center cursor-pointer ${
                 isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
@@ -80,7 +80,7 @@ export function BottomNavBar({ onOpenAddModal }: BottomNavBarProps) {
                 haptic.light();
                 setActiveTab(item.id);
               }}
-              className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all min-h-[44px] min-w-[56px] justify-center ${
+              className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-all active:scale-95 min-h-[44px] min-w-[56px] justify-center cursor-pointer ${
                 isActive ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >

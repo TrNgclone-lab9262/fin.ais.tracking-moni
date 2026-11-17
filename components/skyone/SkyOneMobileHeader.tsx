@@ -5,6 +5,7 @@ import { Menu, Building2, Eye, EyeOff, Lock, Sun, Moon } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface SkyOneMobileHeaderProps {
   onOpenDrawer: () => void;
@@ -22,6 +23,7 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
   } = useFinance();
 
   const { hasUpdate } = usePWAUpdate();
+  const haptic = useHaptic();
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 pt-safe shadow-xs transition-colors">
@@ -30,9 +32,12 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
       <div className="flex items-center gap-1.5 min-w-0">
         <button
           type="button"
-          onClick={onOpenDrawer}
+          onClick={() => {
+            haptic.light();
+            onOpenDrawer();
+          }}
           aria-label="Mở menu ứng dụng"
-          className="relative w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+          className="relative w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
         >
           <Menu className="w-4 h-4" />
           {hasUpdate && (
@@ -62,9 +67,12 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
 
         <button
           type="button"
-          onClick={toggleThemeMode}
+          onClick={() => {
+            haptic.light();
+            toggleThemeMode();
+          }}
           aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer border ${
+          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             themeMode === "dark"
               ? "bg-slate-800 text-amber-300 border-slate-700"
               : "bg-slate-100 text-slate-700 border-slate-200/80"
@@ -75,9 +83,12 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
 
         <button
           type="button"
-          onClick={togglePrivacyMode}
+          onClick={() => {
+            haptic.light();
+            togglePrivacyMode();
+          }}
           aria-label={isPrivacyMode ? "Hiện số tiền" : "Ẩn số tiền"}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer border ${
+          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             isPrivacyMode
               ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
@@ -89,9 +100,12 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
         {hasPasscodeProtection && (
           <button
             type="button"
-            onClick={lockApp}
+            onClick={() => {
+              haptic.medium();
+              lockApp();
+            }}
             aria-label="Khóa ứng dụng"
-            className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center cursor-pointer"
+            className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
           >
             <Lock className="w-3.5 h-3.5" />
           </button>

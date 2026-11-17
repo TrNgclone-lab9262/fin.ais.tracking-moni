@@ -8,6 +8,7 @@ import { Transaction } from "@/types/finance";
 import { MobileMonthSelector } from "@/components/mobile/MobileMonthSelector";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface MobileTransactionsViewProps {
   onOpenAddModal: () => void;
@@ -28,6 +29,7 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
     getSkyOneLinkForTransaction,
     switchSubApp,
   } = useFinance();
+  const haptic = useHaptic();
 
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("ALL");
   const [search, setSearch] = useState("");
@@ -86,8 +88,11 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           />
         </div>
         <button
-          onClick={onOpenAddModal}
-          className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs shrink-0 cursor-pointer"
+          onClick={() => {
+            haptic.light();
+            onOpenAddModal();
+          }}
+          className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs shrink-0 transition-all active:scale-95 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>Ghi 3s</span>
@@ -186,8 +191,11 @@ export function MobileTransactionsView({ onOpenAddModal }: MobileTransactionsVie
           </div>
 
           <button
-            onClick={onOpenAddModal}
-            className="w-full max-w-xs mx-auto py-3 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            onClick={() => {
+              haptic.light();
+              onOpenAddModal();
+            }}
+            className="w-full max-w-xs mx-auto py-3 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>+ GHI CHÉP GIAO DỊCH (3S)</span>

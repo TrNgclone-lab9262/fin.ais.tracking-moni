@@ -81,14 +81,16 @@ export default function HomePage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] flex">
-        <aside className="w-64 bg-[#1E3A8A] dark:bg-[#0F172A] dark:border-r dark:border-slate-800 hidden md:block animate-pulse" />
+      <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] flex pt-safe pb-safe">
+        <aside className="w-64 bg-[#1E3A8A] dark:bg-[#0F172A] dark:border-r dark:border-slate-800 hidden md:block pt-safe pb-safe animate-pulse" />
         <div className="flex-1 flex flex-col">
-          <header className="h-20 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-pulse" />
-          <main className="p-8 space-y-6">
-            <div className="grid grid-cols-4 gap-4">
+          <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 pt-safe animate-pulse">
+            <div className="h-16 md:h-20" />
+          </header>
+          <main className="p-4 sm:p-8 space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl animate-pulse" />
+                <div key={i} className="h-28 sm:h-32 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl animate-pulse" />
               ))}
             </div>
             <div className="h-80 bg-slate-200/80 dark:bg-slate-800/80 rounded-xl animate-pulse" />

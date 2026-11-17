@@ -23,6 +23,7 @@ import { useFinance, NavTab } from "@/context/FinanceContext";
 import { getMonthDisplayLabel } from "@/lib/formatters";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
+import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface TopBarProps {
   onOpenAddModal: () => void;
@@ -67,6 +68,7 @@ export function TopBar({
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [isCloudAuthOpen, setIsCloudAuthOpen] = useState(false);
+  const haptic = useHaptic();
 
   const pendingRecurringCount = recurringRules.filter(
     (r) => r.isActive && r.lastAppliedMonth !== (selectedMonth === "ALL" ? availableMonths[0] : selectedMonth)
@@ -366,7 +368,10 @@ export function TopBar({
             {/* Quét hóa đơn AI */}
             {onOpenScanner && (
               <button
-                onClick={onOpenScanner}
+                onClick={() => {
+                  haptic.light();
+                  onOpenScanner();
+                }}
                 title="Quét hóa đơn thông minh bằng Gemini Vision AI"
                 className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs font-bold text-indigo-700 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 rounded-md transition-all shadow-xs cursor-pointer active:scale-95"
               >
@@ -378,7 +383,10 @@ export function TopBar({
 
             {/* Thêm giao dịch */}
             <button
-              onClick={onOpenAddModal}
+              onClick={() => {
+                haptic.light();
+                onOpenAddModal();
+              }}
               className="flex items-center gap-1.5 px-3.5 py-1.5 sm:py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-md transition-all shadow-xs active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />

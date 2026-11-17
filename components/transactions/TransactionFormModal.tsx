@@ -217,7 +217,7 @@ export function TransactionFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-safe pb-safe bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden border border-[#DCE4EE] dark:border-slate-800 flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}

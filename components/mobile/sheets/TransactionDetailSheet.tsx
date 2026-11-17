@@ -42,7 +42,7 @@ export function TransactionDetailSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end bg-[#0B132B]/60 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-[#0B132B]/60 backdrop-blur-xs pt-safe animate-in fade-in duration-200"
       onClick={onClose}
     >
       {/* Vùng Backdrop phía trên */}
@@ -55,7 +55,7 @@ export function TransactionDetailSheet({
 
       {/* Container Bottom Sheet Modal */}
       <div
-        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-5 space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[85vh]"
+        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-5 pb-safe space-y-3.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}

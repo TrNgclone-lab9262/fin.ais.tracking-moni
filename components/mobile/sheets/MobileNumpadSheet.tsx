@@ -159,7 +159,7 @@ export function MobileNumpadSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end bg-[#0B132B]/60 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-[#0B132B]/60 backdrop-blur-xs pt-safe animate-in fade-in duration-200"
       onClick={onClose}
     >
       {/* Top Backdrop Area with Dynamic Island */}
@@ -172,7 +172,7 @@ export function MobileNumpadSheet({
 
       {/* Bottom Sheet Container */}
       <div
-        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-4 space-y-2.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col select-none"
+        className="w-full max-w-lg mx-auto bg-white dark:bg-slate-900 rounded-t-[32px] shadow-2xl border-t border-slate-200 dark:border-slate-800 p-4 pb-safe space-y-2.5 animate-in slide-in-from-bottom duration-200 overflow-hidden flex flex-col select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle */}
@@ -203,7 +203,7 @@ export function MobileNumpadSheet({
           </div>
           <button
             onClick={handleSave}
-            className="text-xs font-bold bg-[#2563EB] text-white px-3 py-1.5 rounded-lg shadow-xs hover:bg-blue-700 cursor-pointer"
+            className="text-xs font-bold bg-[#2563EB] text-white px-3 py-1.5 rounded-lg shadow-xs hover:bg-blue-700 transition-all active:scale-95 cursor-pointer"
           >
             Lưu GD
           </button>
@@ -416,7 +416,7 @@ export function MobileNumpadSheet({
               key={digit}
               type="button"
               onClick={() => handleDigit(digit)}
-              className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
+              className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 active:scale-95 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-all flex items-center justify-center cursor-pointer"
             >
               {digit}
             </button>
@@ -426,7 +426,7 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={handleClear}
-            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 active:scale-95 text-sm font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center cursor-pointer"
           >
             C
           </button>
@@ -434,7 +434,7 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={() => handleDigit("0")}
-            className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 active:scale-95 border border-slate-200/80 dark:border-slate-700 text-lg font-black text-[#172B4D] dark:text-slate-100 shadow-2xs transition-all flex items-center justify-center cursor-pointer"
           >
             0
           </button>
@@ -442,7 +442,7 @@ export function MobileNumpadSheet({
           <button
             type="button"
             onClick={handleBackspace}
-            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center cursor-pointer"
+            className="h-11 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 dark:active:bg-slate-600 active:scale-95 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center cursor-pointer"
           >
             <Delete className="w-5 h-5" />
           </button>

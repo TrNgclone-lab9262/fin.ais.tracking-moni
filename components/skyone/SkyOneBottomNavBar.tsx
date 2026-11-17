@@ -45,7 +45,7 @@ export function SkyOneBottomNavBar() {
               haptic.light();
               setSkyoneTab(item.id);
             }}
-            className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-lg min-h-[44px] transition-colors cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-lg min-h-[44px] transition-all active:scale-95 cursor-pointer ${
               isActive
                 ? "text-indigo-700 dark:text-indigo-300 font-bold"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
