@@ -28,6 +28,7 @@ export const CategorySchema = z.object({
   color: z.string().min(1),
   icon: z.string().optional(),
   isDefault: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
 });
 
 export const AccountSchema = z.object({
@@ -130,6 +131,13 @@ export const MemberAuthConfigSchema = z.object({
   updatedAt: z.string().optional(),
 });
 
+export const QuickAuthViewIdSchema = z.enum(["accounts", "debts_invest", "data_admin"]);
+
+export const QuickAuthSettingsSchema = z.object({
+  enabled: z.boolean(),
+  protectedViews: z.array(QuickAuthViewIdSchema),
+});
+
 export const AppSettingsSchema = z.object({
   themeColor: z.enum(["blue", "purple", "pink", "green", "orange"]),
   themeMode: z.enum(["light", "dark"]).optional(),
@@ -147,6 +155,7 @@ export const AppSettingsSchema = z.object({
   husbandAuth: MemberAuthConfigSchema.optional(),
   wifeAuth: MemberAuthConfigSchema.optional(),
   requireAuthForDangerActions: z.boolean().optional(),
+  quickAuth: QuickAuthSettingsSchema.optional(),
 });
 
 export const MortgagePrepaymentPenaltyTierSchema = z.object({
@@ -236,6 +245,19 @@ export const MortgageContractSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const SavingsChallengeSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetAmount: z.number().positive(),
+  manualSavedAmount: z.number().nonnegative(),
+  trackingMode: z.enum(["AUTO_SURPLUS", "MANUAL"]),
+  color: z.string().min(1),
+  memberId: z.enum(["HUSBAND", "WIFE", "SHARED"]).optional(),
+  icon: z.string().optional(),
+  createdAt: z.string(),
+});
+
 export const AppDataBackupSchema = z.object({
   version: z.string(),
   exportedAt: z.string(),
@@ -247,6 +269,7 @@ export const AppDataBackupSchema = z.object({
   debts: z.array(DebtItemSchema).optional(),
   investments: z.array(InvestmentItemSchema).optional(),
   recurringRules: z.array(RecurringRuleSchema).optional(),
+  savingsChallenges: z.array(SavingsChallengeSchema).optional(),
   settings: AppSettingsSchema.optional(),
   skyoneLoan: MortgageContractSchema.optional(),
 });

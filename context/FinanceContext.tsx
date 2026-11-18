@@ -39,6 +39,8 @@ import {
   SkyOneTransactionLink,
   BudgetProgressItem,
   MortgagePeriodCashflowOverride,
+  QuickAuthViewId,
+  SavingsChallenge,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -56,7 +58,7 @@ import {
   MergeOptions,
   StoredAppStateV3,
 } from "@/lib/storage";
-import { getCurrentMonthKey } from "@/lib/formatters";
+import { formatVNDMasked, getCurrentMonthKey } from "@/lib/formatters";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import {
   DEFAULT_ACCOUNTS,
@@ -66,6 +68,7 @@ import {
   DEFAULT_INVESTMENTS,
   DEFAULT_SETTINGS,
   DEFAULT_RECURRING_RULES,
+  DEFAULT_SAVINGS_CHALLENGES,
 } from "@/constants/mockData";
 import {
   calculateDaysRemainingInMonth,
@@ -76,10 +79,13 @@ import {
   CoupleSettlementResult,
   CreditCardCycleStatus,
 } from "@/lib/financeEngine";
+import { restoreDefaultCategoriesList } from "@/lib/categoryUtils";
 import {
   hashPasscode,
   verifyPasscode,
   hasAnyAppPasscode,
+  hasAnyAuthCredential,
+  isQuickAuthViewProtected,
   getMemberAuthConfig,
 } from "@/lib/authSecurity";
 import {
@@ -114,11 +120,13 @@ import {
 } from "@/lib/appRouting";
 import {
   BrowserNotificationStatus,
+  findRecurringExpenseReminders,
   getBrowserNotificationPermission,
   isBrowserNotificationOptedIn,
   requestBrowserNotificationAccess,
   setBrowserNotificationOptIn,
   triggerBudgetThresholdNotifications,
+  triggerRecurringExpenseNotifications,
 } from "@/lib/browserNotifications";
 
 export type NavTab = FinanceTab;
@@ -219,9 +227,20 @@ interface FinanceContextType {
   togglePrivacyMode: () => void;
   isAppLocked: boolean;
   hasPasscodeProtection: boolean;
+  hasAuthCredential: boolean;
+  unlockedProtectedViews: QuickAuthViewId[];
+  isViewProtectedByQuickAuth: (view: QuickAuthViewId) => boolean;
+  isViewUnlockedInSession: (view: QuickAuthViewId) => boolean;
+  unlockProtectedView: (view: QuickAuthViewId) => void;
+  toggleQuickAuthView: (view: QuickAuthViewId, enabled: boolean) => void;
+  verifyMemberPasscode: (member: AuthMemberId, code: string) => Promise<boolean>;
   unlockWithPasscode: (member: AuthMemberId, code: string) => Promise<boolean>;
   unlockWithBiometricSuccess: (member: AuthMemberId, switchPerspective?: boolean) => void;
-  setMemberPasscode: (member: AuthMemberId, newCode: string) => Promise<void>;
+  setMemberPasscode: (
+    member: AuthMemberId,
+    newCode: string,
+    options?: { enableEntryLock?: boolean }
+  ) => Promise<void>;
   clearMemberPasscode: (member: AuthMemberId) => void;
   updateMemberAuthConfig: (member: AuthMemberId, patch: Partial<MemberAuthConfig>) => void;
   lockApp: () => void;
@@ -235,6 +254,7 @@ interface FinanceContextType {
   debts: DebtItem[];
   investments: InvestmentItem[];
   recurringRules: RecurringRule[];
+  savingsChallenges: SavingsChallenge[];
   settings: AppSettings;
   notifications: AppNotification[];
 
@@ -261,6 +281,8 @@ interface FinanceContextType {
   addCategory: (cat: Omit<Category, "id">) => Category;
   updateCategory: (id: string, cat: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
+  toggleCategoryVisibility: (id: string) => void;
+  restoreDefaultCategories: () => number;
 
   // CRUD Giao dịch
   addTransaction: (data: TransactionInput) => Transaction;
@@ -282,6 +304,12 @@ interface FinanceContextType {
   updateGoal: (id: string, goal: Partial<SavingsGoal>) => void;
   deleteGoal: (id: string) => void;
   depositGoal: (id: string, amount: number, sourceAccountId?: string) => void;
+  addSavingsChallenge: (
+    challenge: Omit<SavingsChallenge, "id" | "createdAt">
+  ) => SavingsChallenge;
+  updateSavingsChallenge: (id: string, patch: Partial<SavingsChallenge>) => void;
+  deleteSavingsChallenge: (id: string) => void;
+  contributeSavingsChallenge: (id: string, deltaAmount: number) => void;
 
   // Quản lý Nợ & Đầu tư
   addDebt: (debt: Omit<DebtItem, "id">) => void;
@@ -399,11 +427,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [debts, setDebts] = useState<DebtItem[]>(DEFAULT_DEBTS);
   const [investments, setInvestments] = useState<InvestmentItem[]>(DEFAULT_INVESTMENTS);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEFAULT_RECURRING_RULES);
+  const [savingsChallenges, setSavingsChallenges] = useState<SavingsChallenge[]>(
+    DEFAULT_SAVINGS_CHALLENGES
+  );
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [skyoneLoan, setSkyoneLoan] = useState<MortgageContract>(() => createDefaultSkyOneLoan());
   const [skyoneAutoSyncedNotice, setSkyoneAutoSyncedNotice] = useState<string | null>(null);
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
+  const [unlockedProtectedViews, setUnlockedProtectedViews] = useState<QuickAuthViewId[]>([]);
   const [browserNotifStatus, setBrowserNotifStatus] =
     useState<BrowserNotificationStatus>("default");
   const [browserNotifEnabled, setBrowserNotifEnabled] = useState<boolean>(false);
@@ -420,6 +452,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts: DEFAULT_DEBTS,
     investments: DEFAULT_INVESTMENTS,
     recurringRules: DEFAULT_RECURRING_RULES,
+    savingsChallenges: DEFAULT_SAVINGS_CHALLENGES,
     settings: DEFAULT_SETTINGS,
     skyoneLoan: createDefaultSkyOneLoan(),
   });
@@ -438,6 +471,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     };
@@ -450,6 +484,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts,
     investments,
     recurringRules,
+    savingsChallenges,
     settings,
     skyoneLoan,
   ]);
@@ -853,6 +888,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setDebts(data.debts);
     setInvestments(data.investments);
     setRecurringRules(data.recurringRules || DEFAULT_RECURRING_RULES);
+    setSavingsChallenges(data.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
     setSettings(data.settings);
     const { contract: reconciledOnLoad } = reconcileBidvSkyOneContract(data.skyoneLoan);
     setSkyoneLoan(reconciledOnLoad);
@@ -888,7 +924,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     }
 
     const isDirectLoginRoute = Boolean(initialRoute?.isLoginRoute);
-    if (hasAnyAppPasscode(data.settings) || data.settings.requireAuthOnOpen || isDirectLoginRoute) {
+    const hasConfiguredCredential = hasAnyAuthCredential(data.settings);
+    const shouldLockOnStartup =
+      data.settings.requireAuthOnOpen !== undefined
+        ? Boolean(data.settings.requireAuthOnOpen) && hasConfiguredCredential
+        : hasAnyAppPasscode(data.settings);
+    if (shouldLockOnStartup || isDirectLoginRoute) {
       setIsAppLocked(true);
     }
 
@@ -1111,6 +1152,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     });
@@ -1123,6 +1165,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts,
     investments,
     recurringRules,
+    savingsChallenges,
     settings,
     skyoneLoan,
     isLoaded,
@@ -1183,12 +1226,46 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // Privacy, /login Route & Multi-Member Security Lock
   const isPrivacyMode = Boolean(settings.privacyMode);
   const hasPasscodeProtection = useMemo(() => hasAnyAppPasscode(settings), [settings]);
+  const hasAuthCredential = useMemo(() => hasAnyAuthCredential(settings), [settings]);
+
+  const isViewProtectedByQuickAuth = useCallback(
+    (view: QuickAuthViewId) => isQuickAuthViewProtected(settings, view),
+    [settings]
+  );
+
+  const isViewUnlockedInSession = useCallback(
+    (view: QuickAuthViewId) => unlockedProtectedViews.includes(view),
+    [unlockedProtectedViews]
+  );
+
+  const unlockProtectedView = useCallback((view: QuickAuthViewId) => {
+    setUnlockedProtectedViews((prev) => (prev.includes(view) ? prev : [...prev, view]));
+  }, []);
+
+  const toggleQuickAuthView = useCallback((view: QuickAuthViewId, enabled: boolean) => {
+    setSettings((prev) => {
+      const currentViews = prev.quickAuth?.protectedViews || [];
+      const nextViews = enabled
+        ? Array.from(new Set([...currentViews, view]))
+        : currentViews.filter((v) => v !== view);
+      return {
+        ...prev,
+        quickAuth: {
+          enabled: nextViews.length > 0,
+          protectedViews: nextViews,
+        },
+      };
+    });
+    if (!enabled) {
+      setUnlockedProtectedViews((prev) => prev.filter((v) => v !== view));
+    }
+  }, []);
 
   const togglePrivacyMode = useCallback(() => {
     setSettings((prev) => ({ ...prev, privacyMode: !prev.privacyMode }));
   }, []);
 
-  const unlockWithPasscode = useCallback(
+  const verifyMemberPasscode = useCallback(
     async (member: AuthMemberId, code: string): Promise<boolean> => {
       const cleaned = code.trim();
       const memberCfg = getMemberAuthConfig(settings, member);
@@ -1220,6 +1297,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         isValid = true;
       }
 
+      return isValid;
+    },
+    [settings]
+  );
+
+  const unlockWithPasscode = useCallback(
+    async (member: AuthMemberId, code: string): Promise<boolean> => {
+      const isValid = await verifyMemberPasscode(member, code);
       if (isValid) {
         setIsAppLocked(false);
         setActiveApp("LAUNCHER");
@@ -1232,7 +1317,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
       return false;
     },
-    [settings]
+    [verifyMemberPasscode]
   );
 
   const unlockWithBiometricSuccess = useCallback(
@@ -1251,21 +1336,35 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const setMemberPasscode = useCallback(async (member: AuthMemberId, newCode: string) => {
-    const { hash, salt } = await hashPasscode(newCode);
-    setSettings((prev) => ({
-      ...prev,
-      pinCode: "",
-      requireAuthOnOpen: true,
-      authActiveProfile: member,
-      [member === "HUSBAND" ? "husbandAuth" : "wifeAuth"]: {
-        ...getMemberAuthConfig(prev, member),
-        passcodeHash: hash,
-        passcodeSalt: salt,
-        updatedAt: new Date().toISOString(),
-      },
-    }));
-  }, []);
+  const setMemberPasscode = useCallback(
+    async (member: AuthMemberId, newCode: string, options?: { enableEntryLock?: boolean }) => {
+      const { hash, salt } = await hashPasscode(newCode);
+      setSettings((prev) => {
+        const hasQuickAuthViews = Boolean(
+          prev.quickAuth?.enabled && (prev.quickAuth?.protectedViews?.length ?? 0) > 0
+        );
+        const nextRequireOnOpen =
+          options?.enableEntryLock !== undefined
+            ? options.enableEntryLock
+            : prev.requireAuthOnOpen !== undefined
+            ? prev.requireAuthOnOpen
+            : !hasQuickAuthViews;
+        return {
+          ...prev,
+          pinCode: "",
+          requireAuthOnOpen: nextRequireOnOpen,
+          authActiveProfile: member,
+          [member === "HUSBAND" ? "husbandAuth" : "wifeAuth"]: {
+            ...getMemberAuthConfig(prev, member),
+            passcodeHash: hash,
+            passcodeSalt: salt,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      });
+    },
+    []
+  );
 
   const clearMemberPasscode = useCallback((member: AuthMemberId) => {
     setSettings((prev) => {
@@ -1282,7 +1381,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         pinCode: "",
         [targetKey]: updatedTarget,
       };
-      if (!hasAnyAppPasscode(nextSettings)) {
+      if (!hasAnyAuthCredential(nextSettings)) {
         nextSettings.requireAuthOnOpen = false;
       }
       return nextSettings;
@@ -1308,6 +1407,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   );
 
   const lockApp = useCallback(() => {
+    setUnlockedProtectedViews([]);
     setIsAppLocked(true);
     if (typeof window !== "undefined" && window.location.pathname !== "/login") {
       window.history.pushState(null, "", "/login");
@@ -1329,8 +1429,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     const handlePopState = () => {
       if (window.location.pathname === "/login") {
+        setUnlockedProtectedViews([]);
         setIsAppLocked(true);
-      } else if (!hasAnyAppPasscode(settings)) {
+      } else if (!hasAnyAuthCredential(settings) || !settings.requireAuthOnOpen) {
         setIsAppLocked(false);
       }
     };
@@ -1340,7 +1441,24 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   // Tự động khóa theo thời gian không thao tác (autoLockMinutes) & khi ẩn ứng dụng (lockOnBackground)
   useEffect(() => {
-    if (!isLoaded || isAppLocked || !hasPasscodeProtection) return;
+    const hasQuickAuthActive = Boolean(
+      settings.quickAuth?.enabled && (settings.quickAuth?.protectedViews?.length ?? 0) > 0
+    );
+    if (
+      !isLoaded ||
+      isAppLocked ||
+      !hasAuthCredential ||
+      (!settings.requireAuthOnOpen && !hasQuickAuthActive)
+    ) {
+      return;
+    }
+
+    const triggerLock = () => {
+      setUnlockedProtectedViews([]);
+      if (settings.requireAuthOnOpen) {
+        lockApp();
+      }
+    };
 
     const timeoutMinutes = settings.autoLockMinutes ?? 0;
     let inactivityTimer: number | undefined;
@@ -1349,7 +1467,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (inactivityTimer) window.clearTimeout(inactivityTimer);
       if (timeoutMinutes > 0) {
         inactivityTimer = window.setTimeout(() => {
-          lockApp();
+          triggerLock();
         }, timeoutMinutes * 60 * 1000);
       }
     };
@@ -1362,7 +1480,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
     const handleVisibility = () => {
       if (document.visibilityState === "hidden" && settings.lockOnBackground) {
-        lockApp();
+        triggerLock();
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -1375,7 +1493,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   }, [
     isLoaded,
     isAppLocked,
-    hasPasscodeProtection,
+    hasAuthCredential,
+    settings.requireAuthOnOpen,
+    settings.quickAuth,
     settings.autoLockMinutes,
     settings.lockOnBackground,
     lockApp,
@@ -1421,6 +1541,37 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     },
     [queueCloudMutation]
   );
+
+  const toggleCategoryVisibility = useCallback(
+    (id: string) => {
+      setCategories((prev) => {
+        let updated: Category | undefined;
+        const next = prev.map((c) => {
+          if (c.id !== id) return c;
+          updated = { ...c, isHidden: !c.isHidden };
+          return updated;
+        });
+        if (updated) {
+          queueCloudMutation({ type: "UPSERT_CATEGORY", payload: updated });
+        }
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
+  const restoreDefaultCategories = useCallback((): number => {
+    let restoredCount = 0;
+    setCategories((prev) => {
+      const hiddenDefaults = prev.filter((c) => c.isDefault && c.isHidden).length;
+      const existingIds = new Set(prev.map((c) => c.id));
+      const missingDefaults = DEFAULT_CATEGORIES.filter((d) => !existingIds.has(d.id)).length;
+      restoredCount = hiddenDefaults + missingDefaults;
+      if (restoredCount === 0) return prev;
+      return restoreDefaultCategoriesList(prev, DEFAULT_CATEGORIES);
+    });
+    return restoredCount;
+  }, []);
 
   // CRUD Giao dịch
   const addTransaction = useCallback(
@@ -1748,6 +1899,43 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     },
     [accounts, addTransaction, queueCloudMutation]
   );
+
+  // Thử thách tiết kiệm hàng tháng
+  const addSavingsChallenge = useCallback(
+    (challenge: Omit<SavingsChallenge, "id" | "createdAt">): SavingsChallenge => {
+      const created: SavingsChallenge = {
+        ...challenge,
+        id: `chg_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date().toISOString(),
+      };
+      setSavingsChallenges((prev) => [...prev, created]);
+      return created;
+    },
+    []
+  );
+
+  const updateSavingsChallenge = useCallback(
+    (id: string, patch: Partial<SavingsChallenge>) => {
+      setSavingsChallenges((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+      );
+    },
+    []
+  );
+
+  const deleteSavingsChallenge = useCallback((id: string) => {
+    setSavingsChallenges((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const contributeSavingsChallenge = useCallback((id: string, deltaAmount: number) => {
+    setSavingsChallenges((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, manualSavedAmount: Math.max(0, (c.manualSavedAmount || 0) + deltaAmount) }
+          : c
+      )
+    );
+  }, []);
 
   // Nợ & Đầu tư
   const addDebt = useCallback(
@@ -2377,6 +2565,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setDebts(seeded.debts);
     setInvestments(seeded.investments);
     setRecurringRules(seeded.recurringRules || DEFAULT_RECURRING_RULES);
+    setSavingsChallenges(seeded.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
     setSettings(seeded.settings);
     setSkyoneLoan(seeded.skyoneLoan);
     setSelectedMonth("2026-10");
@@ -2399,6 +2588,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     });
@@ -2411,6 +2601,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts,
     investments,
     recurringRules,
+    savingsChallenges,
     settings,
     skyoneLoan,
   ]);
@@ -2438,6 +2629,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setDebts(res.data.debts);
         setInvestments(res.data.investments);
         setRecurringRules(res.data.recurringRules || DEFAULT_RECURRING_RULES);
+        setSavingsChallenges(res.data.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
         setSettings(res.data.settings);
         setSkyoneLoan(reconcileBidvSkyOneContract(res.data.skyoneLoan).contract);
         saveStoredDataV3(res.data);
@@ -2464,6 +2656,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     });
@@ -2476,6 +2669,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts,
     investments,
     recurringRules,
+    savingsChallenges,
     settings,
     skyoneLoan,
   ]);
@@ -2496,6 +2690,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           debts,
           investments,
           recurringRules,
+          savingsChallenges,
           settings,
           skyoneLoan,
         },
@@ -2512,6 +2707,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     ]
@@ -2528,6 +2724,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         debts,
         investments,
         recurringRules,
+        savingsChallenges,
         settings,
         skyoneLoan,
       };
@@ -2542,6 +2739,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setDebts(nextState.debts);
       setInvestments(nextState.investments);
       setRecurringRules(nextState.recurringRules);
+      setSavingsChallenges(nextState.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
       setSettings(nextState.settings);
       setSkyoneLoan(nextState.skyoneLoan);
       saveStoredDataV3(nextState);
@@ -2562,6 +2760,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       debts,
       investments,
       recurringRules,
+      savingsChallenges,
       settings,
       skyoneLoan,
     ]
@@ -2939,14 +3138,51 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const pendingRecurring = recurringRules.filter(
-      (r) => r.isActive && r.lastAppliedMonth !== activeMonth
+    const reminderMonth = getCurrentMonthKey();
+    const dueRecurringReminders = findRecurringExpenseReminders(recurringRules, reminderMonth);
+    const remindedRuleIds = new Set<string>();
+
+    dueRecurringReminders.forEach(({ rule, dueDay, daysUntilDue, status, monthKey }) => {
+      remindedRuleIds.add(rule.id);
+      const nid = `rec_due_${rule.id}_${monthKey}`;
+      const monthPart = monthKey.split("-")[1] || monthKey;
+      const amountText = formatVNDMasked(rule.amount, Boolean(settings.privacyMode));
+
+      const title =
+        status === "OVERDUE"
+          ? `Quá hạn định kỳ: ${rule.name}`
+          : status === "DUE_TODAY"
+          ? `Đến hạn hôm nay: ${rule.name}`
+          : `Sắp đến hạn (${daysUntilDue} ngày): ${rule.name}`;
+
+      const timingDetail =
+        status === "OVERDUE"
+          ? `Đã quá hạn ${Math.abs(daysUntilDue)} ngày (ngày ${dueDay}/${monthPart})`
+          : status === "DUE_TODAY"
+          ? `Đến hạn thanh toán hôm nay (ngày ${dueDay}/${monthPart})`
+          : `Còn ${daysUntilDue} ngày đến hạn (ngày ${dueDay}/${monthPart})`;
+
+      list.push({
+        id: nid,
+        title,
+        message: `${timingDetail} · ${amountText}. Bấm Ghi sổ để hạch toán ngay kỳ ${monthKey}.`,
+        type: status === "OVERDUE" ? "danger" : "warning",
+        date: today,
+        read: readNotifIds.has(nid),
+        actionType: "APPLY_RECURRING",
+        recurringRuleId: rule.id,
+        monthKey,
+      });
+    });
+
+    const otherPendingRecurring = recurringRules.filter(
+      (r) => r.isActive && r.lastAppliedMonth !== activeMonth && !remindedRuleIds.has(r.id)
     );
-    if (pendingRecurring.length > 0) {
+    if (otherPendingRecurring.length > 0) {
       list.push({
         id: `rec_pending_${activeMonth}`,
-        title: `${pendingRecurring.length} giao dịch định kỳ chờ ghi sổ`,
-        message: `Có ${pendingRecurring.length} khoản thu/chi định kỳ chưa áp dụng cho kỳ ${activeMonth}. Vào Kế hoạch hoặc Quản trị Dữ liệu để ghi sổ 1 chạm.`,
+        title: `${otherPendingRecurring.length} khoản định kỳ khác chờ ghi sổ`,
+        message: `Còn ${otherPendingRecurring.length} khoản thu/chi định kỳ chưa áp dụng cho kỳ ${activeMonth}. Vào Kế hoạch để ghi sổ 1 chạm.`,
         type: "info",
         date: today,
         read: readNotifIds.has(`rec_pending_${activeMonth}`),
@@ -2959,6 +3195,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     wifeCreditCard,
     settings.husbandName,
     settings.wifeName,
+    settings.privacyMode,
     budgetSummary.items,
     recurringRules,
     selectedMonth,
@@ -2980,9 +3217,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded || !browserNotifEnabled || browserNotifStatus !== "granted") return;
     const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+    const currentCalendarMonth = getCurrentMonthKey();
+
     triggerBudgetThresholdNotifications({
       monthKey: activeMonth,
       items: budgetSummary.items,
+      isPrivacyMode,
+    });
+    triggerRecurringExpenseNotifications({
+      monthKey: currentCalendarMonth,
+      rules: recurringRules,
       isPrivacyMode,
     });
   }, [
@@ -2990,6 +3234,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     browserNotifEnabled,
     browserNotifStatus,
     budgetSummary.items,
+    recurringRules,
     selectedMonth,
     isPrivacyMode,
   ]);
@@ -3000,14 +3245,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setBrowserNotifEnabled(res.granted);
     if (res.granted) {
       const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+      const currentCalendarMonth = getCurrentMonthKey();
       triggerBudgetThresholdNotifications({
         monthKey: activeMonth,
         items: budgetSummary.items,
         isPrivacyMode,
       });
+      triggerRecurringExpenseNotifications({
+        monthKey: currentCalendarMonth,
+        rules: recurringRules,
+        isPrivacyMode,
+      });
     }
     return res.granted;
-  }, [selectedMonth, budgetSummary.items, isPrivacyMode]);
+  }, [selectedMonth, budgetSummary.items, recurringRules, isPrivacyMode]);
 
   const disableBrowserNotifications = useCallback(() => {
     setBrowserNotificationOptIn(false);
@@ -3057,6 +3308,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     togglePrivacyMode,
     isAppLocked,
     hasPasscodeProtection,
+    hasAuthCredential,
+    unlockedProtectedViews,
+    isViewProtectedByQuickAuth,
+    isViewUnlockedInSession,
+    unlockProtectedView,
+    toggleQuickAuthView,
+    verifyMemberPasscode,
     unlockWithPasscode,
     unlockWithBiometricSuccess,
     setMemberPasscode,
@@ -3072,6 +3330,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     debts,
     investments,
     recurringRules,
+    savingsChallenges,
     settings,
     notifications,
     selectedMonth,
@@ -3087,6 +3346,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     addCategory,
     updateCategory,
     deleteCategory,
+    toggleCategoryVisibility,
+    restoreDefaultCategories,
     addTransaction,
     addTransactionsBatch,
     updateTransaction,
@@ -3102,6 +3363,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateGoal,
     deleteGoal,
     depositGoal,
+    addSavingsChallenge,
+    updateSavingsChallenge,
+    deleteSavingsChallenge,
+    contributeSavingsChallenge,
     addDebt,
     updateDebt,
     payDebt,

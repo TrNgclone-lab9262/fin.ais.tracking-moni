@@ -102,7 +102,11 @@ export function TransactionFormModal({
     }
   }, [isOpen, defaultType, editTransaction, activePerspective, accounts]);
 
-  const availableCategories = categories.filter((c) => c.type === type);
+  const availableCategories = categories.filter(
+    (c) =>
+      c.type === type &&
+      (!c.isHidden || Boolean(editTransaction && c.id === editTransaction.categoryId))
+  );
 
   useEffect(() => {
     if (!editTransaction && availableCategories.length > 0 && !availableCategories.some((c) => c.id === categoryId)) {

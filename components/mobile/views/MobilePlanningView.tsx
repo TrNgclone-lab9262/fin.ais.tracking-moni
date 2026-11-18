@@ -1,16 +1,37 @@
 "use client";
 
-import React, { useState } from "react";
-import { Target, Coins, Plus, Pencil, Trash2, X, Repeat, CheckCircle2 } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import {
+  Target,
+  Coins,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Repeat,
+  CheckCircle2,
+  AlertTriangle,
+  BellRing,
+  Sparkles,
+  Tags,
+} from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { formatVNDMasked, getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
+import {
+  evaluateRecurringRuleDueStatus,
+  getBudgetWarningStatus,
+} from "@/lib/browserNotifications";
 import { SavingsGoal } from "@/types/finance";
 import { GoalDepositSheet } from "@/components/mobile/sheets/GoalDepositSheet";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { SavingsChallengesSection } from "@/components/planning/SavingsChallengesSection";
+import { CategoryManagerSection } from "@/components/categories/CategoryManagerSection";
 
 export function MobilePlanningView() {
   const {
     goals,
+    savingsChallenges,
+    categories,
     budgetSummary,
     todaySpentInfo,
     selectedMonth,
@@ -20,11 +41,14 @@ export function MobilePlanningView() {
     updateGoal,
     deleteGoal,
     setCategoryBudget,
+    deleteBudget,
     applyRecurringRule,
     applyAllPendingRecurringRules,
   } = useFinance();
 
-  const [activeTab, setActiveTab] = useState<"GOALS" | "BUDGET">("GOALS");
+  const [activeTab, setActiveTab] = useState<
+    "GOALS" | "CHALLENGES" | "BUDGET" | "CATEGORIES"
+  >("GOALS");
   const [depositingGoal, setDepositingGoal] = useState<SavingsGoal | null>(null);
   const [deleteGoalId, setDeleteGoalId] = useState<string | null>(null);
 
@@ -41,6 +65,7 @@ export function MobilePlanningView() {
     categoryId: string;
     categoryName: string;
     limitAmount: number;
+    hasExisting: boolean;
   } | null>(null);
   const [budgetInput, setBudgetInput] = useState("");
 
@@ -51,6 +76,15 @@ export function MobilePlanningView() {
 
   const activeMonthKey = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
   const monthLabel = selectedMonth === "ALL" ? "Tất cả" : getMonthDisplayLabel(selectedMonth);
+  const activeChallengeCount = useMemo(
+    () => savingsChallenges.filter((c) => c.month === activeMonthKey).length,
+    [savingsChallenges, activeMonthKey]
+  );
+
+  const unbudgetedCategories = useMemo(() => {
+    const existingIds = new Set((budgetSummary?.items || []).map((i) => i.categoryId));
+    return categories.filter((c) => c.type === "EXPENSE" && !c.isHidden && !existingIds.has(c.id));
+  }, [categories, budgetSummary?.items]);
 
   const openCreateGoal = () => {
     setEditingGoal(null);
@@ -99,36 +133,67 @@ export function MobilePlanningView() {
     e.preventDefault();
     if (!editingBudget) return;
     const val = parseFloat(budgetInput.replace(/[^0-9]/g, "")) || 0;
-    setCategoryBudget(editingBudget.categoryId, val, activeMonthKey);
+    if (val > 0) {
+      setCategoryBudget(editingBudget.categoryId, val, activeMonthKey);
+    } else if (editingBudget.hasExisting) {
+      deleteBudget(editingBudget.categoryId, activeMonthKey);
+    }
     setEditingBudget(null);
   };
 
   return (
     <div className="space-y-3.5 animate-in fade-in duration-200">
       {/* 1. Header Switcher */}
-      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-[10px] sm:text-[11px] font-bold">
         <button
           onClick={() => setActiveTab("GOALS")}
-          className={`py-2 rounded-lg transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`min-h-[40px] px-1 py-1.5 rounded-lg transition-all text-center flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
             activeTab === "GOALS"
               ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
           }`}
         >
-          <Target className="w-3.5 h-3.5" />
-          <span>Hũ Tích Lũy ({goals.length})</span>
+          <Target className="w-3.5 h-3.5 shrink-0" />
+          <span>Hũ ({goals.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("CHALLENGES")}
+          data-testid="mobile-planning-tab-challenges"
+          className={`min-h-[40px] px-1 py-1.5 rounded-lg transition-all text-center flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+            activeTab === "CHALLENGES"
+              ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+              : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 shrink-0" />
+          <span>Thử thách ({activeChallengeCount})</span>
         </button>
 
         <button
           onClick={() => setActiveTab("BUDGET")}
-          className={`py-2 rounded-lg transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`min-h-[40px] px-1 py-1.5 rounded-lg transition-all text-center flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
             activeTab === "BUDGET"
               ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
           }`}
         >
-          <Coins className="w-3.5 h-3.5" />
-          <span>Ngân Sách ({budgetSummary.items.length})</span>
+          <Coins className="w-3.5 h-3.5 shrink-0" />
+          <span>Ngân sách ({budgetSummary.items.length})</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="mobile-planning-tab-categories"
+          onClick={() => setActiveTab("CATEGORIES")}
+          className={`min-h-[40px] px-1 py-1.5 rounded-lg transition-all text-center flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+            activeTab === "CATEGORIES"
+              ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+              : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+          }`}
+        >
+          <Tags className="w-3.5 h-3.5 shrink-0" />
+          <span>Danh mục</span>
         </button>
       </div>
 
@@ -281,6 +346,10 @@ export function MobilePlanningView() {
             );
           })}
         </div>
+      ) : activeTab === "CHALLENGES" ? (
+        <SavingsChallengesSection compact />
+      ) : activeTab === "CATEGORIES" ? (
+        <CategoryManagerSection compact />
       ) : (
         <div className="space-y-3">
           {/* Toàn bộ danh mục ngân sách (không cắt slice(0,5)) */}
@@ -292,8 +361,9 @@ export function MobilePlanningView() {
 
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-[#DCE4EE] dark:border-slate-800 shadow-xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {(budgetSummary?.items || []).map((item) => {
-                const pct = Math.min(100, Math.round(item.percentage));
-                const isOver = item.spentAmount > item.limitAmount;
+                const status = getBudgetWarningStatus(item);
+                const isDanger = status.level === "DANGER";
+                const isWarning = status.level === "WARNING";
 
                 return (
                   <button
@@ -304,10 +374,11 @@ export function MobilePlanningView() {
                         categoryId: item.categoryId,
                         categoryName: item.categoryName,
                         limitAmount: item.limitAmount,
+                        hasExisting: true,
                       });
                       setBudgetInput(new Intl.NumberFormat("vi-VN").format(item.limitAmount));
                     }}
-                    className="w-full text-left p-3.5 space-y-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
+                    className="w-full text-left p-3.5 space-y-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center justify-between text-xs gap-2">
                       <div className="flex items-center gap-2 min-w-0">
@@ -315,27 +386,103 @@ export function MobilePlanningView() {
                           className="w-3 h-3 rounded-full shrink-0"
                           style={{ backgroundColor: item.categoryColor || "#2563EB" }}
                         />
-                        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{item.categoryName}</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">
+                          {item.categoryName}
+                        </span>
                       </div>
 
-                      <span className={`font-bold shrink-0 ${isOver ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-300"}`}>
+                      <span
+                        className={`font-bold tabular-nums shrink-0 ${
+                          isDanger
+                            ? "text-rose-600 dark:text-rose-400"
+                            : isWarning
+                            ? "text-amber-700 dark:text-amber-300"
+                            : "text-slate-600 dark:text-slate-300"
+                        }`}
+                      >
                         {formatVNDMasked(item.spentAmount, isPrivacyMode)} /{" "}
                         {formatVNDMasked(item.limitAmount, isPrivacyMode)}
                       </span>
                     </div>
 
-                    <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="relative w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          isOver ? "bg-rose-500" : "bg-blue-600"
+                          isDanger
+                            ? "bg-rose-600"
+                            : isWarning
+                            ? "bg-amber-500"
+                            : "bg-emerald-500"
                         }`}
-                        style={{ width: `${pct}%` }}
+                        style={{ width: `${Math.min(100, status.percentage)}%` }}
                       />
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-0 bottom-0 left-[80%] w-0.5 bg-slate-400/70 dark:bg-slate-500/80"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-semibold">
+                      <span
+                        className={`inline-flex items-center gap-1 ${
+                          isDanger
+                            ? "text-rose-600 dark:text-rose-400"
+                            : isWarning
+                            ? "text-amber-700 dark:text-amber-300"
+                            : "text-emerald-700 dark:text-emerald-300"
+                        }`}
+                      >
+                        {(isDanger || isWarning) && <AlertTriangle className="w-3 h-3 shrink-0" />}
+                        <span>{status.label}</span>
+                      </span>
+                      <span
+                        className={`font-bold tabular-nums ${
+                          isDanger
+                            ? "text-rose-600 dark:text-rose-400"
+                            : isWarning
+                            ? "text-amber-700 dark:text-amber-300"
+                            : "text-emerald-700 dark:text-emerald-300"
+                        }`}
+                      >
+                        {status.percentage}%
+                      </span>
                     </div>
                   </button>
                 );
               })}
             </div>
+
+            {unbudgetedCategories.length > 0 && (
+              <div className="pt-1 space-y-1.5">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 px-0.5">
+                  Đặt nhanh danh mục khác:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {unbudgetedCategories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setEditingBudget({
+                          categoryId: cat.id,
+                          categoryName: cat.name,
+                          limitAmount: 0,
+                          hasExisting: false,
+                        });
+                        setBudgetInput("");
+                      }}
+                      className="min-h-[34px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      <span>+ {cat.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Giao dịch định kỳ áp dụng nhanh trên Mobile */}
@@ -362,23 +509,45 @@ export function MobilePlanningView() {
                   .filter((r) => r.isActive)
                   .map((rule) => {
                     const applied = rule.lastAppliedMonth === activeMonthKey;
+                    const dueEval = evaluateRecurringRuleDueStatus(rule, activeMonthKey);
+                    const isExpense = rule.type === "EXPENSE";
+
                     return (
                       <div key={rule.id} className="p-3 flex items-center justify-between gap-2 text-xs">
                         <div className="min-w-0">
-                          <span className="font-bold text-slate-800 dark:text-slate-100 block truncate">{rule.name}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-slate-400 font-medium">
+                          <span className="font-bold text-slate-800 dark:text-slate-100 block truncate">
+                            {rule.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-400 font-medium tabular-nums block">
                             Ngày {rule.dayOfMonth} hàng tháng ·{" "}
                             {formatVNDMasked(rule.amount, isPrivacyMode)}
                           </span>
+                          {!applied && isExpense && (dueEval.status === "OVERDUE" || dueEval.status === "DUE_TODAY" || dueEval.status === "DUE_SOON") && (
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-bold mt-0.5 tabular-nums ${
+                                dueEval.status === "OVERDUE"
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-amber-700 dark:text-amber-300"
+                              }`}
+                            >
+                              <BellRing className="w-3 h-3 shrink-0" />
+                              {dueEval.status === "OVERDUE"
+                                ? `Quá hạn ${Math.abs(dueEval.daysUntilDue)} ngày`
+                                : dueEval.status === "DUE_TODAY"
+                                ? "Đến hạn hôm nay"
+                                : `Nhắc trước hạn · Còn ${dueEval.daysUntilDue} ngày`}
+                            </span>
+                          )}
                         </div>
                         {applied ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] shrink-0">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] whitespace-nowrap shrink-0">
                             <CheckCircle2 className="w-3 h-3" /> Đã ghi
                           </span>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => applyRecurringRule(rule.id, activeMonthKey)}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[11px] shrink-0 cursor-pointer"
+                            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[11px] whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             Ghi sổ
                           </button>
@@ -503,15 +672,28 @@ export function MobilePlanningView() {
               <input
                 type="text"
                 autoFocus
-                required
+                inputMode="numeric"
                 value={budgetInput}
+                placeholder="Ví dụ: 3.000.000"
                 onChange={(e) => {
                   const raw = e.target.value.replace(/[^0-9]/g, "");
                   setBudgetInput(raw ? new Intl.NumberFormat("vi-VN").format(parseInt(raw, 10)) : "");
                 }}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-right text-base font-black text-slate-800 dark:text-slate-100"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-right text-base font-black text-slate-800 dark:text-slate-100 tabular-nums"
               />
               <div className="flex gap-2">
+                {editingBudget.hasExisting && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteBudget(editingBudget.categoryId, activeMonthKey);
+                      setEditingBudget(null);
+                    }}
+                    className="px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-500/15 text-xs font-bold text-rose-600 dark:text-rose-400 cursor-pointer"
+                  >
+                    Xóa
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setEditingBudget(null)}

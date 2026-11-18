@@ -43,7 +43,9 @@ import { ReleaseNotesModal } from "@/components/common/ReleaseNotesModal";
 import { ReceiptScannerModal } from "@/components/transactions/ReceiptScannerModal";
 import { LoginGateView } from "@/components/auth/LoginGateView";
 import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
+import { QuickAuthGate } from "@/components/auth/QuickAuthGate";
 import { MobileNotificationSheet } from "@/components/mobile/sheets/MobileNotificationSheet";
+import { MonthlyPdfReportModal } from "@/components/reports/MonthlyPdfReportModal";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
@@ -76,6 +78,7 @@ export default function HomePage() {
   const [isResetStepUpOpen, setIsResetStepUpOpen] = useState(false);
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
   const [isMobileNotifOpen, setIsMobileNotifOpen] = useState(false);
+  const [isPdfReportOpen, setIsPdfReportOpen] = useState(false);
 
   const { isMobileShell } = useResponsive();
 
@@ -106,7 +109,13 @@ export default function HomePage() {
 
   const renderMainView = (mobileViewport: boolean) => {
     if (activeApp === "SKYONE") {
-      if (skyoneTab === "DATA_ADMIN") return <DataAdminView />;
+      if (skyoneTab === "DATA_ADMIN") {
+        return (
+          <QuickAuthGate viewId="data_admin">
+            <DataAdminView />
+          </QuickAuthGate>
+        );
+      }
       if (skyoneTab === "SETTINGS") {
         return (
           <SettingsView
@@ -120,7 +129,17 @@ export default function HomePage() {
 
     switch (activeTab) {
       case "overview":
-        return mobileViewport ? <MobileOverviewView /> : <OverviewView />;
+        return mobileViewport ? (
+          <MobileOverviewView
+            onOpenPdfReport={() => setIsPdfReportOpen(true)}
+            onOpenNumpad={() => setIsMobileNumpadOpen(true)}
+          />
+        ) : (
+          <OverviewView
+            onOpenPdfReport={() => setIsPdfReportOpen(true)}
+            onOpenAddModal={() => setIsAddModalOpen(true)}
+          />
+        );
       case "transactions":
         return mobileViewport ? (
           <MobileTransactionsView onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
@@ -131,13 +150,25 @@ export default function HomePage() {
           />
         );
       case "accounts":
-        return mobileViewport ? <MobileAccountsView /> : <AccountsView />;
+        return (
+          <QuickAuthGate viewId="accounts">
+            {mobileViewport ? <MobileAccountsView /> : <AccountsView />}
+          </QuickAuthGate>
+        );
       case "planning":
         return mobileViewport ? <MobilePlanningView /> : <PlanningView />;
       case "debts_invest":
-        return <DebtsInvestView />;
+        return (
+          <QuickAuthGate viewId="debts_invest">
+            <DebtsInvestView />
+          </QuickAuthGate>
+        );
       case "data_admin":
-        return <DataAdminView />;
+        return (
+          <QuickAuthGate viewId="data_admin">
+            <DataAdminView />
+          </QuickAuthGate>
+        );
       case "guide":
         return <GuideView />;
       case "settings":
@@ -148,7 +179,17 @@ export default function HomePage() {
           />
         );
       default:
-        return mobileViewport ? <MobileOverviewView /> : <OverviewView />;
+        return mobileViewport ? (
+          <MobileOverviewView
+            onOpenPdfReport={() => setIsPdfReportOpen(true)}
+            onOpenNumpad={() => setIsMobileNumpadOpen(true)}
+          />
+        ) : (
+          <OverviewView
+            onOpenPdfReport={() => setIsPdfReportOpen(true)}
+            onOpenAddModal={() => setIsAddModalOpen(true)}
+          />
+        );
     }
   };
 
@@ -263,6 +304,12 @@ export default function HomePage() {
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
         onOpenResetDemo={() => setIsResetConfirmOpen(true)}
+        onOpenPdfReport={() => setIsPdfReportOpen(true)}
+      />
+
+      <MonthlyPdfReportModal
+        isOpen={isPdfReportOpen}
+        onClose={() => setIsPdfReportOpen(false)}
       />
 
       <ReleaseNotesModal />

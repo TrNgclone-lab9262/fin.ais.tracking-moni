@@ -42,6 +42,41 @@ export interface MonthlyAIDigest {
   source: 'gemini' | 'offline';
 }
 
+export interface FinancialInsightTip {
+  title: string;
+  action: string;
+  targetCategory: string;
+  estimatedMonthlySavings: number;
+}
+
+export interface FinancialInsightsResponse {
+  patternSummary: string;
+  comparisonNote: string;
+  tips: FinancialInsightTip[];
+}
+
+export interface FinancialInsightsPayload {
+  monthLabel: string;
+  perspectiveLabel: string;
+  totalIncome: number;
+  totalExpense: number;
+  savingsRate: number;
+  previousMonthExpense: number;
+  categoryBreakdown: { name: string; amount: number; percentage: number; prevAmount?: number }[];
+  topMerchants: { label: string; count: number; totalAmount: number }[];
+  recurringTotal: number;
+  discretionaryTotal: number;
+  recentTransactions: {
+    date: string;
+    amount: number;
+    category: string;
+    note: string;
+    scope: string;
+  }[];
+  budgetOverruns: string[];
+  creditCards: { name: string; usagePercentage: number; usedAmount: number }[];
+}
+
 async function fileToBase64(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -335,4 +370,105 @@ export async function generateMonthlyDigest(payload: {
         : 'Duy trì nhịp chi tiêu hiện tại và trích phần thặng dư vào Quỹ Mua Nhà Tổ Ấm 2028.',
     source: 'offline',
   };
+}
+
+/**
+ * Phân tích mô hình chi tiêu tháng & gợi ý 3 mẹo tiết kiệm từ lịch sử giao dịch qua /api/ai/financial-insights
+ */
+export async function analyzeFinancialInsights(
+  payload: FinancialInsightsPayload
+): Promise<FinancialInsightsResponse> {
+  const res = await fetch('/api/ai/financial-insights', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    insights?: FinancialInsightsResponse;
+    error?: string;
+  };
+
+  if (!res.ok) {
+    throw new Error(
+      data.error || 'Không thể phân tích dữ liệu chi tiêu với Gemini AI lúc này.'
+    );
+  }
+
+  if (!data.insights || !Array.isArray(data.insights.tips) || data.insights.tips.length === 0) {
+    throw new Error('Dữ liệu phân tích trả về chưa hợp lệ. Vui lòng thử lại.');
+  }
+
+  return data.insights;
+}
+
+export interface SpendingForecastAIPayload {
+  anchorMonthLabel: string;
+  perspectiveLabel: string;
+  monthsAnalyzed: number;
+  historicalAvgIncome: number;
+  historicalAvgExpense: number;
+  recurringExpenseBaseline: number;
+  discretionaryExpenseBaseline: number;
+  monthlyGrowthRatePct: number;
+  forecastMonths: {
+    month: string;
+    monthLabel: string;
+    predictedIncome: number;
+    recurringExpense: number;
+    discretionaryExpense: number;
+    predictedExpense: number;
+    projectedSavings: number;
+    savingsRate: number;
+    riskLabel: string;
+  }[];
+  topDrivers: {
+    categoryName: string;
+    avgMonthlyAmount: number;
+    sharePct: number;
+    isRecurringDominant: boolean;
+  }[];
+  budgetWarnings: string[];
+  creditCards: { name: string; usagePercentage: number; usedAmount: number }[];
+}
+
+export interface SpendingForecastAIResponse {
+  headline: string;
+  overallTrend: string;
+  monthlyNotes: {
+    month: string;
+    focus: string;
+    advice: string;
+  }[];
+  savingActions: string[];
+}
+
+/**
+ * Gọi Gemini AI nhận xét xu hướng dự báo chi tiêu 3 tháng tới từ dữ liệu Financial Insights
+ */
+export async function generateSpendingForecastInsights(
+  payload: SpendingForecastAIPayload
+): Promise<SpendingForecastAIResponse> {
+  const res = await fetch('/api/ai/spending-forecast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as {
+    forecastInsights?: SpendingForecastAIResponse;
+    error?: string;
+  };
+
+  if (!res.ok) {
+    throw new Error(
+      data.error || 'Không thể lấy nhận xét dự báo 3 tháng từ Gemini AI lúc này.'
+    );
+  }
+
+  if (!data.forecastInsights || !data.forecastInsights.headline) {
+    throw new Error('Dữ liệu nhận xét dự báo trả về chưa hợp lệ. Vui lòng thử lại.');
+  }
+
+  return data.forecastInsights;
 }

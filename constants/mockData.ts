@@ -8,6 +8,7 @@ import {
   AppSettings,
   AppNotification,
   RecurringRule,
+  SavingsChallenge,
 } from "@/types/finance";
 
 export const DEFAULT_ACCOUNTS: Account[] = [
@@ -240,6 +241,45 @@ export const DEFAULT_BUDGETS: CategoryBudget[] = [
   },
 ];
 
+export const DEFAULT_SAVINGS_CHALLENGES: SavingsChallenge[] = [
+  {
+    id: "chg_no_boba_coffee",
+    name: "Hạn chế trà sữa & cà phê ngoài",
+    month: "2026-10",
+    targetAmount: 1200000,
+    manualSavedAmount: 900000,
+    trackingMode: "MANUAL",
+    color: "#2563EB",
+    memberId: "SHARED",
+    icon: "Coffee",
+    createdAt: "2026-10-01T08:00:00.000Z",
+  },
+  {
+    id: "chg_cook_lunch",
+    name: "Tự nấu cơm trưa văn phòng",
+    month: "2026-10",
+    targetAmount: 1500000,
+    manualSavedAmount: 1500000,
+    trackingMode: "MANUAL",
+    color: "#F59E0B",
+    memberId: "SHARED",
+    icon: "Utensils",
+    createdAt: "2026-10-01T08:15:00.000Z",
+  },
+  {
+    id: "chg_monthly_surplus_mini",
+    name: "Giữ thặng dư thu chi tối thiểu",
+    month: "2026-10",
+    targetAmount: 25000000,
+    manualSavedAmount: 0,
+    trackingMode: "AUTO_SURPLUS",
+    color: "#10B981",
+    memberId: "SHARED",
+    icon: "Sparkles",
+    createdAt: "2026-10-01T08:30:00.000Z",
+  },
+];
+
 export const DEFAULT_SETTINGS: AppSettings = {
   themeColor: "blue",
   themeMode: "light",
@@ -255,6 +295,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lockOnBackground: false,
   authActiveProfile: "HUSBAND",
   requireAuthForDangerActions: false,
+  quickAuth: {
+    enabled: false,
+    protectedViews: [],
+  },
 };
 
 export const DEFAULT_RECURRING_RULES: RecurringRule[] = [

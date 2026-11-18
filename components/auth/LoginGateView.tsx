@@ -183,7 +183,7 @@ export function LoginGateView() {
             setIsSubmitting(false);
             return;
           }
-          await setMemberPasscode(selectedMember, candidateCode);
+          await setMemberPasscode(selectedMember, candidateCode, { enableEntryLock: true });
           haptic.success();
           unlockWithBiometricSuccess(selectedMember, switchPerspectiveOnUnlock);
           return;

@@ -56,7 +56,7 @@ export function ReceiptScannerModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
+  const expenseCategories = categories.filter((c) => c.type === "EXPENSE" && !c.isHidden);
 
   useEffect(() => {
     if (isOpen) {

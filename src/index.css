@@ -99,3 +99,37 @@
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  body.pdf-printing > *:not(.pdf-print-portal),
+  body:has(.pdf-print-portal) > *:not(.pdf-print-portal) {
+    display: none !important;
+  }
+
+  .pdf-print-portal {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .pdf-no-print {
+    display: none !important;
+  }
+}

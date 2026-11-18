@@ -11,6 +11,7 @@ import {
   Repeat,
   ChevronDown,
   ChevronUp,
+  FileText,
 } from "lucide-react";
 import { useFinance, CreditCardInfo } from "@/context/FinanceContext";
 import {
@@ -26,8 +27,20 @@ import { MobileMonthSelector } from "@/components/mobile/MobileMonthSelector";
 import { TransactionDetailSheet } from "@/components/mobile/sheets/TransactionDetailSheet";
 import { CreditCardRepaymentSheet } from "@/components/mobile/sheets/CreditCardRepaymentSheet";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
+import { FinancialInsightsCard } from "@/components/dashboard/FinancialInsightsCard";
+import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCard";
+import { PeriodComparisonCompact } from "@/components/dashboard/PeriodComparisonCompact";
+import { QuickAddCard } from "@/components/dashboard/QuickAddCard";
 
-export function MobileOverviewView() {
+interface MobileOverviewViewProps {
+  onOpenPdfReport?: () => void;
+  onOpenNumpad?: () => void;
+}
+
+export function MobileOverviewView({
+  onOpenPdfReport,
+  onOpenNumpad,
+}: MobileOverviewViewProps) {
   const {
     summary,
     husbandCreditCard,
@@ -182,13 +195,27 @@ export function MobileOverviewView() {
 
       {/* 1. HERO NET WORTH NAVY CARD */}
       <div className="rounded-xl p-4 bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8] text-white shadow-md relative overflow-hidden space-y-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-blue-200 uppercase tracking-widest font-bold text-[10px]">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-blue-200 uppercase tracking-widest font-bold text-[10px] truncate">
             TỔNG TÀI SẢN RÒNG GIA ĐÌNH
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-white/15 text-blue-100 font-semibold text-[10px]">
-            {monthLabel}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="px-2 py-0.5 rounded-md bg-white/15 text-blue-100 font-semibold text-[10px]">
+              {monthLabel}
+            </span>
+            {onOpenPdfReport && (
+              <button
+                type="button"
+                onClick={onOpenPdfReport}
+                data-testid="mobile-overview-pdf-btn"
+                className="min-h-[28px] px-2 py-0.5 rounded-md bg-white text-[#1E3A8A] hover:bg-blue-50 font-extrabold text-[10px] inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+                title="Xem trước & xuất báo cáo PDF tháng chuẩn A4"
+              >
+                <FileText className="w-3 h-3" />
+                <span>Xuất PDF</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div>
@@ -254,6 +281,9 @@ export function MobileOverviewView() {
           )}
         </div>
       )}
+
+      {/* 1C. QUICK ADD NHẬP NHANH NGAY TRÊN MÀN HÌNH CHÍNH */}
+      <QuickAddCard compact onOpenFullForm={onOpenNumpad} />
 
       {/* 2. DUAL BIDV CREDIT CARDS MINI WIDGET */}
       <div className="space-y-2">
@@ -503,6 +533,15 @@ export function MobileOverviewView() {
           </div>
         )}
       </div>
+
+      {/* 4B. GEMINI FINANCIAL INSIGHTS (3 MONEY-SAVING TIPS) */}
+      <FinancialInsightsCard compact />
+
+      {/* 4C. DỰ BÁO CHI TIÊU 3 THÁNG TỚI */}
+      <SpendingForecastCard compact />
+
+      {/* 4D. SO SÁNH CÙNG KỲ (THÁNG TRƯỚC / NĂM NGOÁI) */}
+      <PeriodComparisonCompact />
 
       {/* 5. DAILY ALLOWANCE MINI CARD */}
       <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex items-center justify-between gap-2">

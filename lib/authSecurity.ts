@@ -6,7 +6,7 @@
  * - Quản lý & nén ảnh nền cá nhân tải trực tiếp từ thư viện thiết bị cho Anh Chuột & Bé Mèo.
  */
 
-import { AppSettings, AuthMemberId, MemberAuthConfig } from '@/types/finance';
+import { AppSettings, AuthMemberId, MemberAuthConfig, QuickAuthViewId } from '@/types/finance';
 
 export const WALLPAPER_STORAGE_KEY = 'HOME_MONI_WALLPAPERS_V1';
 
@@ -115,6 +115,28 @@ export function hasAnyAppPasscode(settings: AppSettings): boolean {
     hasMemberPasscode(settings, 'WIFE') ||
     Boolean(settings.pinCode && /^\d{4,6}$/.test(settings.pinCode))
   );
+}
+
+export function hasMemberBiometric(settings: AppSettings, member: AuthMemberId): boolean {
+  const cfg = getMemberAuthConfig(settings, member);
+  return Boolean(cfg.webauthnCredentialId);
+}
+
+export function hasAnyAppBiometric(settings: AppSettings): boolean {
+  return hasMemberBiometric(settings, 'HUSBAND') || hasMemberBiometric(settings, 'WIFE');
+}
+
+export function hasAnyAuthCredential(settings: AppSettings): boolean {
+  return hasAnyAppPasscode(settings) || hasAnyAppBiometric(settings);
+}
+
+export function isQuickAuthViewProtected(
+  settings: AppSettings,
+  view: QuickAuthViewId
+): boolean {
+  const qa = settings.quickAuth;
+  if (!qa || !qa.enabled) return false;
+  return qa.protectedViews.includes(view);
 }
 
 // --- WebAuthn Face ID / Touch ID / Sinh trắc học thiết bị ---

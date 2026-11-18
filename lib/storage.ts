@@ -10,6 +10,7 @@ import {
   AppDataBackup,
   RecurringRule,
   MortgageContract,
+  SavingsChallenge,
 } from "@/types/finance";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import {
@@ -21,6 +22,7 @@ import {
   DEFAULT_INVESTMENTS,
   DEFAULT_SETTINGS,
   DEFAULT_RECURRING_RULES,
+  DEFAULT_SAVINGS_CHALLENGES,
 } from "@/constants/mockData";
 import { AppDataBackupSchema, MortgageContractSchema } from "./validations";
 import { createDefaultSkyOneLoan, reconcileBidvSkyOneContract } from "./mortgageEngine";
@@ -36,6 +38,7 @@ export interface StoredAppStateV3 {
   debts: DebtItem[];
   investments: InvestmentItem[];
   recurringRules: RecurringRule[];
+  savingsChallenges?: SavingsChallenge[];
   settings: AppSettings;
   skyoneLoan: MortgageContract;
 }
@@ -102,6 +105,7 @@ export function seedInitialDataV3(): StoredAppStateV3 {
     debts: DEFAULT_DEBTS,
     investments: DEFAULT_INVESTMENTS,
     recurringRules: DEFAULT_RECURRING_RULES,
+    savingsChallenges: DEFAULT_SAVINGS_CHALLENGES,
     settings: DEFAULT_SETTINGS,
     skyoneLoan: createDefaultSkyOneLoan(),
   };
@@ -147,6 +151,9 @@ export function loadStoredDataV3(): StoredAppStateV3 {
           recurringRules: Array.isArray(parsed.recurringRules)
             ? parsed.recurringRules
             : DEFAULT_RECURRING_RULES,
+          savingsChallenges: Array.isArray(parsed.savingsChallenges)
+            ? parsed.savingsChallenges
+            : DEFAULT_SAVINGS_CHALLENGES,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
           skyoneLoan: reconciledSkyOne,
         };
@@ -190,6 +197,7 @@ export function buildSyncBundlePayload(state: StoredAppStateV3): AppDataBackup {
     debts: state.debts,
     investments: state.investments,
     recurringRules: state.recurringRules,
+    savingsChallenges: state.savingsChallenges ?? [],
     settings: state.settings,
     skyoneLoan: state.skyoneLoan,
   };
@@ -323,6 +331,7 @@ export function parseSyncBundleText(text: string): {
       debts: validData.debts ?? DEFAULT_DEBTS,
       investments: validData.investments ?? DEFAULT_INVESTMENTS,
       recurringRules: validData.recurringRules ?? DEFAULT_RECURRING_RULES,
+      savingsChallenges: validData.savingsChallenges ?? DEFAULT_SAVINGS_CHALLENGES,
       settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
       skyoneLoan: reconcileBidvSkyOneContract(validData.skyoneLoan).contract,
     };
@@ -343,6 +352,7 @@ export interface MergeDiffPreview {
   newBudgets: number;
   newCategories: number;
   newRecurringRules: number;
+  newSavingsChallenges?: number;
   newMortgagePaidRecords: number;
   newMortgagePrepayments: number;
   newMortgageRateAdjustments: number;
@@ -384,6 +394,10 @@ export function previewMergeDiff(
   const newInvestments = countNewById(current.investments, incoming.investments);
   const newCategories = countNewById(current.categories, incoming.categories);
   const newRecurringRules = countNewById(current.recurringRules, incoming.recurringRules);
+  const newSavingsChallenges = countNewById(
+    current.savingsChallenges || [],
+    incoming.savingsChallenges || []
+  );
 
   const curPaidPeriods = new Set(current.skyoneLoan.paidRecords.map((r) => r.period));
   const newMortgagePaidRecords = incoming.skyoneLoan.paidRecords.filter(
@@ -407,6 +421,7 @@ export function previewMergeDiff(
     newBudgets +
     newCategories +
     newRecurringRules +
+    newSavingsChallenges +
     newMortgagePaidRecords +
     newMortgagePrepayments +
     newMortgageRateAdjustments;
@@ -420,6 +435,7 @@ export function previewMergeDiff(
     newBudgets,
     newCategories,
     newRecurringRules,
+    newSavingsChallenges,
     newMortgagePaidRecords,
     newMortgagePrepayments,
     newMortgageRateAdjustments,
@@ -440,6 +456,7 @@ export function mergeFinanceData(
         autoLockMinutes: current.settings.autoLockMinutes,
         lockOnBackground: current.settings.lockOnBackground,
         requireAuthForDangerActions: current.settings.requireAuthForDangerActions,
+        quickAuth: current.settings.quickAuth,
         authActiveProfile: current.settings.authActiveProfile,
         husbandAuth: current.settings.husbandAuth,
         wifeAuth: current.settings.wifeAuth,
@@ -471,6 +488,10 @@ export function mergeFinanceData(
   const mergedDebts = mergeById(current.debts, incoming.debts);
   const mergedInvestments = mergeById(current.investments, incoming.investments);
   const mergedRules = mergeById(current.recurringRules, incoming.recurringRules);
+  const mergedChallenges = mergeById(
+    current.savingsChallenges || [],
+    incoming.savingsChallenges || []
+  );
 
   const incomingIsNewer =
     incoming.skyoneLoan.updatedAt.localeCompare(current.skyoneLoan.updatedAt) > 0;
@@ -511,6 +532,7 @@ export function mergeFinanceData(
     debts: mergedDebts,
     investments: mergedInvestments,
     recurringRules: mergedRules,
+    savingsChallenges: mergedChallenges,
     settings: {
       ...DEFAULT_SETTINGS,
       ...current.settings,

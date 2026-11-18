@@ -193,7 +193,7 @@ export function RecentActivitySection() {
                 )}
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold text-[#172B4D] dark:text-slate-100 truncate">
-                    Thông báo trình duyệt khi vượt 80%
+                    Thông báo đẩy trình duyệt (Ngân sách &amp; Định kỳ)
                   </p>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                     {browserNotifStatus === "unsupported"
@@ -201,8 +201,8 @@ export function RecentActivitySection() {
                       : browserNotifStatus === "denied"
                       ? "Quyền thông báo đang bị chặn trên trình duyệt"
                       : browserNotifEnabled
-                      ? "Đang bật · Tự nhắc 1 lần/tháng khi chi >80%"
-                      : "Chưa bật · Nhấn để cấp quyền nhắc hạn mức"}
+                      ? "Đang bật · Nhắc vượt 80% &amp; chi định kỳ trước 3 ngày"
+                      : "Chưa bật · Nhấn để cấp quyền nhắc hạn mức &amp; hóa đơn"}
                   </p>
                 </div>
               </div>

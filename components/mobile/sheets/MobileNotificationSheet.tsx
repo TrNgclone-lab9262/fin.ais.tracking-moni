@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Bell, Check, Repeat, AlertTriangle } from "lucide-react";
+import { X, Bell, Check, Repeat, AlertTriangle, BellRing, BellOff } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { getCurrentMonthKey } from "@/lib/formatters";
 import { useHaptic } from "@/src/hooks/useHaptic";
@@ -20,7 +20,12 @@ export function MobileNotificationSheet({
     markNotificationRead,
     recurringRules,
     selectedMonth,
+    applyRecurringRule,
     applyAllPendingRecurringRules,
+    browserNotifStatus,
+    browserNotifEnabled,
+    enableBrowserNotifications,
+    disableBrowserNotifications,
   } = useFinance();
 
   const [appliedMsg, setAppliedMsg] = useState<string | null>(null);
@@ -33,12 +38,42 @@ export function MobileNotificationSheet({
     (r) => r.isActive && r.lastAppliedMonth !== activeMonth
   ).length;
 
+  const showFeedback = (msg: string) => {
+    setAppliedMsg(msg);
+    window.setTimeout(() => setAppliedMsg(null), 3500);
+  };
+
+  const handleApplySingleRecurring = (ruleId: string, monthKey?: string) => {
+    const targetMonth = monthKey || activeMonth;
+    const tx = applyRecurringRule(ruleId, targetMonth);
+    if (tx) {
+      haptic.success();
+      showFeedback(`Đã ghi sổ "${tx.note || "khoản định kỳ"}" cho kỳ ${targetMonth}.`);
+    }
+  };
+
   const handleApplyAllRecurring = () => {
     const count = applyAllPendingRecurringRules(activeMonth);
     if (count > 0) {
       haptic.success();
-      setAppliedMsg(`Đã ghi sổ ${count} giao dịch định kỳ cho kỳ ${activeMonth}.`);
-      setTimeout(() => setAppliedMsg(null), 3500);
+      showFeedback(`Đã ghi sổ ${count} giao dịch định kỳ cho kỳ ${activeMonth}.`);
+    }
+  };
+
+  const handleToggleBrowserPush = async () => {
+    if (browserNotifEnabled) {
+      disableBrowserNotifications();
+      showFeedback("Đã tắt thông báo đẩy trình duyệt.");
+      return;
+    }
+    const granted = await enableBrowserNotifications();
+    if (granted) {
+      haptic.success();
+      showFeedback("Đã bật thông báo đẩy nhắc chi định kỳ & ngân sách.");
+    } else if (browserNotifStatus === "unsupported") {
+      showFeedback("Trình duyệt này không hỗ trợ thông báo đẩy.");
+    } else {
+      showFeedback("Quyền thông báo đang bị chặn trong cài đặt trình duyệt.");
     }
   };
 
@@ -59,7 +94,7 @@ export function MobileNotificationSheet({
         <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <h3 className="text-sm font-extrabold text-[#172B4D] dark:text-slate-100">
+            <h3 className="text-sm font-extrabold text-[#172B4D] dark:text-slate-100 tabular-nums">
               Cảnh báo & Nhắc nhở ({notifications.length})
             </h3>
           </div>
@@ -75,6 +110,43 @@ export function MobileNotificationSheet({
         </div>
 
         <div className="p-4 overflow-y-auto space-y-3">
+          {/* Toggle thông báo đẩy trình duyệt */}
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {browserNotifEnabled ? (
+                <BellRing className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : (
+                <BellOff className="w-4 h-4 text-slate-400 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                  Thông báo đẩy trình duyệt
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {browserNotifStatus === "unsupported"
+                    ? "Trình duyệt chưa hỗ trợ Notification API"
+                    : browserNotifStatus === "denied"
+                    ? "Quyền thông báo đang bị chặn"
+                    : browserNotifEnabled
+                    ? "Đang bật · Nhắc định kỳ trước 3 ngày & ngân sách"
+                    : "Nhắc chi định kỳ & ngân sách vượt ngưỡng"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={browserNotifStatus === "unsupported"}
+              onClick={() => void handleToggleBrowserPush()}
+              className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 ${
+                browserNotifEnabled
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+              }`}
+            >
+              {browserNotifEnabled ? "Đang bật" : "Bật đẩy"}
+            </button>
+          </div>
+
           {appliedMsg && (
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
               <Check className="w-4 h-4 shrink-0" />
@@ -85,7 +157,7 @@ export function MobileNotificationSheet({
           {pendingCount > 0 && (
             <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs font-extrabold text-[#1E3A8A] dark:text-blue-300">
+                <div className="text-xs font-extrabold text-[#1E3A8A] dark:text-blue-300 tabular-nums">
                   {pendingCount} giao dịch định kỳ chờ ghi sổ
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
@@ -95,7 +167,7 @@ export function MobileNotificationSheet({
               <button
                 type="button"
                 onClick={handleApplyAllRecurring}
-                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Repeat className="w-3.5 h-3.5" />
                 <span>Ghi sổ hết</span>
@@ -128,7 +200,21 @@ export function MobileNotificationSheet({
                     <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
                       {n.message}
                     </p>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 block">{n.date}</span>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums">
+                        {n.date}
+                      </span>
+                      {n.actionType === "APPLY_RECURRING" && n.recurringRuleId && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplySingleRecurring(n.recurringRuleId!, n.monthKey)}
+                          className="min-h-[36px] px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          <Repeat className="w-3.5 h-3.5" />
+                          <span>Ghi sổ</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -137,7 +223,7 @@ export function MobileNotificationSheet({
                       markNotificationRead(n.id);
                     }}
                     aria-label="Đánh dấu đã đọc"
-                    className="min-w-[36px] min-h-[36px] rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
+                    className="min-w-[40px] min-h-[40px] rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
                   >
                     <Check className="w-4 h-4" />
                   </button>

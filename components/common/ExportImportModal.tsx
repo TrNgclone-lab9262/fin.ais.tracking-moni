@@ -15,6 +15,7 @@ import {
   GitMerge,
   ClipboardPaste,
   Check,
+  FileText,
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { MergeDiffPreview, StoredAppStateV3 } from "@/lib/storage";
@@ -24,12 +25,14 @@ interface ExportImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenResetDemo: () => void;
+  onOpenPdfReport?: () => void;
 }
 
 export function ExportImportModal({
   isOpen,
   onClose,
   onOpenResetDemo,
+  onOpenPdfReport,
 }: ExportImportModalProps) {
   const {
     transactions,
@@ -301,6 +304,23 @@ export function ExportImportModal({
                       Xuất báo cáo Excel / CSV ({selectedMonth === "ALL" ? "Tất cả" : selectedMonth})
                     </span>
                   </button>
+
+                  {onOpenPdfReport && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenPdfReport();
+                      }}
+                      data-testid="export-modal-pdf-btn"
+                      className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/30 font-bold text-xs sm:text-sm rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>
+                        Xem trước & Xuất báo cáo PDF tháng (A4)
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 {manualBundlePreview && (

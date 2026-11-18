@@ -75,7 +75,7 @@ export function MobileNumpadSheet({
   }, [isOpen, activePerspective, accounts]);
 
   // Tự động gán category đầu tiên theo type
-  const availableCategories = categories.filter((c) => c.type === type);
+  const availableCategories = categories.filter((c) => c.type === type && !c.isHidden);
   useEffect(() => {
     if (availableCategories.length > 0 && !availableCategories.some((c) => c.id === categoryId)) {
       setCategoryId(availableCategories[0].id);

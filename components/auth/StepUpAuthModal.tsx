@@ -22,7 +22,7 @@ export function StepUpAuthModal({
   onVerified,
   onCancel,
 }: StepUpAuthModalProps) {
-  const { settings, unlockWithPasscode } = useFinance();
+  const { settings, verifyMemberPasscode } = useFinance();
   const haptic = useHaptic();
   const [selectedMember, setSelectedMember] = useState<AuthMemberId>(
     settings.authActiveProfile || "HUSBAND"
@@ -51,7 +51,7 @@ export function StepUpAuthModal({
     setIsBusy(true);
     setError(null);
     try {
-      const ok = await unlockWithPasscode(selectedMember, cleaned);
+      const ok = await verifyMemberPasscode(selectedMember, cleaned);
       if (ok) {
         haptic.success();
         setCode("");

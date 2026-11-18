@@ -21,6 +21,7 @@ export interface Category {
   color: string;
   icon?: string;
   isDefault?: boolean;
+  isHidden?: boolean;
 }
 
 export interface Account {
@@ -135,6 +136,13 @@ export interface MemberAuthConfig {
   updatedAt?: string;
 }
 
+export type QuickAuthViewId = 'accounts' | 'debts_invest' | 'data_admin';
+
+export interface QuickAuthSettings {
+  enabled: boolean;
+  protectedViews: QuickAuthViewId[];
+}
+
 export interface AppSettings {
   themeColor: ThemeColor;
   themeMode?: ThemeMode;
@@ -152,6 +160,7 @@ export interface AppSettings {
   husbandAuth?: MemberAuthConfig;   // Cấu hình Code, Face ID & nền khóa của Anh Chuột
   wifeAuth?: MemberAuthConfig;      // Cấu hình Code, Face ID & nền khóa của Bé Mèo
   requireAuthForDangerActions?: boolean; // Hỏi mã Code / Face ID cho thao tác nguy hiểm (Reset, xóa hàng loạt, ghi đè)
+  quickAuth?: QuickAuthSettings;    // Xác thực nhanh Face ID / Mã Code độc lập cho các mục nhạy cảm
 }
 
 export interface AppNotification {
@@ -161,6 +170,9 @@ export interface AppNotification {
   type: 'warning' | 'info' | 'danger';
   date: string;
   read: boolean;
+  actionType?: 'APPLY_RECURRING';
+  recurringRuleId?: string;
+  monthKey?: string;
 }
 
 export type MortgageStage = 'FIXED' | 'FLOATING';
@@ -258,6 +270,21 @@ export interface MortgageContract {
   updatedAt: string;
 }
 
+export type SavingsChallengeMode = 'AUTO_SURPLUS' | 'MANUAL';
+
+export interface SavingsChallenge {
+  id: string;
+  name: string;
+  month: string; // YYYY-MM
+  targetAmount: number;
+  manualSavedAmount: number;
+  trackingMode: SavingsChallengeMode;
+  color: string;
+  memberId?: FamilyMember;
+  icon?: string;
+  createdAt: string;
+}
+
 export interface AppDataBackup {
   version: '3.0' | '4.0';
   exportedAt: string;
@@ -269,6 +296,7 @@ export interface AppDataBackup {
   debts: DebtItem[];
   investments: InvestmentItem[];
   recurringRules?: RecurringRule[];
+  savingsChallenges?: SavingsChallenge[];
   settings: AppSettings;
   skyoneLoan?: MortgageContract;
 }

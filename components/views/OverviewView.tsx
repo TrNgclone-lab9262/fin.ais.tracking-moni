@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, Repeat, CheckCircle2, ArrowRight, Loader2, FileText } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import {
   formatVNDMasked,
@@ -10,16 +10,25 @@ import {
 } from "@/lib/formatters";
 import { generateMonthlyDigest, MonthlyAIDigest } from "@/lib/geminiReceiptService";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
+import { QuickAddCard } from "@/components/dashboard/QuickAddCard";
 import { DualCreditCardsWidget } from "@/components/dashboard/DualCreditCardsWidget";
 import { FamilyCashflowWidget } from "@/components/dashboard/FamilyCashflowWidget";
 import { MonthlyTrendChart } from "@/components/dashboard/MonthlyTrendChart";
 import { ExpensePieChart } from "@/components/dashboard/ExpensePieChart";
 import { IncomePieChart } from "@/components/dashboard/IncomePieChart";
 import { TrendLineCharts } from "@/components/dashboard/TrendLineCharts";
+import { SixMonthIncomeExpenseLineChart } from "@/components/dashboard/SixMonthIncomeExpenseLineChart";
+import { FinancialInsightsCard } from "@/components/dashboard/FinancialInsightsCard";
+import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCard";
 import { AssetDebtGoalsWidgets } from "@/components/dashboard/AssetDebtGoalsWidgets";
 import { RecentActivitySection } from "@/components/dashboard/RecentActivitySection";
 
-export function OverviewView() {
+interface OverviewViewProps {
+  onOpenPdfReport?: () => void;
+  onOpenAddModal?: () => void;
+}
+
+export function OverviewView({ onOpenPdfReport, onOpenAddModal }: OverviewViewProps) {
   const {
     selectedMonth,
     summary,
@@ -89,9 +98,43 @@ export function OverviewView() {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+      {/* 0. Thanh Tác Vụ Báo Cáo Tháng & Xuất PDF */}
+      {onOpenPdfReport && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 rounded-xl px-5 py-3.5 border border-[#DCE4EE] dark:border-slate-800 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-[#1E3A8A] dark:text-blue-400 flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-extrabold text-[#172B4D] dark:text-slate-100 truncate">
+                Đối soát & Lưu trữ kỳ {getMonthDisplayLabel(activeMonthKey)}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Xuất bản A4 gồm tổng kết thu chi, đối soát vợ chồng và bảng chi tiết giao dịch
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenPdfReport}
+            data-testid="overview-export-pdf-btn"
+            className="min-h-[38px] px-3.5 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs cursor-pointer transition-colors"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Xuất PDF tháng</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Bốn Thẻ Chỉ Số Gradient Tổng quan */}
       <section aria-label="Thống kê tổng quan">
         <SummaryCards />
+      </section>
+
+      {/* 1A. Chế độ Ghi Nhanh (Quick Add) ngay trên Tổng quan */}
+      <section aria-label="Nhập nhanh giao dịch">
+        <QuickAddCard onOpenFullForm={onOpenAddModal} />
       </section>
 
       {/* 1B. Trợ lý AI Phân Tích Kỳ & Giao Dịch Định Kỳ Chờ Ghi Sổ */}
@@ -219,6 +262,16 @@ export function OverviewView() {
         </div>
       </section>
 
+      {/* 1C. Phân tích chi tiêu AI & 3 mẹo tiết kiệm hàng tháng */}
+      <section aria-label="Phân tích chi tiêu và mẹo tiết kiệm AI">
+        <FinancialInsightsCard />
+      </section>
+
+      {/* 1D. Dự báo xu hướng chi tiêu 3 tháng tiếp theo */}
+      <section aria-label="Dự báo xu hướng chi tiêu 3 tháng tới">
+        <SpendingForecastCard />
+      </section>
+
       {/* 2. Widget Quản lý 2 Thẻ Tín Dụng BIDV Credit */}
       <section aria-label="Quản lý thẻ tín dụng BIDV">
         <DualCreditCardsWidget />
@@ -240,6 +293,11 @@ export function OverviewView() {
         <div className="lg:col-span-1">
           <IncomePieChart />
         </div>
+      </section>
+
+      {/* 4B. So sánh Thu nhập vs Chi tiêu 6 tháng (Recharts LineChart) */}
+      <section aria-label="Xu hướng thu chi 6 tháng">
+        <SixMonthIncomeExpenseLineChart />
       </section>
 
       {/* 5. Xu hướng tích lũy */}

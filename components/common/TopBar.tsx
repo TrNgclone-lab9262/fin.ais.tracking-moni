@@ -18,9 +18,12 @@ import {
   Check,
   Sun,
   Moon,
+  BellRing,
+  BellOff,
+  Repeat,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
-import { getMonthDisplayLabel } from "@/lib/formatters";
+import { getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
 import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
 import { useHaptic } from "@/src/hooks/useHaptic";
@@ -63,16 +66,53 @@ export function TopBar({
     hasPasscodeProtection,
     lockApp,
     recurringRules,
+    applyRecurringRule,
     applyAllPendingRecurringRules,
+    browserNotifStatus,
+    browserNotifEnabled,
+    enableBrowserNotifications,
+    disableBrowserNotifications,
   } = useFinance();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [isCloudAuthOpen, setIsCloudAuthOpen] = useState(false);
+  const [notifFeedback, setNotifFeedback] = useState<string | null>(null);
   const haptic = useHaptic();
 
+  const activeMonthKey = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
   const pendingRecurringCount = recurringRules.filter(
-    (r) => r.isActive && r.lastAppliedMonth !== (selectedMonth === "ALL" ? availableMonths[0] : selectedMonth)
+    (r) => r.isActive && r.lastAppliedMonth !== activeMonthKey
   ).length;
+
+  const showTimedFeedback = (msg: string) => {
+    setNotifFeedback(msg);
+    window.setTimeout(() => setNotifFeedback(null), 3200);
+  };
+
+  const handleApplySingleNotification = (ruleId: string, monthKey?: string) => {
+    const tx = applyRecurringRule(ruleId, monthKey || activeMonthKey);
+    if (tx) {
+      haptic.success();
+      showTimedFeedback(`Đã ghi sổ "${tx.note || "khoản định kỳ"}" cho kỳ ${monthKey || activeMonthKey}.`);
+    }
+  };
+
+  const handleTogglePushNotifications = async () => {
+    if (browserNotifEnabled) {
+      disableBrowserNotifications();
+      showTimedFeedback("Đã tắt thông báo đẩy trình duyệt.");
+      return;
+    }
+    const granted = await enableBrowserNotifications();
+    if (granted) {
+      haptic.success();
+      showTimedFeedback("Đã bật thông báo đẩy cho khoản định kỳ & cảnh báo ngân sách.");
+    } else if (browserNotifStatus === "unsupported") {
+      showTimedFeedback("Trình duyệt hiện tại không hỗ trợ thông báo đẩy.");
+    } else {
+      showTimedFeedback("Quyền thông báo đang bị chặn trong cài đặt trình duyệt.");
+    }
+  };
 
   const tabTitles: Record<NavTab, string> = {
     overview: "Tổng quan tổ ấm (My Home)",
@@ -285,15 +325,62 @@ export function TopBar({
                     </button>
                   </div>
 
+                  <div className="mx-3 mt-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {browserNotifEnabled ? (
+                        <BellRing className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <BellOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      )}
+                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 truncate">
+                        {browserNotifStatus === "unsupported"
+                          ? "Không hỗ trợ đẩy trình duyệt"
+                          : browserNotifStatus === "denied"
+                          ? "Thông báo trình duyệt bị chặn"
+                          : browserNotifEnabled
+                          ? "Đang bật nhắc đẩy trình duyệt"
+                          : "Nhắc đẩy trình duyệt (3 ngày)"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={browserNotifStatus === "unsupported"}
+                      onClick={() => void handleTogglePushNotifications()}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 transition-colors ${
+                        browserNotifEnabled
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          : "bg-white dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-slate-700 border border-[#DCE4EE] dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                      }`}
+                    >
+                      {browserNotifEnabled ? "Đang bật" : "Bật đẩy"}
+                    </button>
+                  </div>
+
+                  {notifFeedback && (
+                    <div
+                      role="status"
+                      className="mx-3 mt-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-[11px] font-semibold flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                      <span>{notifFeedback}</span>
+                    </div>
+                  )}
+
                   {pendingRecurringCount > 0 && (
-                    <div className="mx-3 mt-2.5 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-bold text-[#1E3A8A] dark:text-blue-200">
-                        {pendingRecurringCount} khoản định kỳ chưa ghi sổ
+                    <div className="mx-3 mt-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#1E3A8A] dark:text-blue-200 tabular-nums">
+                        {pendingRecurringCount} khoản định kỳ chưa ghi sổ ({activeMonthKey})
                       </span>
                       <button
                         type="button"
-                        onClick={() => applyAllPendingRecurringRules()}
-                        className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                        onClick={() => {
+                          const count = applyAllPendingRecurringRules(activeMonthKey);
+                          if (count > 0) {
+                            haptic.success();
+                            showTimedFeedback(`Đã ghi sổ ${count} khoản định kỳ cho kỳ ${activeMonthKey}.`);
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold whitespace-nowrap cursor-pointer shrink-0"
                       >
                         Ghi hết
                       </button>
@@ -323,9 +410,24 @@ export function TopBar({
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{notif.title}</p>
                             <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mt-0.5">{notif.message}</p>
-                            <span className="text-[10px] text-slate-400 mt-1 block">
-                              {notif.date}
-                            </span>
+                            <div className="flex items-center justify-between gap-2 mt-1.5">
+                              <span className="text-[10px] text-slate-400 tabular-nums">
+                                {notif.date}
+                              </span>
+                              {notif.actionType === "APPLY_RECURRING" && notif.recurringRuleId && (
+                                <button
+                                  type="button"
+                                  data-testid={`notif-apply-btn-${notif.recurringRuleId}`}
+                                  onClick={() =>
+                                    handleApplySingleNotification(notif.recurringRuleId!, notif.monthKey)
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                                >
+                                  <Repeat className="w-3 h-3" />
+                                  <span>Ghi sổ</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <button
                             type="button"

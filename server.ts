@@ -356,6 +356,378 @@ Hãy viết nhận xét ngắn gọn, thực tế, mang tính động viên bằ
     }
   });
 
+  // 4. POST /api/ai/financial-insights — Monthly Spending Pattern Analysis & 3 Actionable Saving Tips
+  app.post('/api/ai/financial-insights', async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Chưa cấu hình GEMINI_API_KEY trên máy chủ. Vui lòng thiết lập khóa API trong Settings > Secrets.',
+        code: 'GEMINI_API_KEY_NOT_CONFIGURED',
+      });
+    }
+
+    try {
+      const {
+        monthLabel,
+        perspectiveLabel,
+        totalIncome,
+        totalExpense,
+        savingsRate,
+        previousMonthExpense,
+        categoryBreakdown,
+        topMerchants,
+        recurringTotal,
+        discretionaryTotal,
+        recentTransactions,
+        budgetOverruns,
+        creditCards,
+      } = req.body as {
+        monthLabel?: string;
+        perspectiveLabel?: string;
+        totalIncome?: number;
+        totalExpense?: number;
+        savingsRate?: number;
+        previousMonthExpense?: number;
+        categoryBreakdown?: { name: string; amount: number; percentage: number; prevAmount?: number }[];
+        topMerchants?: { label: string; count: number; totalAmount: number }[];
+        recurringTotal?: number;
+        discretionaryTotal?: number;
+        recentTransactions?: { date: string; amount: number; category: string; note: string; scope: string }[];
+        budgetOverruns?: string[];
+        creditCards?: { name: string; usagePercentage: number; usedAmount: number }[];
+      };
+
+      if (!totalExpense || totalExpense <= 0) {
+        return res.status(400).json({
+          error: 'Chưa có giao dịch chi tiêu trong kỳ này để Gemini phân tích.',
+          code: 'NO_EXPENSE_DATA',
+        });
+      }
+
+      const categoryLines = (categoryBreakdown || [])
+        .slice(0, 8)
+        .map((c) => {
+          const prevInfo =
+            typeof c.prevAmount === 'number' && c.prevAmount > 0
+              ? ` (tháng trước: ${c.prevAmount.toLocaleString('vi-VN')} đ)`
+              : '';
+          return `- ${c.name}: ${c.amount.toLocaleString('vi-VN')} đ (${c.percentage}%)${prevInfo}`;
+        })
+        .join('\n');
+
+      const merchantLines = (topMerchants || [])
+        .slice(0, 8)
+        .map((m) => `- "${m.label}": ${m.count} lần, tổng ${m.totalAmount.toLocaleString('vi-VN')} đ`)
+        .join('\n');
+
+      const txLines = (recentTransactions || [])
+        .slice(0, 25)
+        .map((t) => `- ${t.date} | ${t.category} | ${t.amount.toLocaleString('vi-VN')} đ | ${t.scope} | ${t.note}`)
+        .join('\n');
+
+      const prevTotal = typeof previousMonthExpense === 'number' ? previousMonthExpense : 0;
+      const momDeltaPct =
+        prevTotal > 0 ? Math.round(((totalExpense - prevTotal) / prevTotal) * 100) : null;
+
+      const prompt = `Phân tích xu hướng chi tiêu tháng và đề xuất đúng 3 mẹo tiết kiệm cụ thể, khả thi bằng tiếng Việt cho gia đình HOME MONI.
+
+Thông tin kỳ phân tích:
+- Kỳ: ${monthLabel || 'Hiện tại'} (${perspectiveLabel || 'Cả nhà'})
+- Tổng thu nhập: ${(totalIncome || 0).toLocaleString('vi-VN')} đ
+- Tổng chi tiêu: ${totalExpense.toLocaleString('vi-VN')} đ${momDeltaPct !== null ? ` (thay đổi ${momDeltaPct >= 0 ? '+' : ''}${momDeltaPct}% so với tháng trước ${prevTotal.toLocaleString('vi-VN')} đ)` : ''}
+- Tỷ lệ tiết kiệm: ${savingsRate ?? 0}%
+- Chi cố định/định kỳ: ${(recurringTotal || 0).toLocaleString('vi-VN')} đ | Chi linh hoạt: ${(discretionaryTotal || 0).toLocaleString('vi-VN')} đ
+- Thẻ tín dụng: ${(creditCards || []).map((c) => `${c.name} (${c.usagePercentage}%)`).join(', ') || 'Không có'}
+- Danh mục vượt/gần ngân sách: ${(budgetOverruns || []).join(', ') || 'Không có'}
+
+Cơ cấu chi theo danh mục:
+${categoryLines || 'Chưa phân loại'}
+
+Các khoản chi lặp lại / nổi bật:
+${merchantLines || 'Không có dữ liệu'}
+
+Mẫu giao dịch gần đây:
+${txLines || 'Không có'}
+
+Yêu cầu đầu ra JSON:
+1. patternSummary: 1-2 câu súc tích chỉ ra thói quen/mô hình chi tiêu nổi bật nhất trong lịch sử giao dịch trên.
+2. comparisonNote: 1 câu nhận xét ngắn về biến động chi tiêu so với tháng trước hoặc cơ cấu cố định vs linh hoạt.
+3. tips: ĐÚNG 3 mẹo tiết kiệm thực tế bám sát trực tiếp các danh mục/khoản chi cụ thể ở trên. Mỗi mẹo gồm:
+   - title: Tiêu đề hành động ngắn gọn (tối đa 10 từ).
+   - action: Hướng dẫn cụ thể phải làm gì và cắt giảm ở khoản nào (1-2 câu).
+   - targetCategory: Tên danh mục chi tiêu liên quan.
+   - estimatedMonthlySavings: Số tiền ước tính tiết kiệm được mỗi tháng (VNĐ, số nguyên dương hợp lý với dữ liệu).`;
+
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction:
+            'Bạn là chuyên gia phân tích tài chính cá nhân cho gia đình Việt Nam. Luôn trả về JSON đúng schema với đúng 3 mẹo tiết kiệm thực tế dựa trên dữ liệu giao dịch được cung cấp, không bịa đặt số liệu ngoài ngữ cảnh.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              patternSummary: { type: Type.STRING },
+              comparisonNote: { type: Type.STRING },
+              tips: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    action: { type: Type.STRING },
+                    targetCategory: { type: Type.STRING },
+                    estimatedMonthlySavings: { type: Type.NUMBER },
+                  },
+                  required: ['title', 'action', 'targetCategory', 'estimatedMonthlySavings'],
+                },
+              },
+            },
+            required: ['patternSummary', 'comparisonNote', 'tips'],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(response.text || '{}') as {
+        patternSummary?: string;
+        comparisonNote?: string;
+        tips?: {
+          title?: string;
+          action?: string;
+          targetCategory?: string;
+          estimatedMonthlySavings?: number;
+        }[];
+      };
+
+      const rawTips = Array.isArray(parsed.tips) ? parsed.tips.slice(0, 3) : [];
+      if (rawTips.length === 0 || !parsed.patternSummary) {
+        return res.status(502).json({
+          error: 'Phản hồi từ Gemini AI chưa đầy đủ cấu trúc. Vui lòng thử phân tích lại.',
+          code: 'GEMINI_INVALID_OUTPUT',
+        });
+      }
+
+      return res.json({
+        insights: {
+          patternSummary: parsed.patternSummary,
+          comparisonNote: parsed.comparisonNote || '',
+          tips: rawTips.map((t) => ({
+            title: String(t.title || 'Tối ưu chi tiêu'),
+            action: String(t.action || ''),
+            targetCategory: String(t.targetCategory || 'Chi tiêu chung'),
+            estimatedMonthlySavings: Math.max(0, Math.round(Number(t.estimatedMonthlySavings) || 0)),
+          })),
+        },
+      });
+    } catch (err) {
+      console.error('[AI Financial Insights Error]', err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID')) {
+        return res.status(403).json({
+          error: 'Khóa GEMINI_API_KEY không hợp lệ hoặc chưa được cấp quyền. Vui lòng kiểm tra trong Settings > Secrets.',
+          code: 'GEMINI_AUTH_ERROR',
+        });
+      }
+      if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
+        return res.status(429).json({
+          error: 'Đã chạm giới hạn lượt gọi Gemini API. Vui lòng thử lại sau ít phút.',
+          code: 'GEMINI_RATE_LIMIT',
+        });
+      }
+      return res.status(502).json({
+        error: 'Không thể kết nối Gemini AI để phân tích dữ liệu chi tiêu. Vui lòng thử lại sau.',
+        code: 'GEMINI_REQUEST_FAILED',
+      });
+    }
+  });
+
+  // 5. POST /api/ai/spending-forecast — 3-Month Spending Forecast Narrative & Recommendations
+  app.post('/api/ai/spending-forecast', async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Chưa cấu hình GEMINI_API_KEY trên máy chủ. Vui lòng thiết lập khóa API trong Settings > Secrets.',
+        code: 'GEMINI_API_KEY_NOT_CONFIGURED',
+      });
+    }
+
+    try {
+      const {
+        anchorMonthLabel,
+        perspectiveLabel,
+        monthsAnalyzed,
+        historicalAvgIncome,
+        historicalAvgExpense,
+        recurringExpenseBaseline,
+        discretionaryExpenseBaseline,
+        monthlyGrowthRatePct,
+        forecastMonths,
+        topDrivers,
+        budgetWarnings,
+        creditCards,
+      } = req.body as {
+        anchorMonthLabel?: string;
+        perspectiveLabel?: string;
+        monthsAnalyzed?: number;
+        historicalAvgIncome?: number;
+        historicalAvgExpense?: number;
+        recurringExpenseBaseline?: number;
+        discretionaryExpenseBaseline?: number;
+        monthlyGrowthRatePct?: number;
+        forecastMonths?: {
+          month: string;
+          monthLabel: string;
+          predictedIncome: number;
+          recurringExpense: number;
+          discretionaryExpense: number;
+          predictedExpense: number;
+          projectedSavings: number;
+          savingsRate: number;
+          riskLabel: string;
+        }[];
+        topDrivers?: {
+          categoryName: string;
+          avgMonthlyAmount: number;
+          sharePct: number;
+          isRecurringDominant: boolean;
+        }[];
+        budgetWarnings?: string[];
+        creditCards?: { name: string; usagePercentage: number; usedAmount: number }[];
+      };
+
+      if (!Array.isArray(forecastMonths) || forecastMonths.length === 0) {
+        return res.status(400).json({
+          error: 'Chưa có dữ liệu dự báo 3 tháng để Gemini phân tích.',
+          code: 'NO_FORECAST_DATA',
+        });
+      }
+
+      const forecastLines = forecastMonths
+        .slice(0, 3)
+        .map(
+          (m) =>
+            `- ${m.monthLabel} (${m.month}): Thu dự kiến ${m.predictedIncome.toLocaleString('vi-VN')} đ | Chi dự kiến ${m.predictedExpense.toLocaleString('vi-VN')} đ (Cố định: ${m.recurringExpense.toLocaleString('vi-VN')} đ, Linh hoạt: ${m.discretionaryExpense.toLocaleString('vi-VN')} đ) | Tiết kiệm dự kiến: ${m.projectedSavings.toLocaleString('vi-VN')} đ (${m.savingsRate}%) [${m.riskLabel}]`
+        )
+        .join('\n');
+
+      const driverLines = (topDrivers || [])
+        .slice(0, 5)
+        .map(
+          (d) =>
+            `- ${d.categoryName}: TB ${d.avgMonthlyAmount.toLocaleString('vi-VN')} đ/tháng (${d.sharePct}%${d.isRecurringDominant ? ', có khoản định kỳ' : ''})`
+        )
+        .join('\n');
+
+      const prompt = `Hãy đóng vai chuyên gia cố vấn tài chính gia đình Việt Nam, nhận xét dự báo xu hướng chi tiêu 3 tháng tiếp theo bằng tiếng Việt cho gia đình HOME MONI.
+
+Ngữ cảnh lịch sử (từ Financial Insights):
+- Kỳ neo hiện tại: ${anchorMonthLabel || 'Hiện tại'} (${perspectiveLabel || 'Cả nhà'})
+- Số tháng dữ liệu lịch sử đã phân tích: ${monthsAnalyzed ?? 0} tháng
+- Trung bình lịch sử: Thu ${(historicalAvgIncome || 0).toLocaleString('vi-VN')} đ/tháng | Chi ${(historicalAvgExpense || 0).toLocaleString('vi-VN')} đ/tháng
+- Định kỳ cố định hàng tháng: ${(recurringExpenseBaseline || 0).toLocaleString('vi-VN')} đ | Nền chi linh hoạt: ${(discretionaryExpenseBaseline || 0).toLocaleString('vi-VN')} đ (biến động ${monthlyGrowthRatePct ?? 0}%/tháng)
+- Thẻ tín dụng BIDV: ${(creditCards || []).map((c) => `${c.name} (${c.usagePercentage}%)`).join(', ') || 'Không có'}
+- Danh mục ngân sách gần/vượt ngưỡng: ${(budgetWarnings || []).join(', ') || 'Không có'}
+
+Các nhóm chi dẫn dắt từ lịch sử:
+${driverLines || 'Chưa có phân bổ chi tiết'}
+
+Số liệu dự báo 3 tháng tới:
+${forecastLines}
+
+Yêu cầu đầu ra JSON:
+1. headline: 1 câu tiêu đề súc tích tóm tắt triển vọng dòng tiền 3 tháng tới.
+2. overallTrend: 2 câu nhận xét ngắn gọn về xu hướng chi cố định vs linh hoạt, rủi ro bội chi hoặc cơ hội tích lũy dựa trên số liệu trên.
+3. monthlyNotes: Mảng đúng 3 phần tử tương ứng từng tháng dự báo (+1, +2, +3), mỗi phần tử gồm:
+   - month: mã YYYY-MM đúng như đầu vào
+   - focus: 1 cụm từ ngắn (tối đa 8 từ) về trọng tâm tháng đó (VD: "Kiểm soát ăn uống cuối năm")
+   - advice: 1 câu gợi ý cụ thể cho tháng đó.
+4. savingActions: Mảng 2-3 gạch đầu dòng hành động cụ thể giúp tối ưu phần chi linh hoạt hoặc gia tăng tiết kiệm trong 3 tháng tới.`;
+
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction:
+            'Bạn là cố vấn tài chính gia đình tại Việt Nam. Luôn trả về JSON đúng schema dựa trên số liệu dự báo đã tính, không bịa đặt con số ngoài dữ liệu được cung cấp.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              headline: { type: Type.STRING },
+              overallTrend: { type: Type.STRING },
+              monthlyNotes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    month: { type: Type.STRING },
+                    focus: { type: Type.STRING },
+                    advice: { type: Type.STRING },
+                  },
+                  required: ['month', 'focus', 'advice'],
+                },
+              },
+              savingActions: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ['headline', 'overallTrend', 'monthlyNotes', 'savingActions'],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(response.text || '{}') as {
+        headline?: string;
+        overallTrend?: string;
+        monthlyNotes?: { month?: string; focus?: string; advice?: string }[];
+        savingActions?: string[];
+      };
+
+      if (!parsed.headline || !parsed.overallTrend || !Array.isArray(parsed.monthlyNotes)) {
+        return res.status(502).json({
+          error: 'Phản hồi dự báo từ Gemini AI chưa đầy đủ cấu trúc. Vui lòng thử lại.',
+          code: 'GEMINI_INVALID_OUTPUT',
+        });
+      }
+
+      return res.json({
+        forecastInsights: {
+          headline: String(parsed.headline),
+          overallTrend: String(parsed.overallTrend),
+          monthlyNotes: parsed.monthlyNotes.slice(0, 3).map((n, idx) => ({
+            month: String(n.month || forecastMonths[idx]?.month || ''),
+            focus: String(n.focus || 'Theo dõi dòng tiền'),
+            advice: String(n.advice || ''),
+          })),
+          savingActions: Array.isArray(parsed.savingActions)
+            ? parsed.savingActions.slice(0, 3).map((a) => String(a))
+            : [],
+        },
+      });
+    } catch (err) {
+      console.error('[AI Spending Forecast Error]', err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID')) {
+        return res.status(403).json({
+          error: 'Khóa GEMINI_API_KEY không hợp lệ hoặc chưa được cấp quyền. Vui lòng kiểm tra trong Settings > Secrets.',
+          code: 'GEMINI_AUTH_ERROR',
+        });
+      }
+      if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
+        return res.status(429).json({
+          error: 'Đã chạm giới hạn lượt gọi Gemini API. Vui lòng thử lại sau ít phút.',
+          code: 'GEMINI_RATE_LIMIT',
+        });
+      }
+      return res.status(502).json({
+        error: 'Không thể kết nối Gemini AI để nhận xét dự báo 3 tháng. Vui lòng thử lại sau.',
+        code: 'GEMINI_REQUEST_FAILED',
+      });
+    }
+  });
+
   // Vite dev middleware or static production build
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

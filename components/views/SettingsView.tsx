@@ -10,9 +10,6 @@ import {
   RefreshCw,
   Users,
   Lock,
-  Tags,
-  Plus,
-  Trash2,
   Eye,
   EyeOff,
   Check,
@@ -32,8 +29,9 @@ import {
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { formatCheckTimestamp } from "@/constants/appVersion";
-import { AuthMemberId } from "@/types/finance";
+import { AuthMemberId, QuickAuthViewId } from "@/types/finance";
 import { FamilyHub } from "@/components/views/FamilyHub";
+import { CategoryManagerSection } from "@/components/categories/CategoryManagerSection";
 import {
   checkBiometricAvailability,
   compressDeviceWallpaper,
@@ -65,15 +63,14 @@ export function SettingsView({
     setThemeMode,
     isPrivacyMode,
     togglePrivacyMode,
-    categories,
-    addCategory,
-    deleteCategory,
     setActiveTab,
     setMemberPasscode,
     clearMemberPasscode,
     updateMemberAuthConfig,
     lockApp,
     hasPasscodeProtection,
+    hasAuthCredential,
+    toggleQuickAuthView,
   } = useFinance();
 
   const {
@@ -114,11 +111,6 @@ export function SettingsView({
   const [isBioBusy, setIsBioBusy] = useState(false);
   const [isUploadingWallpaper, setIsUploadingWallpaper] = useState(false);
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
-
-  // Quick Category Form
-  const [newCatName, setNewCatName] = useState("");
-  const [newCatType, setNewCatType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const [newCatColor, setNewCatColor] = useState("#2563EB");
 
   useEffect(() => {
     setHusbandName(settings.husbandName);
@@ -247,18 +239,6 @@ export function SettingsView({
     removeMemberWallpaper(securityMember);
     setWallpapers(loadMemberWallpapers());
     flashSaved(`Đã khôi phục nền Calm Slate mặc định cho ${activeSecurityName}.`);
-  };
-
-  const handleAddCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCatName.trim()) return;
-    addCategory({
-      name: newCatName.trim(),
-      type: newCatType,
-      color: newCatColor,
-    });
-    setNewCatName("");
-    flashSaved("Đã thêm danh mục mới.");
   };
 
   return (
@@ -859,8 +839,15 @@ export function SettingsView({
           <label className="flex items-center justify-between sm:justify-start gap-2.5 cursor-pointer font-semibold text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
-              checked={Boolean(settings.requireAuthOnOpen ?? hasPasscodeProtection)}
-              onChange={(e) => updateSettings({ requireAuthOnOpen: e.target.checked })}
+              checked={Boolean(settings.requireAuthOnOpen)}
+              onChange={(e) => {
+                const next = e.target.checked;
+                if (next && !hasAuthCredential) {
+                  flashSaved("Hãy đặt mã Code hoặc đăng ký Face ID trước khi bật khóa khi mở app.");
+                  return;
+                }
+                updateSettings({ requireAuthOnOpen: next });
+              }}
               className="w-4 h-4 accent-blue-600 rounded"
             />
             <span>Hỏi mã khi vừa mở app</span>
@@ -904,88 +891,125 @@ export function SettingsView({
             </select>
           </div>
         </div>
-      </div>
 
-      {/* 3. Quản lý Danh mục nhanh */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Tags className="w-4 h-4" />
-            </div>
+        {/* Xác thực nhanh (Quick Auth) độc lập cho từng mục nhạy cảm */}
+        <div
+          data-testid="quick-auth-settings-panel"
+          className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-[#E9EEF5] dark:border-slate-700 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
-                Danh Mục Thu / Chi ({categories.length})
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Thêm nhanh danh mục mới hoặc mở Data Studio để chỉnh sửa chuyên sâu
+              <h4 className="text-xs sm:text-sm font-bold text-[#172B4D] dark:text-slate-100 flex items-center gap-1.5">
+                <ScanFace className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span>Xác Thực Nhanh Cho Mục Nhạy Cảm (Quick Auth)</span>
+              </h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Bật khóa Face ID / Vân tay / mã Code riêng cho từng mục mà không bắt buộc khóa khi vừa mở app.
               </p>
             </div>
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+              {settings.quickAuth?.enabled && (settings.quickAuth?.protectedViews?.length ?? 0) > 0
+                ? `Đang bảo vệ ${settings.quickAuth.protectedViews.length} mục`
+                : "Đang tắt"}
+            </span>
           </div>
 
+          {!hasAuthCredential && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">
+              Lưu ý: Hãy thiết lập mã Code 4–6 số hoặc đăng ký Face ID ở phía trên để kích hoạt Quick Auth.
+            </p>
+          )}
+
+          <div className="divide-y divide-[#E9EEF5] dark:divide-slate-700/80">
+            {(
+              [
+                {
+                  id: "accounts" as QuickAuthViewId,
+                  label: "Tài khoản & Thẻ tín dụng",
+                  desc: "Yêu cầu Face ID / Code trước khi xem số dư ngân hàng và hạn mức thẻ",
+                },
+                {
+                  id: "debts_invest" as QuickAuthViewId,
+                  label: "Nợ & Đầu tư",
+                  desc: "Bảo vệ danh sách khoản vay, cho vay và danh mục tài sản đầu tư",
+                },
+                {
+                  id: "data_admin" as QuickAuthViewId,
+                  label: "Quản trị Dữ liệu",
+                  desc: "Bảo vệ khu vực chỉnh sửa sổ sách trực tiếp và sao lưu JSON",
+                },
+              ] as const
+            ).map((item) => {
+              const checked = Boolean(
+                settings.quickAuth?.enabled &&
+                  settings.quickAuth?.protectedViews?.includes(item.id)
+              );
+              return (
+                <div
+                  key={item.id}
+                  className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-[#172B4D] dark:text-slate-100">
+                      {item.label}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {item.desc}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={checked}
+                    aria-label={`Bật hoặc tắt Quick Auth cho ${item.label}`}
+                    data-testid={`quick-auth-toggle-${item.id}`}
+                    onClick={() => {
+                      const next = !checked;
+                      if (next && !hasAuthCredential && !hasPasscodeProtection) {
+                        flashSaved("Hãy tạo mã Code hoặc đăng ký Face ID ở trên để sử dụng Quick Auth.");
+                        return;
+                      }
+                      toggleQuickAuthView(item.id, next);
+                      flashSaved(
+                        next
+                          ? `Đã bật Quick Auth bảo vệ mục ${item.label}.`
+                          : `Đã tắt Quick Auth cho mục ${item.label}.`
+                      );
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                      checked
+                        ? "bg-blue-600 dark:bg-blue-500"
+                        : "bg-slate-300 dark:bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        checked ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Quản lý Danh mục Tùy chỉnh */}
+      <CategoryManagerSection
+        onStatusMessage={flashSaved}
+        headerAction={
           <button
             type="button"
             onClick={() => setActiveTab("data_admin")}
-            className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <span>Mở Quản trị Dữ liệu</span>
+            <span>Quản trị Dữ liệu</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
-        </div>
-
-        <form onSubmit={handleAddCategory} className="flex flex-wrap gap-2">
-          <input
-            type="text"
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
-            placeholder="Tên danh mục mới..."
-            className="flex-1 min-w-[160px] bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
-          />
-          <select
-            value={newCatType}
-            onChange={(e) => setNewCatType(e.target.value as "EXPENSE" | "INCOME")}
-            className="bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
-          >
-            <option value="EXPENSE">Chi tiêu</option>
-            <option value="INCOME">Thu nhập</option>
-          </select>
-          <input
-            type="color"
-            value={newCatColor}
-            onChange={(e) => setNewCatColor(e.target.value)}
-            className="w-10 h-9 rounded-lg border border-[#DCE4EE] dark:border-slate-700 bg-transparent cursor-pointer"
-          />
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Thêm</span>
-          </button>
-        </form>
-
-        <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto pt-1">
-          {categories.map((cat) => (
-            <span
-              key={cat.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200"
-            >
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
-              <span>{cat.name}</span>
-              {!cat.isDefault && (
-                <button
-                  type="button"
-                  onClick={() => deleteCategory(cat.id)}
-                  title="Xóa danh mục"
-                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
+        }
+      />
 
       {/* 4. FamilyHub (Supabase Auth, Profile, Ghép đôi) & Công cụ Hệ thống */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-5">
