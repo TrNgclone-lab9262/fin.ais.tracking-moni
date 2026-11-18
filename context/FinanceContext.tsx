@@ -120,6 +120,9 @@ import {
 } from "@/lib/appRouting";
 import {
   BrowserNotificationStatus,
+  UnifiedDueReminder,
+  buildUnifiedDueReminders,
+  findInstallmentReminders,
   findRecurringExpenseReminders,
   getBrowserNotificationPermission,
   isBrowserNotificationOptedIn,
@@ -128,6 +131,19 @@ import {
   triggerBudgetThresholdNotifications,
   triggerRecurringExpenseNotifications,
 } from "@/lib/browserNotifications";
+
+export interface QuickRecordUndoEntry {
+  id: string;
+  kind: "RECURRING_RULE" | "MORTGAGE_INSTALLMENT";
+  label: string;
+  amount: number;
+  monthKey: string;
+  ruleId?: string;
+  transactionId?: string;
+  previousLastAppliedMonth?: string;
+  installmentPeriod?: number;
+  createdAt: number;
+}
 
 export type NavTab = FinanceTab;
 
@@ -257,6 +273,12 @@ interface FinanceContextType {
   savingsChallenges: SavingsChallenge[];
   settings: AppSettings;
   notifications: AppNotification[];
+  unifiedDueReminders: UnifiedDueReminder[];
+  quickRecordUndo: QuickRecordUndoEntry | null;
+  quickApplyRecurringNotification: (ruleId: string, monthKey?: string) => Transaction | null;
+  quickPayInstallmentNotification: (period: number) => boolean;
+  undoLastQuickRecord: () => boolean;
+  dismissQuickRecordUndo: () => void;
 
   // Browser Notifications (>80% hạn mức ngân sách tháng)
   browserNotifStatus: BrowserNotificationStatus;
@@ -2181,6 +2203,55 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [recurringRules, selectedMonth, addTransactionsBatch, queueCloudMutation]
   );
 
+  const [quickRecordUndo, setQuickRecordUndo] = useState<QuickRecordUndoEntry | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
+
+  const scheduleUndoAutoDismiss = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+    }
+    undoTimerRef.current = window.setTimeout(() => {
+      setQuickRecordUndo(null);
+      undoTimerRef.current = null;
+    }, 12000);
+  }, []);
+
+  const dismissQuickRecordUndo = useCallback(() => {
+    if (typeof window !== "undefined" && undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setQuickRecordUndo(null);
+  }, []);
+
+  const quickApplyRecurringNotification = useCallback(
+    (ruleId: string, monthKey?: string): Transaction | null => {
+      const targetRule = recurringRules.find((r) => r.id === ruleId);
+      if (!targetRule) return null;
+      const targetMonth =
+        monthKey || (selectedMonth !== "ALL" ? selectedMonth : getCurrentMonthKey());
+      const prevApplied = targetRule.lastAppliedMonth;
+      const created = applyRecurringRule(ruleId, targetMonth);
+      if (!created) return null;
+
+      setQuickRecordUndo({
+        id: `undo_rec_${ruleId}_${Date.now()}`,
+        kind: "RECURRING_RULE",
+        label: targetRule.name,
+        amount: created.amount,
+        monthKey: targetMonth,
+        ruleId,
+        transactionId: created.id,
+        previousLastAppliedMonth: prevApplied,
+        createdAt: Date.now(),
+      });
+      scheduleUndoAutoDismiss();
+      return created;
+    },
+    [recurringRules, selectedMonth, applyRecurringRule, scheduleUndoAutoDismiss]
+  );
+
   const updateSkyOneContract = useCallback(
     (patch: Partial<MortgageContract>) => {
       setSkyoneLoan((prev) => {
@@ -3165,13 +3236,48 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       list.push({
         id: nid,
         title,
-        message: `${timingDetail} · ${amountText}. Bấm Ghi sổ để hạch toán ngay kỳ ${monthKey}.`,
+        message: `${timingDetail} · ${amountText}. Bấm Ghi sổ nhanh để hạch toán ngay kỳ ${monthKey}.`,
         type: status === "OVERDUE" ? "danger" : "warning",
         date: today,
         read: readNotifIds.has(nid),
         actionType: "APPLY_RECURRING",
         recurringRuleId: rule.id,
         monthKey,
+      });
+    });
+
+    const dueInstallments = findInstallmentReminders(skyoneLoan);
+    dueInstallments.forEach((inst) => {
+      const nid = `inst_due_${inst.period}`;
+      const amountText = formatVNDMasked(inst.amount, Boolean(settings.privacyMode));
+      const [, mPart, dPart] = inst.dueDate.split("-");
+      const dateDisp = `${dPart || inst.dueDay}/${mPart || ""}`;
+      const title =
+        inst.status === "OVERDUE"
+          ? `Quá hạn trả góp: ${inst.projectName} · Kỳ #${inst.period}`
+          : inst.status === "DUE_TODAY"
+          ? `Đến hạn trả góp hôm nay: Kỳ #${inst.period}`
+          : `Sắp đến hạn trả góp (${inst.daysUntilDue} ngày): Kỳ #${inst.period}`;
+
+      const timingDetail =
+        inst.status === "OVERDUE"
+          ? `Đã quá hạn ${Math.abs(inst.daysUntilDue)} ngày (${dateDisp})`
+          : inst.status === "DUE_TODAY"
+          ? `Đến hạn thanh toán hôm nay (${dateDisp})`
+          : `Còn ${inst.daysUntilDue} ngày đến hạn (${dateDisp})`;
+
+      list.push({
+        id: nid,
+        title,
+        message: `${timingDetail} · ${amountText}. Bấm Ghi sổ nhanh để hạch toán kỳ trả góp.`,
+        type: inst.status === "OVERDUE" ? "danger" : "warning",
+        date: today,
+        read: readNotifIds.has(nid),
+        actionType: "PAY_INSTALLMENT",
+        installmentPeriod: inst.period,
+        installmentDueDate: inst.dueDate,
+        installmentAmount: inst.amount,
+        monthKey: inst.monthKey,
       });
     });
 
@@ -3198,8 +3304,99 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     settings.privacyMode,
     budgetSummary.items,
     recurringRules,
+    skyoneLoan,
     selectedMonth,
     readNotifIds,
+  ]);
+
+  const defaultInstallmentAccount = useMemo(
+    () =>
+      accounts.find((a) => a.owner === "HUSBAND" && a.type !== "CREDIT_CARD") ||
+      accounts.find((a) => a.type !== "CREDIT_CARD") ||
+      accounts[0],
+    [accounts]
+  );
+
+  const unifiedDueReminders = useMemo(
+    () =>
+      buildUnifiedDueReminders({
+        rules: recurringRules,
+        monthKey: getCurrentMonthKey(),
+        contract: skyoneLoan,
+        defaultInstallmentAccountId: defaultInstallmentAccount?.id,
+      }),
+    [recurringRules, skyoneLoan, defaultInstallmentAccount?.id]
+  );
+
+  const quickPayInstallmentNotification = useCallback(
+    (period: number): boolean => {
+      const target = unifiedDueReminders.find(
+        (item) => item.source === "MORTGAGE_INSTALLMENT" && item.installmentPeriod === period
+      );
+      const count = confirmSkyOnePeriods([period], {
+        linkAccountId: defaultInstallmentAccount?.id,
+        paidAt: getTodayIsoDate(),
+      });
+      if (count <= 0) return false;
+
+      setQuickRecordUndo({
+        id: `undo_inst_${period}_${Date.now()}`,
+        kind: "MORTGAGE_INSTALLMENT",
+        label: target?.title || `Trả góp ${skyoneLoan.projectName} · Kỳ #${period}`,
+        amount: target?.amount || 0,
+        monthKey: target?.monthKey || getCurrentMonthKey(),
+        installmentPeriod: period,
+        createdAt: Date.now(),
+      });
+      scheduleUndoAutoDismiss();
+      return true;
+    },
+    [
+      unifiedDueReminders,
+      confirmSkyOnePeriods,
+      defaultInstallmentAccount?.id,
+      skyoneLoan.projectName,
+      scheduleUndoAutoDismiss,
+    ]
+  );
+
+  const undoLastQuickRecord = useCallback((): boolean => {
+    if (!quickRecordUndo) return false;
+    const entry = quickRecordUndo;
+
+    if (entry.kind === "RECURRING_RULE" && entry.ruleId) {
+      if (entry.transactionId) {
+        deleteTransaction(entry.transactionId);
+      }
+      setRecurringRules((prev) => {
+        let updated: RecurringRule | undefined;
+        const next = prev.map((r) => {
+          if (r.id !== entry.ruleId) return r;
+          updated = { ...r, lastAppliedMonth: entry.previousLastAppliedMonth };
+          return updated;
+        });
+        if (updated) {
+          queueCloudMutation({ type: "UPSERT_RECURRING_RULE", payload: updated });
+        }
+        return next;
+      });
+      dismissQuickRecordUndo();
+      return true;
+    }
+
+    if (entry.kind === "MORTGAGE_INSTALLMENT" && entry.installmentPeriod !== undefined) {
+      undoSkyOnePeriod(entry.installmentPeriod);
+      dismissQuickRecordUndo();
+      return true;
+    }
+
+    return false;
+  }, [
+    quickRecordUndo,
+    deleteTransaction,
+    queueCloudMutation,
+    undoSkyOnePeriod,
+    dismissQuickRecordUndo,
   ]);
 
   const markNotificationRead = useCallback((id: string) => {
@@ -3227,6 +3424,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     triggerRecurringExpenseNotifications({
       monthKey: currentCalendarMonth,
       rules: recurringRules,
+      contract: skyoneLoan,
       isPrivacyMode,
     });
   }, [
@@ -3235,6 +3433,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     browserNotifStatus,
     budgetSummary.items,
     recurringRules,
+    skyoneLoan,
     selectedMonth,
     isPrivacyMode,
   ]);
@@ -3254,11 +3453,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       triggerRecurringExpenseNotifications({
         monthKey: currentCalendarMonth,
         rules: recurringRules,
+        contract: skyoneLoan,
         isPrivacyMode,
       });
     }
     return res.granted;
-  }, [selectedMonth, budgetSummary.items, recurringRules, isPrivacyMode]);
+  }, [selectedMonth, budgetSummary.items, recurringRules, skyoneLoan, isPrivacyMode]);
 
   const disableBrowserNotifications = useCallback(() => {
     setBrowserNotificationOptIn(false);
@@ -3394,6 +3594,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     resetSkyOneLoan,
     updateSettings,
     markNotificationRead,
+    unifiedDueReminders,
+    quickRecordUndo,
+    quickApplyRecurringNotification,
+    quickPayInstallmentNotification,
+    undoLastQuickRecord,
+    dismissQuickRecordUndo,
     browserNotifStatus,
     browserNotifEnabled,
     enableBrowserNotifications,

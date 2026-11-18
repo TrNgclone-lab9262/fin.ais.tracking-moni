@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Bell, Check, Repeat, AlertTriangle, BellRing, BellOff } from "lucide-react";
+import { X, Bell, Check, Repeat, AlertTriangle, BellRing, BellOff, RotateCcw } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { getCurrentMonthKey } from "@/lib/formatters";
 import { useHaptic } from "@/src/hooks/useHaptic";
@@ -20,8 +20,11 @@ export function MobileNotificationSheet({
     markNotificationRead,
     recurringRules,
     selectedMonth,
-    applyRecurringRule,
     applyAllPendingRecurringRules,
+    quickApplyRecurringNotification,
+    quickPayInstallmentNotification,
+    quickRecordUndo,
+    undoLastQuickRecord,
     browserNotifStatus,
     browserNotifEnabled,
     enableBrowserNotifications,
@@ -40,15 +43,23 @@ export function MobileNotificationSheet({
 
   const showFeedback = (msg: string) => {
     setAppliedMsg(msg);
-    window.setTimeout(() => setAppliedMsg(null), 3500);
+    window.setTimeout(() => setAppliedMsg(null), 4500);
   };
 
   const handleApplySingleRecurring = (ruleId: string, monthKey?: string) => {
     const targetMonth = monthKey || activeMonth;
-    const tx = applyRecurringRule(ruleId, targetMonth);
+    const tx = quickApplyRecurringNotification(ruleId, targetMonth);
     if (tx) {
       haptic.success();
-      showFeedback(`Đã ghi sổ "${tx.note || "khoản định kỳ"}" cho kỳ ${targetMonth}.`);
+      showFeedback(`Đã ghi sổ nhanh "${tx.note || "khoản định kỳ"}" cho kỳ ${targetMonth}.`);
+    }
+  };
+
+  const handlePaySingleInstallment = (period: number) => {
+    const ok = quickPayInstallmentNotification(period);
+    if (ok) {
+      haptic.success();
+      showFeedback(`Đã ghi sổ nhanh kỳ trả góp #${period}.`);
     }
   };
 
@@ -147,10 +158,30 @@ export function MobileNotificationSheet({
             </button>
           </div>
 
-          {appliedMsg && (
-            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0" />
-              <span>{appliedMsg}</span>
+          {(appliedMsg || quickRecordUndo) && (
+            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Check className="w-4 h-4 shrink-0" />
+                <span className="truncate">
+                  {appliedMsg || `Đã ghi sổ nhanh: ${quickRecordUndo?.label}`}
+                </span>
+              </div>
+              {quickRecordUndo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = undoLastQuickRecord();
+                    if (ok) {
+                      haptic.light();
+                      showFeedback("Đã hoàn tác giao dịch vừa ghi sổ.");
+                    }
+                  }}
+                  className="min-h-[34px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200 text-[11px] font-extrabold inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Hoàn tác</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -208,10 +239,20 @@ export function MobileNotificationSheet({
                         <button
                           type="button"
                           onClick={() => handleApplySingleRecurring(n.recurringRuleId!, n.monthKey)}
-                          className="min-h-[36px] px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                          className="min-h-[40px] px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                         >
                           <Repeat className="w-3.5 h-3.5" />
-                          <span>Ghi sổ</span>
+                          <span>Ghi sổ nhanh</span>
+                        </button>
+                      )}
+                      {n.actionType === "PAY_INSTALLMENT" && n.installmentPeriod !== undefined && (
+                        <button
+                          type="button"
+                          onClick={() => handlePaySingleInstallment(n.installmentPeriod!)}
+                          className="min-h-[40px] px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          <Repeat className="w-3.5 h-3.5" />
+                          <span>Ghi sổ nhanh</span>
                         </button>
                       )}
                     </div>

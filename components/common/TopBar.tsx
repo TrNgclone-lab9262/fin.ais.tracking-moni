@@ -66,8 +66,11 @@ export function TopBar({
     hasPasscodeProtection,
     lockApp,
     recurringRules,
-    applyRecurringRule,
     applyAllPendingRecurringRules,
+    quickApplyRecurringNotification,
+    quickPayInstallmentNotification,
+    quickRecordUndo,
+    undoLastQuickRecord,
     browserNotifStatus,
     browserNotifEnabled,
     enableBrowserNotifications,
@@ -86,14 +89,22 @@ export function TopBar({
 
   const showTimedFeedback = (msg: string) => {
     setNotifFeedback(msg);
-    window.setTimeout(() => setNotifFeedback(null), 3200);
+    window.setTimeout(() => setNotifFeedback(null), 4500);
   };
 
   const handleApplySingleNotification = (ruleId: string, monthKey?: string) => {
-    const tx = applyRecurringRule(ruleId, monthKey || activeMonthKey);
+    const tx = quickApplyRecurringNotification(ruleId, monthKey || activeMonthKey);
     if (tx) {
       haptic.success();
-      showTimedFeedback(`Đã ghi sổ "${tx.note || "khoản định kỳ"}" cho kỳ ${monthKey || activeMonthKey}.`);
+      showTimedFeedback(`Đã ghi sổ nhanh "${tx.note || "khoản định kỳ"}" cho kỳ ${monthKey || activeMonthKey}.`);
+    }
+  };
+
+  const handlePayInstallmentNotification = (period: number) => {
+    const ok = quickPayInstallmentNotification(period);
+    if (ok) {
+      haptic.success();
+      showTimedFeedback(`Đã ghi sổ nhanh kỳ trả góp #${period}.`);
     }
   };
 
@@ -356,13 +367,34 @@ export function TopBar({
                     </button>
                   </div>
 
-                  {notifFeedback && (
+                  {(notifFeedback || quickRecordUndo) && (
                     <div
                       role="status"
-                      className="mx-3 mt-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-[11px] font-semibold flex items-center gap-1.5"
+                      className="mx-3 mt-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-[11px] font-semibold flex items-center justify-between gap-2"
                     >
-                      <Check className="w-3.5 h-3.5 shrink-0" />
-                      <span>{notifFeedback}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Check className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">
+                          {notifFeedback || `Đã ghi sổ nhanh: ${quickRecordUndo?.label}`}
+                        </span>
+                      </div>
+                      {quickRecordUndo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = undoLastQuickRecord();
+                            if (ok) {
+                              haptic.light();
+                              setNotifFeedback("Đã hoàn tác giao dịch vừa ghi sổ.");
+                              window.setTimeout(() => setNotifFeedback(null), 3000);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-[10px] font-extrabold whitespace-nowrap shrink-0 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Hoàn tác</span>
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -424,9 +456,23 @@ export function TopBar({
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                                 >
                                   <Repeat className="w-3 h-3" />
-                                  <span>Ghi sổ</span>
+                                  <span>Ghi sổ nhanh</span>
                                 </button>
                               )}
+                              {notif.actionType === "PAY_INSTALLMENT" &&
+                                notif.installmentPeriod !== undefined && (
+                                  <button
+                                    type="button"
+                                    data-testid={`notif-installment-btn-${notif.installmentPeriod}`}
+                                    onClick={() =>
+                                      handlePayInstallmentNotification(notif.installmentPeriod!)
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                                  >
+                                    <Repeat className="w-3 h-3" />
+                                    <span>Ghi sổ nhanh</span>
+                                  </button>
+                                )}
                             </div>
                           </div>
                           <button

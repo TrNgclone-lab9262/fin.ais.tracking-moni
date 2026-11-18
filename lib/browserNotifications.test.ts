@@ -4,6 +4,8 @@ import {
   BUDGET_WARNING_THRESHOLD_RATIO,
   findBudgetExceedingThreshold,
   findRecurringExpenseReminders,
+  findInstallmentReminders,
+  buildUnifiedDueReminders,
   evaluateRecurringRuleDueStatus,
   getBudgetWarningStatus,
   isBrowserNotificationSupported,
@@ -11,6 +13,7 @@ import {
   triggerBudgetThresholdNotifications,
   triggerRecurringExpenseNotifications,
 } from "./browserNotifications";
+import { createDefaultSkyOneLoan } from "./mortgageEngine";
 import { BudgetProgressItem, RecurringRule } from "@/types/finance";
 
 const sampleBudgets: BudgetProgressItem[] = [
@@ -210,4 +213,76 @@ test("browserNotifications helpers fail safely in non-browser Node runtime", () 
     now: new Date(2026, 10, 17),
   });
   assert.deepEqual(recurringRes, { sentCount: 0, sentRuleNames: [] });
+});
+
+test("findInstallmentReminders and buildUnifiedDueReminders combine recurring rules and loan installments within 3 days or overdue", () => {
+  // Default SkyOne periods 1..15 are verified paid through 2026-11-10; period #16 is due 2026-12-10
+  // On 2026-12-07, period #16 is 3 days away (DUE_SOON)
+  const loan = createDefaultSkyOneLoan("2026-12-07");
+  const refNow = new Date(2026, 11, 7, 9, 0, 0); // 2026-12-07
+
+  const instReminders = findInstallmentReminders(loan, refNow, 3);
+  assert.ok(instReminders.length >= 1);
+  const decInstallment = instReminders.find((r) => r.monthKey === "2026-12");
+  assert.ok(decInstallment);
+  assert.equal(decInstallment.period, 16);
+  assert.equal(decInstallment.status, "DUE_SOON");
+  assert.equal(decInstallment.daysUntilDue, 3);
+
+  // Overdue check on 2026-12-12 (2 days past 2026-12-10)
+  const overdueInst = findInstallmentReminders(loan, new Date(2026, 11, 12, 9, 0, 0), 3);
+  const decOverdue = overdueInst.find((r) => r.period === 16);
+  assert.ok(decOverdue);
+  assert.equal(decOverdue.status, "OVERDUE");
+  assert.equal(decOverdue.daysUntilDue, -2);
+
+  // Combine with recurring rules on 2026-12-07
+  const customRules: RecurringRule[] = [
+    {
+      id: "rec_house",
+      name: "Tiền nhà",
+      amount: 6_500_000,
+      type: "EXPENSE",
+      categoryId: "cat_expense_rent",
+      accountId: "acc_1",
+      memberId: "HUSBAND",
+      scope: "FAMILY",
+      dayOfMonth: 9, // 2 days away -> DUE_SOON
+      isActive: true,
+      lastAppliedMonth: "2026-11",
+    },
+    {
+      id: "rec_late",
+      name: "Internet quá hạn",
+      amount: 250_000,
+      type: "EXPENSE",
+      categoryId: "cat_expense_bills",
+      accountId: "acc_1",
+      memberId: "HUSBAND",
+      scope: "FAMILY",
+      dayOfMonth: 5, // 2 days overdue -> OVERDUE
+      isActive: true,
+      lastAppliedMonth: "2026-11",
+    },
+  ];
+
+  const unified = buildUnifiedDueReminders({
+    rules: customRules,
+    monthKey: "2026-12",
+    contract: loan,
+    now: refNow,
+    leadDays: 3,
+    defaultInstallmentAccountId: "acc_1",
+  });
+
+  // Should contain overdue rule first (-2), then house (+2), then installment #16 (+3)
+  assert.ok(unified.some((u) => u.source === "RECURRING_RULE" && u.rule?.id === "rec_late"));
+  assert.ok(unified.some((u) => u.source === "RECURRING_RULE" && u.rule?.id === "rec_house"));
+  assert.ok(
+    unified.some(
+      (u) => u.source === "MORTGAGE_INSTALLMENT" && u.installmentPeriod === decInstallment.period
+    )
+  );
+  assert.ok(unified[0].daysUntilDue <= unified[1].daysUntilDue);
+  assert.ok(unified[1].daysUntilDue <= unified[2].daysUntilDue);
 });

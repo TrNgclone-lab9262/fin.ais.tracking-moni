@@ -341,6 +341,27 @@ export function PlanningView() {
     setIsRecModalOpen(true);
   };
 
+  const openCreateRuleWithTemplate = (tpl: {
+    name: string;
+    categoryId: string;
+    dayOfMonth: string;
+    note: string;
+  }) => {
+    setEditingRule(null);
+    setRecName(tpl.name);
+    setRecAmount("");
+    setRecType("EXPENSE");
+    const selectableExp = getSelectableCategories(categories, "EXPENSE");
+    const hasCat = selectableExp.some((c) => c.id === tpl.categoryId);
+    setRecCategoryId(hasCat ? tpl.categoryId : selectableExp[0]?.id || tpl.categoryId);
+    setRecAccountId(accounts[0]?.id || "");
+    setRecMemberId("HUSBAND");
+    setRecScope("FAMILY");
+    setRecDay(tpl.dayOfMonth);
+    setRecNote(tpl.note);
+    setIsRecModalOpen(true);
+  };
+
   const openEditRule = (rule: RecurringRule) => {
     setEditingRule(rule);
     setRecName(rule.name);
@@ -915,6 +936,55 @@ export function PlanningView() {
                   <span>Thêm quy tắc định kỳ</span>
                 </button>
               </div>
+            </div>
+
+            {/* Mẫu tạo nhanh cho các khoản chi định kỳ phổ biến */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                Mẫu tạo nhanh:
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  openCreateRuleWithTemplate({
+                    name: "Tiền thuê nhà / Phí quản lý",
+                    categoryId: "cat_expense_rent",
+                    dayOfMonth: "6",
+                    note: "Nhắc trước 3 ngày đến hạn tiền nhà",
+                  })
+                }
+                className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 border border-[#E9EEF5] dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                + Tiền nhà
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  openCreateRuleWithTemplate({
+                    name: "Cước Internet & Wi-Fi",
+                    categoryId: "cat_expense_bills",
+                    dayOfMonth: "20",
+                    note: "Hóa đơn Internet gia đình hàng tháng",
+                  })
+                }
+                className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 border border-[#E9EEF5] dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                + Cước Internet
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  openCreateRuleWithTemplate({
+                    name: "Trả góp thiết bị / Xe",
+                    categoryId: "cat_expense_other",
+                    dayOfMonth: "15",
+                    note: "Kỳ trả góp hàng tháng (ngoài khoản vay SKYONE)",
+                  })
+                }
+                className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 border border-[#E9EEF5] dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+              >
+                + Trả góp hàng tháng
+              </button>
             </div>
 
             {/* Browser Push Notification Strip cho chi tiêu định kỳ */}

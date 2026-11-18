@@ -170,9 +170,12 @@ export interface AppNotification {
   type: 'warning' | 'info' | 'danger';
   date: string;
   read: boolean;
-  actionType?: 'APPLY_RECURRING';
+  actionType?: 'APPLY_RECURRING' | 'PAY_INSTALLMENT';
   recurringRuleId?: string;
   monthKey?: string;
+  installmentPeriod?: number;
+  installmentDueDate?: string;
+  installmentAmount?: number;
 }
 
 export type MortgageStage = 'FIXED' | 'FLOATING';

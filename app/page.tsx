@@ -46,6 +46,7 @@ import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
 import { QuickAuthGate } from "@/components/auth/QuickAuthGate";
 import { MobileNotificationSheet } from "@/components/mobile/sheets/MobileNotificationSheet";
 import { MonthlyPdfReportModal } from "@/components/reports/MonthlyPdfReportModal";
+import { RecurringReminderBanner } from "@/components/notifications/RecurringReminderBanner";
 import { ParsedReceiptResult } from "@/lib/geminiReceiptService";
 
 export default function HomePage() {
@@ -240,6 +241,7 @@ export default function HomePage() {
               />
             )}
             <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
+              {activeApp === "FINANCE" && <RecurringReminderBanner />}
               {renderMainView(false)}
             </main>
           </div>
@@ -257,7 +259,10 @@ export default function HomePage() {
             />
           )}
 
-          <main className="p-3.5 space-y-3.5">{renderMainView(true)}</main>
+          <main className="p-3.5 space-y-3.5">
+            {activeApp === "FINANCE" && <RecurringReminderBanner />}
+            {renderMainView(true)}
+          </main>
 
           {activeApp === "SKYONE" ? (
             <SkyOneBottomNavBar />

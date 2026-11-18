@@ -1,6 +1,7 @@
-import { BudgetProgressItem, RecurringRule } from "@/types/finance";
+import { BudgetProgressItem, MortgageContract, RecurringRule } from "@/types/finance";
 import { formatVNDMasked } from "./formatters";
 import { formatMonthKeyFromDate, getDaysInMonth } from "./financeEngine";
+import { generateMortgageSchedule } from "./mortgageEngine";
 
 export type BrowserNotificationStatus = "unsupported" | "denied" | "default" | "granted";
 export type BudgetAlertLevel = "SAFE" | "WARNING" | "DANGER";
@@ -25,6 +26,32 @@ export interface RecurringReminderCandidate {
   dueDay: number;
   daysUntilDue: number;
   status: "OVERDUE" | "DUE_TODAY" | "DUE_SOON";
+}
+
+export interface InstallmentReminderCandidate {
+  period: number;
+  projectName: string;
+  dueDate: string;
+  monthKey: string;
+  dueDay: number;
+  amount: number;
+  daysUntilDue: number;
+  status: "OVERDUE" | "DUE_TODAY" | "DUE_SOON";
+}
+
+export interface UnifiedDueReminder {
+  id: string;
+  source: "RECURRING_RULE" | "MORTGAGE_INSTALLMENT";
+  title: string;
+  amount: number;
+  dueDay: number;
+  dueDateLabel: string;
+  daysUntilDue: number;
+  status: "OVERDUE" | "DUE_TODAY" | "DUE_SOON";
+  monthKey: string;
+  accountId?: string;
+  rule?: RecurringRule;
+  installmentPeriod?: number;
 }
 
 const OPT_IN_STORAGE_KEY = "HOME_MONI_BROWSER_NOTIF_ENABLED_V1";
@@ -267,6 +294,113 @@ export function findRecurringExpenseReminders(
 }
 
 /**
+ * Finds unpaid mortgage/installment periods that are overdue (<0), due today (0),
+ * or due within leadDays (default 3 days).
+ */
+export function findInstallmentReminders(
+  contract: MortgageContract | null | undefined,
+  now: Date = new Date(),
+  leadDays: number = RECURRING_REMINDER_LEAD_DAYS
+): InstallmentReminderCandidate[] {
+  if (!contract) return [];
+  const refIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+  const schedule = generateMortgageSchedule(contract, refIso);
+  const candidates: InstallmentReminderCandidate[] = [];
+
+  for (const row of schedule.rows) {
+    if (row.status === "PAID") continue;
+    if (row.daysUntilDue > leadDays) continue;
+
+    const status: InstallmentReminderCandidate["status"] =
+      row.daysUntilDue < 0
+        ? "OVERDUE"
+        : row.daysUntilDue === 0
+        ? "DUE_TODAY"
+        : "DUE_SOON";
+
+    const dueDay = parseInt(row.dueDate.split("-")[2] || String(contract.paymentDayOfMonth), 10);
+
+    candidates.push({
+      period: row.period,
+      projectName: contract.projectName,
+      dueDate: row.dueDate,
+      monthKey: row.monthKey,
+      dueDay,
+      amount: row.totalPayment,
+      daysUntilDue: row.daysUntilDue,
+      status,
+    });
+  }
+
+  return candidates.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+}
+
+/**
+ * Unifies recurring expense rules and loan installment periods due within leadDays (3 days) or overdue.
+ */
+export function buildUnifiedDueReminders(params: {
+  rules: RecurringRule[];
+  monthKey: string;
+  contract?: MortgageContract | null;
+  now?: Date;
+  leadDays?: number;
+  defaultInstallmentAccountId?: string;
+}): UnifiedDueReminder[] {
+  const {
+    rules,
+    monthKey,
+    contract,
+    now = new Date(),
+    leadDays = RECURRING_REMINDER_LEAD_DAYS,
+    defaultInstallmentAccountId,
+  } = params;
+
+  const recurringItems = findRecurringExpenseReminders(rules, monthKey, now, leadDays).map(
+    (item): UnifiedDueReminder => {
+      const monthPart = item.monthKey.split("-")[1] || item.monthKey;
+      return {
+        id: `rec_${item.rule.id}_${item.monthKey}`,
+        source: "RECURRING_RULE",
+        title: item.rule.name,
+        amount: item.rule.amount,
+        dueDay: item.dueDay,
+        dueDateLabel: `${String(item.dueDay).padStart(2, "0")}/${monthPart}`,
+        daysUntilDue: item.daysUntilDue,
+        status: item.status,
+        monthKey: item.monthKey,
+        accountId: item.rule.accountId,
+        rule: item.rule,
+      };
+    }
+  );
+
+  const installmentItems = findInstallmentReminders(contract, now, leadDays).map(
+    (inst): UnifiedDueReminder => {
+      const [, mPart, dPart] = inst.dueDate.split("-");
+      return {
+        id: `inst_${inst.period}`,
+        source: "MORTGAGE_INSTALLMENT",
+        title: `Trả góp ${inst.projectName} · Kỳ #${inst.period}`,
+        amount: inst.amount,
+        dueDay: inst.dueDay,
+        dueDateLabel: `${dPart || String(inst.dueDay).padStart(2, "0")}/${mPart || ""}`,
+        daysUntilDue: inst.daysUntilDue,
+        status: inst.status,
+        monthKey: inst.monthKey,
+        accountId: defaultInstallmentAccountId,
+        installmentPeriod: inst.period,
+      };
+    }
+  );
+
+  return [...recurringItems, ...installmentItems].sort(
+    (a, b) => a.daysUntilDue - b.daysUntilDue
+  );
+}
+
+/**
  * Sends at most one browser notification per category per month once spending exceeds 80%.
  */
 export function triggerBudgetThresholdNotifications(params: {
@@ -324,12 +458,13 @@ export function triggerBudgetThresholdNotifications(params: {
 }
 
 /**
- * Sends at most one browser notification per recurring expense rule per month
+ * Sends at most one browser notification per recurring expense rule or installment period
  * when due within 3 days, due today, or overdue.
  */
 export function triggerRecurringExpenseNotifications(params: {
   monthKey: string;
   rules: RecurringRule[];
+  contract?: MortgageContract | null;
   isPrivacyMode?: boolean;
   now?: Date;
   leadDays?: number;
@@ -347,7 +482,13 @@ export function triggerRecurringExpenseNotifications(params: {
     params.now,
     params.leadDays
   );
-  if (candidates.length === 0) {
+  const installmentCandidates = findInstallmentReminders(
+    params.contract,
+    params.now,
+    params.leadDays
+  );
+
+  if (candidates.length === 0 && installmentCandidates.length === 0) {
     return { sentCount: 0, sentRuleNames: [] };
   }
 
@@ -372,7 +513,7 @@ export function triggerRecurringExpenseNotifications(params: {
         ? `Đến hạn hôm nay: ${item.rule.name}`
         : `Nhắc chi định kỳ: ${item.rule.name}`;
 
-    const body = `${timingLabel} · ${amountFormatted} cho kỳ ${params.monthKey}. Mở HOME MONI để ghi sổ 1 chạm.`;
+    const body = `${timingLabel} · ${amountFormatted} cho kỳ ${params.monthKey}. Nhấn Ghi sổ nhanh trên app.`;
 
     try {
       new window.Notification(title, {
@@ -382,6 +523,41 @@ export function triggerRecurringExpenseNotifications(params: {
       });
       markRecurringAlertSent(params.monthKey, item.rule.id);
       sentRuleNames.push(item.rule.name);
+    } catch {
+      // Ignore Notification constructor errors in restricted webviews
+    }
+  }
+
+  for (const inst of installmentCandidates) {
+    const ledgerKey = `inst_p_${inst.period}`;
+    if (alreadySent.has(ledgerKey)) continue;
+
+    const amountFormatted = formatVNDMasked(inst.amount, Boolean(params.isPrivacyMode));
+    const timingLabel =
+      inst.status === "OVERDUE"
+        ? `Đã quá hạn ${Math.abs(inst.daysUntilDue)} ngày (${inst.dueDate})`
+        : inst.status === "DUE_TODAY"
+        ? `Đến hạn hôm nay (${inst.dueDate})`
+        : `Còn ${inst.daysUntilDue} ngày đến hạn (${inst.dueDate})`;
+
+    const itemName = `Trả góp ${inst.projectName} · Kỳ #${inst.period}`;
+    const title =
+      inst.status === "OVERDUE"
+        ? `Quá hạn trả góp: ${itemName}`
+        : inst.status === "DUE_TODAY"
+        ? `Đến hạn trả góp hôm nay: Kỳ #${inst.period}`
+        : `Nhắc trả góp sắp đến hạn: Kỳ #${inst.period}`;
+
+    const body = `${timingLabel} · ${amountFormatted}. Bấm Ghi sổ nhanh trong HOME MONI.`;
+
+    try {
+      new window.Notification(title, {
+        body,
+        tag: `home-moni-installment-${inst.period}`,
+        icon: NOTIFICATION_ICON_PATH,
+      });
+      markRecurringAlertSent(params.monthKey, ledgerKey);
+      sentRuleNames.push(itemName);
     } catch {
       // Ignore Notification constructor errors in restricted webviews
     }
