@@ -31,6 +31,7 @@ import { FinancialInsightsCard } from "@/components/dashboard/FinancialInsightsC
 import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCard";
 import { PeriodComparisonCompact } from "@/components/dashboard/PeriodComparisonCompact";
 import { QuickAddCard } from "@/components/dashboard/QuickAddCard";
+import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarCard";
 
 interface MobileOverviewViewProps {
   onOpenPdfReport?: () => void;
@@ -284,6 +285,9 @@ export function MobileOverviewView({
 
       {/* 1C. QUICK ADD NHẬP NHANH NGAY TRÊN MÀN HÌNH CHÍNH */}
       <QuickAddCard compact onOpenFullForm={onOpenNumpad} />
+
+      {/* 1D. LỊCH TÀI CHÍNH GIA ĐÌNH */}
+      <FinancialCalendarCard compact />
 
       {/* 2. DUAL BIDV CREDIT CARDS MINI WIDGET */}
       <div className="space-y-2">

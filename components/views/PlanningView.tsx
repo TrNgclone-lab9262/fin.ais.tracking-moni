@@ -57,6 +57,11 @@ export function PlanningView() {
     deleteRecurringRule,
     applyRecurringRule,
     applyAllPendingRecurringRules,
+    autoPostNotice,
+    runAutoPostForDueRules,
+    recurringHistorySuggestions,
+    acceptRecurringSuggestion,
+    dismissRecurringSuggestion,
     getCategoryById,
     getAccountById,
     transactions,
@@ -108,6 +113,7 @@ export function PlanningView() {
   const [recScope, setRecScope] = useState<ExpenseScope>("FAMILY");
   const [recDay, setRecDay] = useState("5");
   const [recNote, setRecNote] = useState("");
+  const [recAutoPost, setRecAutoPost] = useState(false);
 
   const activeMonthKey = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
   const prevMonthKey = shiftMonthKey(activeMonthKey, -1);
@@ -338,6 +344,7 @@ export function PlanningView() {
     setRecScope("FAMILY");
     setRecDay("5");
     setRecNote("");
+    setRecAutoPost(false);
     setIsRecModalOpen(true);
   };
 
@@ -359,6 +366,7 @@ export function PlanningView() {
     setRecScope("FAMILY");
     setRecDay(tpl.dayOfMonth);
     setRecNote(tpl.note);
+    setRecAutoPost(true);
     setIsRecModalOpen(true);
   };
 
@@ -373,6 +381,7 @@ export function PlanningView() {
     setRecScope(rule.scope);
     setRecDay(String(rule.dayOfMonth));
     setRecNote(rule.note || "");
+    setRecAutoPost(Boolean(rule.autoPost));
     setIsRecModalOpen(true);
   };
 
@@ -392,6 +401,7 @@ export function PlanningView() {
       scope: recScope,
       dayOfMonth: safeDay,
       isActive: editingRule ? editingRule.isActive : true,
+      autoPost: recAutoPost,
       note: recNote.trim() || undefined,
     };
 
@@ -450,6 +460,7 @@ export function PlanningView() {
         </button>
         <button
           onClick={() => setActiveSubTab("RECURRING")}
+          data-testid="planning-tab-recurring"
           className={`px-3.5 py-1.5 text-xs sm:text-sm font-bold rounded-md transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === "RECURRING"
               ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
@@ -457,7 +468,12 @@ export function PlanningView() {
           }`}
         >
           <Repeat className="w-3.5 h-3.5" />
-          <span>Thu/Chi Định Kỳ ({recurringRules.length})</span>
+          <span>
+            Thu/Chi Định Kỳ ({recurringRules.length})
+            {recurringHistorySuggestions.length > 0
+              ? ` · ${recurringHistorySuggestions.length} gợi ý`
+              : ""}
+          </span>
         </button>
         <button
           type="button"
@@ -1034,7 +1050,148 @@ export function PlanningView() {
                 {recurringFeedback}
               </div>
             )}
+
+            {autoPostNotice && (
+              <div
+                data-testid="planning-autopost-summary"
+                className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-800 dark:text-blue-200 text-xs font-medium"
+              >
+                {autoPostNotice.postedCount > 0 && (
+                  <span>
+                    Đã tự động ghi sổ {autoPostNotice.postedCount} khoản đến hạn ({autoPostNotice.postedNames.join(", ")}).{" "}
+                  </span>
+                )}
+                {autoPostNotice.skippedCount > 0 && (
+                  <span>
+                    Đã bỏ qua {autoPostNotice.skippedCount} khoản do tháng này đã nhập tay trùng khớp ({autoPostNotice.skippedNames.join(", ")}).
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>
+                Khoản bật <strong className="text-slate-700 dark:text-slate-200">Tự ghi</strong> sẽ tự động tạo giao dịch khi đến ngày cố định và tự bỏ qua nếu tháng đó đã có giao dịch nhập tay trùng khớp.
+              </span>
+              {recurringRules.some((r) => r.isActive && r.autoPost && r.lastAppliedMonth !== activeMonthKey) && (
+                <button
+                  type="button"
+                  data-testid="run-autopost-now-btn"
+                  onClick={() => {
+                    const res = runAutoPostForDueRules();
+                    if (res.postedCount === 0 && res.skippedCount === 0) {
+                      setRecurringFeedback("Chưa có khoản tự ghi nào đến hạn cần xử lý hôm nay.");
+                    } else {
+                      setRecurringFeedback(
+                        `Kiểm tra tự động: đã ghi ${res.postedCount} khoản, bỏ qua trùng ${res.skippedCount} khoản.`
+                      );
+                    }
+                    window.setTimeout(() => setRecurringFeedback(null), 4000);
+                  }}
+                  className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 border border-[#DCE4EE] dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                >
+                  Kiểm tra tự ghi ngay
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Gợi ý khoản cố định phát hiện từ lịch sử giao dịch */}
+          {recurringHistorySuggestions.length > 0 && (
+            <div
+              data-testid="recurring-history-suggestions-section"
+              className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-blue-200 dark:border-blue-500/30 shadow-xs space-y-3"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-[#172B4D] dark:text-slate-100">
+                    Gợi ý khoản cố định từ lịch sử giao dịch ({recurringHistorySuggestions.length})
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Phát hiện các khoản thu/chi lặp lại hàng tháng quanh ngày cố định chưa có quy tắc tự động
+                  </p>
+                </div>
+              </div>
+
+              <div className="divide-y divide-[#E9EEF5] dark:divide-slate-800 border border-[#E9EEF5] dark:border-slate-800 rounded-lg overflow-hidden">
+                {recurringHistorySuggestions.map((s) => {
+                  const cat = getCategoryById(s.categoryId);
+                  const acc = getAccountById(s.accountId);
+                  return (
+                    <div
+                      key={s.signature}
+                      data-testid={`recurring-suggestion-${s.signature}`}
+                      className="p-3.5 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                          <span className="font-bold text-slate-800 dark:text-slate-100 truncate">
+                            {s.suggestedName}
+                          </span>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <span
+                            className={`font-black tabular-nums ${
+                              s.type === "INCOME"
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-rose-600 dark:text-rose-400"
+                            }`}
+                          >
+                            {s.type === "INCOME" ? "+" : "-"}
+                            {formatVNDMasked(s.amount, isPrivacyMode)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          {s.confidenceLabel} · {cat?.name || "Danh mục"} · {acc?.name || "Ví"}
+                          {s.alreadyLoggedCurrentMonth
+                            ? " · Tháng này đã có (tự ghi từ tháng sau)"
+                            : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          data-testid={`accept-suggestion-auto-${s.signature}`}
+                          onClick={() => {
+                            acceptRecurringSuggestion(s, { autoPost: true });
+                            setRecurringFeedback(
+                              `Đã tạo quy tắc "${s.suggestedName}" và bật tự động ghi sổ ngày ${s.dayOfMonth}.`
+                            );
+                            window.setTimeout(() => setRecurringFeedback(null), 3500);
+                          }}
+                          className="min-h-[36px] px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                        >
+                          Tạo &amp; Bật tự ghi
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`accept-suggestion-manual-${s.signature}`}
+                          onClick={() => {
+                            acceptRecurringSuggestion(s, { autoPost: false });
+                            setRecurringFeedback(
+                              `Đã thêm quy tắc nhắc định kỳ "${s.suggestedName}" (ghi thủ công).`
+                            );
+                            window.setTimeout(() => setRecurringFeedback(null), 3500);
+                          }}
+                          className="min-h-[36px] px-3 py-1.5 rounded-md bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                        >
+                          Thêm nhắc tay
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`dismiss-suggestion-${s.signature}`}
+                          onClick={() => dismissRecurringSuggestion(s.signature)}
+                          className="min-h-[36px] px-2.5 py-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                        >
+                          Bỏ qua
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {recurringRules.map((rule) => {
@@ -1119,6 +1276,11 @@ export function PlanningView() {
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                         {cat?.name || "Danh mục"} · {acc?.name || "Ví"} ·{" "}
                         {rule.memberId === "HUSBAND" ? settings.husbandName : settings.wifeName}
+                        {rule.lastSkippedDuplicateMonth === activeMonthKey && (
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                            {" "}· Đã nhập tay (bỏ qua tự ghi trùng)
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -1134,8 +1296,8 @@ export function PlanningView() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => updateRecurringRule(rule.id, { isActive: !rule.isActive })}
@@ -1146,6 +1308,19 @@ export function PlanningView() {
                         }`}
                       >
                         {rule.isActive ? "Đang bật" : "Tạm tắt"}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`toggle-autopost-${rule.id}`}
+                        onClick={() => updateRecurringRule(rule.id, { autoPost: !rule.autoPost })}
+                        title="Tự động ghi sổ khi đến ngày cố định (tự bỏ qua nếu tháng đó đã nhập tay trùng khớp)"
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-md border whitespace-nowrap cursor-pointer transition-colors ${
+                          rule.autoPost
+                            ? "bg-blue-50 dark:bg-blue-500/15 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-300"
+                            : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        {rule.autoPost ? "Tự ghi: Bật" : "Tự ghi: Tắt"}
                       </button>
                       <button
                         type="button"
@@ -1542,6 +1717,24 @@ export function PlanningView() {
                   </select>
                 </div>
               </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  data-testid="rec-autopost-checkbox"
+                  checked={recAutoPost}
+                  onChange={(e) => setRecAutoPost(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded accent-blue-600 shrink-0 cursor-pointer"
+                />
+                <div className="min-w-0">
+                  <span className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                    Tự động ghi sổ khi đến ngày cố định
+                  </span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Hệ thống tự tạo giao dịch đúng ngày hàng tháng và tự bỏ qua nếu bạn đã nhập tay khoản trùng khớp.
+                  </span>
+                </div>
+              </label>
 
               <div className="flex gap-2 pt-2">
                 <button

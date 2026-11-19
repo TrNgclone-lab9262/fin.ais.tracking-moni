@@ -34,6 +34,8 @@ export function RecurringReminderBanner() {
     quickPayInstallmentNotification,
     undoLastQuickRecord,
     dismissQuickRecordUndo,
+    autoPostNotice,
+    dismissAutoPostNotice,
     applyRecurringRule,
     confirmSkyOnePeriods,
     accounts,
@@ -56,7 +58,7 @@ export function RecurringReminderBanner() {
   const hasOverdue = overdueCount > 0;
   const showReminderCard = unifiedDueReminders.length > 0 && !isSessionDismissed;
 
-  if (!quickRecordUndo && !showReminderCard && !batchMessage) {
+  if (!quickRecordUndo && !showReminderCard && !batchMessage && !autoPostNotice) {
     return null;
   }
 
@@ -174,6 +176,36 @@ export function RecurringReminderBanner() {
             type="button"
             onClick={() => setBatchMessage(null)}
             className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Thông báo tự động ghi sổ khoản cố định / bỏ qua trùng khớp */}
+      {!quickRecordUndo && autoPostNotice && (
+        <div
+          role="status"
+          data-testid="auto-post-notice-banner"
+          className="rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 px-4 py-2.5 flex items-center justify-between gap-2 text-xs font-semibold text-[#1E3A8A] dark:text-blue-200"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <Check className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span className="truncate">
+              {autoPostNotice.postedCount > 0
+                ? `Đã tự động ghi sổ ${autoPostNotice.postedCount} khoản cố định (${autoPostNotice.postedNames.join(", ")}) cho kỳ ${autoPostNotice.monthKey}`
+                : ""}
+              {autoPostNotice.postedCount > 0 && autoPostNotice.skippedCount > 0 ? " · " : ""}
+              {autoPostNotice.skippedCount > 0
+                ? `Đã bỏ qua ${autoPostNotice.skippedCount} khoản do đã nhập tay trùng khớp (${autoPostNotice.skippedNames.join(", ")})`
+                : ""}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={dismissAutoPostNotice}
+            aria-label="Đóng thông báo tự động ghi sổ"
+            className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>

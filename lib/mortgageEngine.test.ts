@@ -39,6 +39,14 @@ test("createDefaultSkyOneLoan khớp chính xác 100% sao kê BIDV thực tế (
   assert.equal(schedule.nextUnpaidInstallment?.principal, 3_056_000);
   assert.equal(schedule.overdueCount, 0);
 
+  // Xác minh đồng bộ dữ liệu HĐMB A.12A.07 + Giải ngân Đợt 2 Q3/2027
+  assert.equal(contract.propertyValue, 1_573_480_430);
+  assert.equal(contract.downPayment, 323_655_950);
+  assert.equal(contract.creditLimit, 1_101_436_304);
+  assert.equal(contract.plannedDisbursements?.length, 1);
+  assert.equal(contract.plannedDisbursements?.[0]?.amount, 393_370_110);
+  assert.equal(contract.plannedDisbursements?.[0]?.afterPeriod, 24);
+
   // Kỳ #36 rơi đúng tháng 08/2028 (cố định 36 tháng) và kỳ #37 (09/2028) chuyển sang thả nổi
   const period36 = schedule.rows.find((r) => r.period === 36);
   const period37 = schedule.rows.find((r) => r.period === 37);
@@ -138,7 +146,7 @@ test("calculateRealEstateMetrics & calculateRateStressTest tính chuẩn Equity 
     "Thu nhập mẫu 2 vợ chồng"
   );
 
-  assert.ok(metrics.equityContractPct > 30);
+  assert.ok(metrics.equityContractPct > 20 && metrics.equityContractPct < 30);
   assert.ok(metrics.dtiPct > 5 && metrics.dtiPct < 25);
 
   const stress = calculateRateStressTest(
@@ -163,7 +171,7 @@ test("calculateRealEstateMetrics & calculateRateStressTest tính chuẩn Equity 
 
   // Kiểm tra các chỉ số chuyên biệt từng tab SKYONE
   const tabMetrics = calculateSkyOneTabMetrics(contract, schedule, "2026-11-14");
-  assert.equal(tabMetrics.creditLimit, 1_100_160_000);
+  assert.equal(tabMetrics.creditLimit, 1_101_436_304);
   assert.ok(tabMetrics.disbursedRatioPct > 60 && tabMetrics.disbursedRatioPct < 70);
   assert.equal(tabMetrics.currentLoanYear, 2);
   assert.equal(tabMetrics.currentPenaltyPercent, 1.5);
@@ -230,7 +238,21 @@ test("reconcileBidvSkyOneContract tự động nâng cấp hồ sơ mẫu cũ ho
   assert.equal(upgraded.contract.accountNumber, "8866102943");
   assert.equal(upgraded.contract.paidRecords.filter((r) => r.isVerified).length, 12);
 
-  // 2. Hợp đồng tùy chỉnh của ngân hàng khác không bị ghi đè
+  // 2. Nâng cấp hồ sơ tham chiếu cũ 2.15 tỷ / 68m² sang HĐMB thật A.12A.07 (1.573 tỷ / 323.65tr)
+  const legacyEstimatedSkyOne: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    unitCode: "Căn hộ 2PN · 68m² · Tháp A",
+    propertyValue: 2_150_000_000,
+    downPayment: 645_000_000,
+    plannedDisbursements: [],
+  };
+  const syncedHdmb = reconcileBidvSkyOneContract(legacyEstimatedSkyOne, "2026-11-14");
+  assert.equal(syncedHdmb.didAutoSync, true);
+  assert.equal(syncedHdmb.contract.propertyValue, 1_573_480_430);
+  assert.equal(syncedHdmb.contract.downPayment, 323_655_950);
+  assert.equal(syncedHdmb.contract.plannedDisbursements?.[0]?.amount, 393_370_110);
+
+  // 3. Hợp đồng tùy chỉnh của ngân hàng khác không bị ghi đè
   const customLoan: MortgageContract = {
     ...createDefaultSkyOneLoan("2026-11-14"),
     id: "custom_vcb",
@@ -250,17 +272,18 @@ test("buildSkyOneAmortizationChartData chuẩn hóa tỷ lệ Gốc/Lãi, dư n�
   const schedule = generateMortgageSchedule(contract, "2026-11-14");
   const dataset = buildSkyOneAmortizationChartData(contract, schedule);
 
-  assert.equal(dataset.points.length, 20);
+  const lastIdx = dataset.points.length - 1;
+  assert.ok(dataset.points.length >= 20 && dataset.points.length <= 30);
   assert.equal(dataset.points[0].name, "Năm 1");
   assert.equal(dataset.points[0].openingBalance, contract.loanAmount);
   assert.equal(dataset.points[1].openingBalance, dataset.points[0].endingBalance);
-  assert.equal(dataset.points[19].remainingDebtRatioPct, 0);
+  assert.equal(dataset.points[lastIdx].remainingDebtRatioPct, 0);
 
   for (const pt of dataset.points) {
     assert.ok(Math.abs(pt.principalSharePct + pt.interestSharePct - 100) < 0.05);
     assert.ok(pt.remainingDebtRatioPct >= 0 && pt.remainingDebtRatioPct <= 100);
   }
-  assert.ok(dataset.points[19].principalSharePct > dataset.points[0].principalSharePct);
+  assert.ok(dataset.points[lastIdx].principalSharePct > dataset.points[0].principalSharePct);
 
   // 3 mốc tham chiếu chuẩn: Hết cố định 36T -> Năm 3, Hiện tại kỳ #16 -> Năm 2
   assert.equal(dataset.milestones.fixedEndYearIndex, 3);

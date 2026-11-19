@@ -68,7 +68,9 @@ export interface RecurringRule {
   scope: ExpenseScope;
   dayOfMonth: number;
   isActive: boolean;
+  autoPost?: boolean;
   lastAppliedMonth?: string;
+  lastSkippedDuplicateMonth?: string;
   note?: string;
 }
 
@@ -161,6 +163,7 @@ export interface AppSettings {
   wifeAuth?: MemberAuthConfig;      // Cấu hình Code, Face ID & nền khóa của Bé Mèo
   requireAuthForDangerActions?: boolean; // Hỏi mã Code / Face ID cho thao tác nguy hiểm (Reset, xóa hàng loạt, ghi đè)
   quickAuth?: QuickAuthSettings;    // Xác thực nhanh Face ID / Mã Code độc lập cho các mục nhạy cảm
+  dismissedRecurringSuggestionKeys?: string[]; // Các mẫu gợi ý định kỳ từ lịch sử đã ẩn
 }
 
 export interface AppNotification {

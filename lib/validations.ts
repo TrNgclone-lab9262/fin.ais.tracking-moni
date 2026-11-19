@@ -75,7 +75,9 @@ export const RecurringRuleSchema = z.object({
   scope: ExpenseScopeSchema,
   dayOfMonth: z.number().int().min(1).max(31),
   isActive: z.boolean(),
+  autoPost: z.boolean().optional(),
   lastAppliedMonth: z.string().optional(),
+  lastSkippedDuplicateMonth: z.string().optional(),
   note: z.string().optional(),
 });
 
@@ -156,6 +158,7 @@ export const AppSettingsSchema = z.object({
   wifeAuth: MemberAuthConfigSchema.optional(),
   requireAuthForDangerActions: z.boolean().optional(),
   quickAuth: QuickAuthSettingsSchema.optional(),
+  dismissedRecurringSuggestionKeys: z.array(z.string()).optional(),
 });
 
 export const MortgagePrepaymentPenaltyTierSchema = z.object({

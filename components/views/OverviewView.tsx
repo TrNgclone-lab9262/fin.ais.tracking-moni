@@ -20,6 +20,7 @@ import { TrendLineCharts } from "@/components/dashboard/TrendLineCharts";
 import { SixMonthIncomeExpenseLineChart } from "@/components/dashboard/SixMonthIncomeExpenseLineChart";
 import { FinancialInsightsCard } from "@/components/dashboard/FinancialInsightsCard";
 import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCard";
+import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarCard";
 import { AssetDebtGoalsWidgets } from "@/components/dashboard/AssetDebtGoalsWidgets";
 import { RecentActivitySection } from "@/components/dashboard/RecentActivitySection";
 
@@ -37,6 +38,7 @@ export function OverviewView({ onOpenPdfReport, onOpenAddModal }: OverviewViewPr
     wifeCreditCard,
     budgetSummary,
     recurringRules,
+    recurringHistorySuggestions,
     applyRecurringRule,
     setActiveTab,
     isPrivacyMode,
@@ -259,8 +261,24 @@ export function OverviewView({ onOpenPdfReport, onOpenAddModal }: OverviewViewPr
               ))
             )}
           </div>
+
+          {recurringHistorySuggestions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("planning")}
+              className="w-full text-left px-3 py-2 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/70 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 flex items-center justify-between gap-2 cursor-pointer hover:bg-indigo-100/70 dark:hover:bg-indigo-900/40 transition-colors"
+            >
+              <span className="truncate tabular-nums">
+                Phát hiện {recurringHistorySuggestions.length} mẫu cố định từ lịch sử
+              </span>
+              <span className="shrink-0 underline">Xem gợi ý</span>
+            </button>
+          )}
         </div>
       </section>
+
+      {/* 1B-2. Lịch Tài Chính Tương Tác (Định kỳ, Trả góp SKYONE & Hạn thẻ) */}
+      <FinancialCalendarCard />
 
       {/* 1C. Phân tích chi tiêu AI & 3 mẹo tiết kiệm hàng tháng */}
       <section aria-label="Phân tích chi tiêu và mẹo tiết kiệm AI">

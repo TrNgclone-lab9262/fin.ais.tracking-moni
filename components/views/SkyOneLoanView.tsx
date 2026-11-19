@@ -549,7 +549,7 @@ export function SkyOneLoanView() {
         return (
           <span
             data-testid="installment-verified-badge"
-            title={row.verifiedSource || "Đối soát sao kê BIDV SmartBanking · TK 8866102943"}
+            title={row.verifiedSource || "Đối soát sao kê BIDV SmartBanking · TK ****2943"}
             className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap"
           >
             <BadgeCheck className="w-3.5 h-3.5 shrink-0" />

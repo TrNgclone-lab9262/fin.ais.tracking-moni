@@ -8,6 +8,7 @@ import {
   MortgageStage,
   Transaction,
 } from "@/types/finance";
+import { SKYONE_A12A07_VERIFIED_FACTS } from "@/system_context";
 
 export const MAX_MORTGAGE_TERM_YEARS = 30;
 export const MAX_MORTGAGE_TERM_MONTHS = MAX_MORTGAGE_TERM_YEARS * 12;
@@ -438,10 +439,10 @@ export function generateMortgageSchedule(
 
   // Aggregate by Loan Year for Recharts
   const yearlyMap = new Map<number, MortgageYearlyAggregate>();
-  let runningEquityPrincipal = totalPrepaidAmount;
+  let runningDisbursed = Math.max(0, contract.loanAmount);
 
   for (const row of rows) {
-    runningEquityPrincipal += row.principal;
+    runningDisbursed += row.disbursedInPeriod;
     const existing = yearlyMap.get(row.yearIndex) || {
       yearIndex: row.yearIndex,
       label: `Năm ${row.yearIndex}`,
@@ -460,7 +461,7 @@ export function generateMortgageSchedule(
     existing.endingBalance = row.closingBalance;
     const equityAmt = Math.min(
       contract.propertyValue,
-      Math.max(0, contract.downPayment + (cumulativeDisbursed - row.closingBalance))
+      Math.max(0, contract.downPayment + (runningDisbursed - row.closingBalance))
     );
     existing.cumulativeEquity = equityAmt;
     existing.equityPercent =
@@ -932,6 +933,15 @@ export function calculateSkyOneTabMetrics(
 export const REAL_BIDV_SKYONE_SNAPSHOT = {
   accountNumber: "8866102943",
   branchName: "PGD Nguyễn Đình Chiểu · 181 Nguyễn Đình Chiểu, TP.HCM",
+  unitCode: SKYONE_A12A07_VERIFIED_FACTS.property.unitCode,
+  propertyValueHdmb: SKYONE_A12A07_VERIFIED_FACTS.pricing.totalContractPriceWithVat,
+  maintenanceFee2Pct: SKYONE_A12A07_VERIFIED_FACTS.pricing.maintenanceFee2Pct,
+  downPaymentActual5Tranches: SKYONE_A12A07_VERIFIED_FACTS.totalActualDownPayment,
+  tranche1DisbursedAmount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche1DisbursedAmount,
+  tranche2PlannedAmount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount,
+  tranche2PlannedAfterPeriod: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod,
+  tranche2PlannedDate: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedDate,
+  pinkBook5PctAmount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount,
   openingBalanceBeforeDec2025: 698_898_193,
   verifiedRemainingBalanceNov2026: 662_226_193,
   verifiedPaidPrincipal12M: 36_672_000,
@@ -940,7 +950,8 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
   fixedInterestRate: 5.5,
   fixedRateMonths: 36,
   monthlyPrincipal: 3_056_000,
-  creditLimit: 1_100_160_000,
+  creditLimit: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.totalPlannedDisbursementCap,
+  noticeLetterMaxCeiling: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.noticeLetterMaxCeiling,
   verifiedInstallmentsCount: 12,
   firstVerifiedPeriod: 4,
   lastVerifiedPeriod: 15,
@@ -1015,9 +1026,15 @@ export function reconcileBidvSkyOneContract(
         contract.disbursementDate === "2025-11-15" &&
         contract.paidRecords.length <= 3));
 
+  const isLegacyEstimatedSkyOneProperty =
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    contract.propertyValue === 2_150_000_000 &&
+    contract.downPayment === 645_000_000 &&
+    contract.unitCode.includes("68m²");
+
   const isBidvUnverifiedOrIncomplete =
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
-    !isRealBidvProfileSynced(contract);
+    (!isRealBidvProfileSynced(contract) || isLegacyEstimatedSkyOneProperty);
 
   if (!isLegacyMockDefault && !isBidvUnverifiedOrIncomplete) {
     return { contract, didAutoSync: false };
@@ -1039,12 +1056,19 @@ export function reconcileBidvSkyOneContract(
     (a, b) => a.period - b.period
   );
 
+  const mergedPlannedDisbursements =
+    !isLegacyMockDefault &&
+    contract.plannedDisbursements &&
+    contract.plannedDisbursements.length > 0
+      ? contract.plannedDisbursements
+      : base.plannedDisbursements;
+
   const mergedContract: MortgageContract = {
     ...base,
     paidRecords: mergedPaidRecords,
     prepayments: isLegacyMockDefault ? [] : contract.prepayments,
     rateAdjustments: isLegacyMockDefault ? [] : contract.rateAdjustments,
-    plannedDisbursements: isLegacyMockDefault ? [] : contract.plannedDisbursements,
+    plannedDisbursements: mergedPlannedDisbursements,
     cashflowLocked: contract.cashflowLocked ?? true,
     periodOverrides: contract.periodOverrides || [],
     updatedAt: `${referenceDate}T08:00:00.000Z`,
@@ -1058,21 +1082,21 @@ export function createDefaultSkyOneLoan(
 ): MortgageContract {
   return {
     id: "skyone_apartment_loan",
-    projectName: "Phú Đông SKYONE",
-    unitCode: "Căn hộ 2PN · 68m² · Tháp A",
-    bankName: "BIDV · PGD Nguyễn Đình Chiểu",
+    projectName: SKYONE_A12A07_VERIFIED_FACTS.property.projectName,
+    unitCode: SKYONE_A12A07_VERIFIED_FACTS.property.unitDisplayLabel,
+    bankName: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.bankName,
     accountNumber: REAL_BIDV_SKYONE_SNAPSHOT.accountNumber,
     branchName: REAL_BIDV_SKYONE_SNAPSHOT.branchName,
-    propertyValue: 2_150_000_000,
-    currentMarketValue: 2_280_000_000,
-    downPayment: 645_000_000,
+    propertyValue: SKYONE_A12A07_VERIFIED_FACTS.pricing.totalContractPriceWithVat,
+    currentMarketValue: SKYONE_A12A07_VERIFIED_FACTS.pricing.estimatedMarketValue,
+    downPayment: SKYONE_A12A07_VERIFIED_FACTS.totalActualDownPayment,
     creditLimit: REAL_BIDV_SKYONE_SNAPSHOT.creditLimit,
     loanAmount: REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025,
     termMonths: MAX_MORTGAGE_TERM_MONTHS,
-    disbursementDate: "2025-08-26",
-    paymentDayOfMonth: 10,
-    fixedRateMonths: 36,
-    fixedInterestRate: 5.5,
+    disbursementDate: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.disbursementDate,
+    paymentDayOfMonth: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.paymentDayOfMonth,
+    fixedRateMonths: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.fixedRateMonths,
+    fixedInterestRate: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.fixedRatePercent,
     floatingBaseRate: 6.5,
     floatingSpread: 3.5,
     monthlyPrincipalOverride: REAL_BIDV_SKYONE_SNAPSHOT.monthlyPrincipal,
@@ -1087,7 +1111,15 @@ export function createDefaultSkyOneLoan(
     rateAdjustments: [],
     paidRecords: [...VERIFIED_BIDV_PAID_RECORDS],
     prepayments: [],
-    plannedDisbursements: [],
+    plannedDisbursements: [
+      {
+        id: "skyone_tranche2_q3_2027",
+        afterPeriod: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod,
+        date: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedDate,
+        amount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount,
+        note: "Giải ngân Đợt 2 (Quý III/2027 · Bàn giao căn A.12A.07)",
+      },
+    ],
     cashflowLocked: true,
     periodOverrides: [],
     updatedAt: `${referenceDate}T08:00:00.000Z`,
@@ -1128,10 +1160,15 @@ export function buildSkyOneAmortizationChartData(
   contract: MortgageContract,
   schedule: MortgageScheduleSummary
 ): SkyOneAmortizationChartDataset {
+  const peakDebtBase = Math.max(
+    contract.loanAmount,
+    ...schedule.yearlySummary.map((y) => Math.max(y.openingBalance, y.endingBalance))
+  );
+
   const points: SkyOneYearlyChartPoint[] = schedule.yearlySummary.map((y) => {
     const remainingDebtRatioPct =
-      contract.loanAmount > 0
-        ? Math.min(100, Math.max(0, Number(((y.endingBalance / contract.loanAmount) * 100).toFixed(1))))
+      peakDebtBase > 0
+        ? Math.min(100, Math.max(0, Number(((y.endingBalance / peakDebtBase) * 100).toFixed(1))))
         : 0;
 
     const principalSharePct =

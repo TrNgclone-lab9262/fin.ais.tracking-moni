@@ -25,7 +25,12 @@ import {
   KeyRound,
   Sun,
   Moon,
+  Copy,
 } from "lucide-react";
+import {
+  downloadAiContextMarkdown,
+  generateAiContextMarkdown,
+} from "@/lib/contextExporter";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { formatCheckTimestamp } from "@/constants/appVersion";
@@ -57,6 +62,17 @@ export function SettingsView({
   const {
     isCloudConnected,
     lastSyncedAt,
+    accounts,
+    categories,
+    transactions,
+    budgets,
+    goals,
+    savingsChallenges,
+    debts,
+    investments,
+    recurringRules,
+    skyoneLoan,
+    selectedMonth,
     settings,
     updateSettings,
     themeMode,
@@ -96,6 +112,7 @@ export function SettingsView({
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [aiServerReady, setAiServerReady] = useState<boolean | null>(null);
   const [showMobileUpdateGuide, setShowMobileUpdateGuide] = useState(false);
+  const [maskContextSensitive, setMaskContextSensitive] = useState(true);
 
   // /login & Lock Screen Security state per member
   const [securityMember, setSecurityMember] = useState<AuthMemberId>(
@@ -153,6 +170,57 @@ export function SettingsView({
       sharedSplitRatioHusband: Math.min(100, Math.max(0, splitRatio)),
     });
     flashSaved("Đã lưu cấu hình thành viên & tỷ lệ quỹ chung.");
+  };
+
+  const buildCurrentContextMarkdown = () =>
+    generateAiContextMarkdown(
+      {
+        accounts,
+        categories,
+        transactions,
+        budgets,
+        goals,
+        savingsChallenges,
+        debts,
+        investments,
+        recurringRules,
+        skyoneLoan,
+        settings,
+        selectedMonth,
+      },
+      { maskSensitiveInfo: maskContextSensitive }
+    );
+
+  const handleCopyAiContext = async () => {
+    const md = buildCurrentContextMarkdown();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(md);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = md;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      flashSaved(
+        maskContextSensitive
+          ? "Đã sao chép Context AI (đã ẩn họ tên & che số TK)."
+          : "Đã sao chép Context AI đầy đủ."
+      );
+    } catch {
+      downloadAiContextMarkdown(md);
+      flashSaved("Trình duyệt hạn chế Clipboard · Đã tải xuống file context.md.");
+    }
+  };
+
+  const handleDownloadAiContext = () => {
+    const md = buildCurrentContextMarkdown();
+    downloadAiContextMarkdown(md);
+    flashSaved("Đã tải xuống file context.md chuẩn hóa cho phiên AI tiếp theo.");
   };
 
   const activeSecurityConfig = getMemberAuthConfig(settings, securityMember);
@@ -1010,6 +1078,86 @@ export function SettingsView({
           </button>
         }
       />
+
+      {/* 3.5. Xuất Context AI (context.md) cho HOME MONI & SKYONE */}
+      <div
+        data-testid="settings-ai-context-card"
+        className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-4"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-[#E9EEF5] dark:border-slate-800">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-[#172B4D] dark:text-slate-100">
+                Xuất Ngữ Cảnh AI (context.md)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Đóng gói toàn bộ ví, danh mục, dòng tiền tháng và hồ sơ pháp lý SKYONE A.12A.07 để nạp cho AI ở phiên sau
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+          <span>{accounts.length} ví &amp; thẻ</span>
+          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+          <span>{categories.filter((c) => !c.isHidden).length} danh mục đang dùng</span>
+          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+          <span>{transactions.length} giao dịch</span>
+          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+          <span>{recurringRules.length} khoản định kỳ</span>
+          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+          <span className="text-indigo-600 dark:text-indigo-400">
+            SKYONE A.12A.07 ({skyoneLoan.paidRecords.filter((r) => r.isVerified).length} kỳ xác thực)
+          </span>
+        </div>
+
+        <label className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            data-testid="settings-context-mask-toggle"
+            checked={maskContextSensitive}
+            onChange={(e) => setMaskContextSensitive(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded accent-blue-600 shrink-0 cursor-pointer"
+          />
+          <div className="min-w-0">
+            <span className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+              Ẩn danh thông tin nhạy cảm khi xuất
+            </span>
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Giữ nguyên mã căn A.12A.07 và toàn bộ số tiền/mốc ngày; ẩn họ tên pháp lý và che số tài khoản dạng ****XXXX.
+            </span>
+          </div>
+        </label>
+
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <button
+            type="button"
+            data-testid="settings-copy-ai-context-btn"
+            onClick={() => void handleCopyAiContext()}
+            className="flex-1 min-h-[40px] py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+          >
+            <Copy className="w-4 h-4 shrink-0" />
+            <span>Sao chép Context AI</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="settings-download-ai-context-btn"
+            onClick={handleDownloadAiContext}
+            className="flex-1 min-h-[40px] py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-[#DCE4EE] dark:border-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <span>Tải file context.md</span>
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          Mẹo: Dán nội dung vừa sao chép vào đầu cuộc hội thoại mới hoặc đính kèm file <code className="font-mono text-slate-700 dark:text-slate-300">context.md</code> (kết hợp tra cứu schema tại <code className="font-mono text-slate-700 dark:text-slate-300">system_context.ts</code>) để AI nắm chính xác số dư và chiến lược SKYONE.
+        </p>
+      </div>
 
       {/* 4. FamilyHub (Supabase Auth, Profile, Ghép đôi) & Công cụ Hệ thống */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-5">

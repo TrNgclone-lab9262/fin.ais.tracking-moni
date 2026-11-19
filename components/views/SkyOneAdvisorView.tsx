@@ -44,6 +44,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SkyOneTermReductionPanel } from "@/components/skyone/SkyOneTermReductionPanel";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import { computeResponsiveXAxisInterval } from "@/lib/viewport";
+import { SKYONE_A12A07_VERIFIED_FACTS } from "@/system_context";
 
 function getDtiStatusMeta(status: SkyOneDtiStatus): {
   label: string;
@@ -77,9 +78,22 @@ function getDtiStatusMeta(status: SkyOneDtiStatus): {
 
 const TRANCHE_PRESETS = [
   { label: "Không vay thêm", amount: 0 },
-  { label: "+300 triệu", amount: 300_000_000 },
-  { label: "+438tr (Đủ 1,1 tỷ)", amount: 437_933_807 },
-  { label: "+600 triệu", amount: 600_000_000 },
+  {
+    label: "+393,4tr (Đợt 2 Q3/2027)",
+    amount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount,
+  },
+  {
+    label: "+465,7tr (Đợt 2 + 5% Sổ hồng)",
+    amount:
+      SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount +
+      SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount,
+  },
+  {
+    label: "+538tr (Chạm trần 1,246 tỷ)",
+    amount:
+      SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.noticeLetterMaxCeiling -
+      SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche1DisbursedAmount,
+  },
 ];
 
 const FLOATING_RATE_PRESETS = [8.5, 9.5, 10.0, 11.0];
@@ -113,9 +127,13 @@ export function SkyOneAdvisorView({
     [transactions, selectedMonth]
   );
 
-  // Interactive Strategy Parameters (default grounded in BIDV data + Phase 1 answers)
-  const [nextTrancheAmount, setNextTrancheAmount] = useState<number>(437_933_807);
-  const [nextTranchePeriod, setNextTranchePeriod] = useState<number>(21); // Tháng 05/2027 (bàn giao)
+  // Interactive Strategy Parameters grounded in verified HDMB A.12A.07 + BIDV Loan Notice
+  const [nextTrancheAmount, setNextTrancheAmount] = useState<number>(
+    SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount
+  );
+  const [nextTranchePeriod, setNextTranchePeriod] = useState<number>(
+    SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod
+  ); // Tháng 08/2027 (Quý III/2027 bàn giao căn A.12A.07)
   const [projectedFloatingRate, setProjectedFloatingRate] = useState<number>(10.0);
   const [safeYieldRate, setSafeYieldRate] = useState<number>(6.2);
 
@@ -197,14 +215,30 @@ export function SkyOneAdvisorView({
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 tabular-nums">
               {skyoneLoan.bankName}
-              {skyoneLoan.accountNumber ? ` · TK nguồn ${skyoneLoan.accountNumber}` : ""}
+              {skyoneLoan.accountNumber ? ` · TK nguồn ****${skyoneLoan.accountNumber.slice(-4)}` : ""}
               <span aria-hidden="true"> · </span>
-              Giải ngân {formatDateVN(skyoneLoan.disbursementDate)}
+              Căn {SKYONE_A12A07_VERIFIED_FACTS.property.unitCode}
               <span aria-hidden="true"> · </span>
               Ưu đãi {skyoneLoan.fixedInterestRate}% đến{" "}
               {formatDateVN(strategy.fixedEndDate)}
               <span aria-hidden="true"> · </span>
               {skyoneLoan.interestBasis === "ACTUAL_365" ? "Actual/365" : "30/360"}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+              Mốc tiền mặt bàn giao Q3/2027 (HĐMB): PBT 2%{" "}
+              <strong className="text-slate-700 dark:text-slate-200">
+                {formatVNDMasked(SKYONE_A12A07_VERIFIED_FACTS.pricing.maintenanceFee2Pct, isPrivacyMode)}
+              </strong>
+              <span aria-hidden="true"> · </span>
+              5% nhận Sổ hồng{" "}
+              <strong className="text-slate-700 dark:text-slate-200">
+                {formatVNDMasked(SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount, isPrivacyMode)}
+              </strong>
+              <span aria-hidden="true"> · </span>
+              Tổng chuẩn bị{" "}
+              <strong className="text-indigo-700 dark:text-indigo-300">
+                {formatVNDMasked(SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.handoverAndPinkBookCashNeed, isPrivacyMode)}
+              </strong>
             </p>
           </div>
 
@@ -1179,16 +1213,16 @@ export function SkyOneAdvisorView({
 
       <ConfirmDialog
         isOpen={isSyncConfirmOpen}
-        title="Nạp hồ sơ BIDV thực tế từ sao kê vào SKYONE?"
-        message="Hệ thống sẽ cập nhật thông số vay BIDV PGD Nguyễn Đình Chiểu (TK 8866102943, lãi 5,5%/năm cố định 36 tháng tới 08/2028, gốc đều 3.056.000đ/tháng, Actual/365) và 12 kỳ sao kê đã trả (dư nợ 662.226.193 VND). Toàn bộ giao dịch thu chi trên HOME MONI vẫn được giữ nguyên."
-        confirmLabel="Nạp hồ sơ BIDV"
+        title="Nạp hồ sơ HĐMB A.12A.07 & BIDV thực tế vào SKYONE?"
+        message="Hệ thống sẽ cập nhật thông số căn hộ A.12A.07 (HĐMB 1.573.480.430đ, vốn tự có 323.655.950đ, giải ngân 1.101.436.304đ qua 2 đợt), thông số BIDV PGD Nguyễn Đình Chiểu (TK ****2943, lãi 5,5%/năm cố định 36 tháng tới 08/2028, gốc đều 3.056.000đ/tháng, Actual/365) và 12 kỳ sao kê đã trả (dư nợ 662.226.193 VND). Toàn bộ giao dịch thu chi trên HOME MONI vẫn được giữ nguyên."
+        confirmLabel="Nạp hồ sơ chuẩn"
         cancelLabel="Hủy"
         isDanger={false}
         onConfirm={() => {
           resetSkyOneLoan();
           setIsSyncConfirmOpen(false);
           setSyncSuccessToast(
-            "Đã đồng bộ trọn bộ hồ sơ BIDV thực tế (662.226.193 VND · 5,5%/năm · 12 kỳ đã thanh toán)."
+            "Đã đồng bộ trọn bộ hồ sơ SKYONE A.12A.07 & BIDV thực tế (HĐMB 1,573 tỷ · dư nợ 662.226.193 VND · 12 kỳ đã thanh toán)."
           );
           setTimeout(() => setSyncSuccessToast(null), 5000);
         }}

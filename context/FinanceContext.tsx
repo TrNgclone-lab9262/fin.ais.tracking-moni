@@ -131,6 +131,19 @@ import {
   triggerBudgetThresholdNotifications,
   triggerRecurringExpenseNotifications,
 } from "@/lib/browserNotifications";
+import {
+  RecurringHistorySuggestion,
+  detectRecurringSuggestionsFromHistory,
+  evaluateAutoPostCandidates,
+} from "@/lib/recurringAutomation";
+
+export interface AutoPostNotice {
+  monthKey: string;
+  postedNames: string[];
+  skippedNames: string[];
+  postedCount: number;
+  skippedCount: number;
+}
 
 export interface QuickRecordUndoEntry {
   id: string;
@@ -343,12 +356,21 @@ interface FinanceContextType {
   updateInvestment: (id: string, inv: Partial<InvestmentItem>) => void;
   deleteInvestment: (id: string) => void;
 
-  // Quản lý Giao dịch Định kỳ
+  // Quản lý Giao dịch Định kỳ & Tự động ghi sổ
   addRecurringRule: (rule: Omit<RecurringRule, "id">) => void;
   updateRecurringRule: (id: string, rule: Partial<RecurringRule>) => void;
   deleteRecurringRule: (id: string) => void;
   applyRecurringRule: (id: string, targetMonth?: string) => Transaction | null;
   applyAllPendingRecurringRules: (targetMonth?: string) => number;
+  autoPostNotice: AutoPostNotice | null;
+  dismissAutoPostNotice: () => void;
+  runAutoPostForDueRules: () => { postedCount: number; skippedCount: number };
+  recurringHistorySuggestions: RecurringHistorySuggestion[];
+  acceptRecurringSuggestion: (
+    suggestion: RecurringHistorySuggestion,
+    options?: { autoPost?: boolean }
+  ) => RecurringRule;
+  dismissRecurringSuggestion: (signature: string) => void;
 
   // Quản lý Vay căn hộ Phú Đông SKYONE
   skyoneLoan: MortgageContract;
@@ -2086,6 +2108,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const updateRecurringRule = useCallback(
     (id: string, rule: Partial<RecurringRule>) => {
+      if (rule.autoPost) {
+        pausedAutoPostKeysRef.current.delete(`${id}_${getCurrentMonthKey()}`);
+      }
       setRecurringRules((prev) => {
         let target: RecurringRule | undefined;
         const next = prev.map((r) => {
@@ -2205,6 +2230,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const [quickRecordUndo, setQuickRecordUndo] = useState<QuickRecordUndoEntry | null>(null);
   const undoTimerRef = useRef<number | null>(null);
+  const pausedAutoPostKeysRef = useRef<Set<string>>(new Set());
+  const [autoPostNotice, setAutoPostNotice] = useState<AutoPostNotice | null>(null);
+
+  const dismissAutoPostNotice = useCallback(() => {
+    setAutoPostNotice(null);
+  }, []);
 
   const scheduleUndoAutoDismiss = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -2624,6 +2655,178 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       });
     },
     [queueCloudMutation]
+  );
+
+  const runAutoPostForDueRules = useCallback((): {
+    postedCount: number;
+    skippedCount: number;
+  } => {
+    if (!isLoaded) return { postedCount: 0, skippedCount: 0 };
+
+    const currentMonth = getCurrentMonthKey();
+    const eligibleRules = recurringRules.filter(
+      (r) => !pausedAutoPostKeysRef.current.has(`${r.id}_${currentMonth}`)
+    );
+
+    const evalResult = evaluateAutoPostCandidates({
+      rules: eligibleRules,
+      transactions,
+    });
+
+    if (evalResult.toPost.length === 0 && evalResult.skippedDuplicates.length === 0) {
+      return { postedCount: 0, skippedCount: 0 };
+    }
+
+    let createdTxs: Transaction[] = [];
+    if (evalResult.toPost.length > 0) {
+      const inputs: TransactionInput[] = evalResult.toPost.map(({ rule, txDate }) => ({
+        amount: rule.amount,
+        date: txDate,
+        type: rule.type,
+        categoryId: rule.categoryId,
+        accountId: rule.accountId,
+        toAccountId: rule.toAccountId,
+        memberId: rule.memberId,
+        scope: rule.scope,
+        tag: "RECURRING",
+        note: rule.note ? `${rule.name} (${rule.note})` : rule.name,
+      }));
+      createdTxs = addTransactionsBatch(inputs);
+    }
+
+    const postedIdSet = new Set(evalResult.toPost.map((p) => p.rule.id));
+    const skippedIdSet = new Set(evalResult.skippedDuplicates.map((s) => s.rule.id));
+
+    setRecurringRules((prev) => {
+      const updatedBatch: RecurringRule[] = [];
+      const next = prev.map((r) => {
+        if (postedIdSet.has(r.id)) {
+          const updated: RecurringRule = {
+            ...r,
+            lastAppliedMonth: evalResult.monthKey,
+            lastSkippedDuplicateMonth: undefined,
+          };
+          updatedBatch.push(updated);
+          return updated;
+        }
+        if (skippedIdSet.has(r.id)) {
+          const updated: RecurringRule = {
+            ...r,
+            lastAppliedMonth: evalResult.monthKey,
+            lastSkippedDuplicateMonth: evalResult.monthKey,
+          };
+          updatedBatch.push(updated);
+          return updated;
+        }
+        return r;
+      });
+      if (updatedBatch.length > 0) {
+        queueCloudMutation({
+          type: "UPSERT_RECURRING_RULES_BATCH",
+          payload: updatedBatch,
+        });
+      }
+      return next;
+    });
+
+    if (evalResult.toPost.length === 1 && createdTxs[0]) {
+      const single = evalResult.toPost[0];
+      setQuickRecordUndo({
+        id: `undo_auto_${single.rule.id}_${Date.now()}`,
+        kind: "RECURRING_RULE",
+        label: `Tự ghi: ${single.rule.name}`,
+        amount: createdTxs[0].amount,
+        monthKey: evalResult.monthKey,
+        ruleId: single.rule.id,
+        transactionId: createdTxs[0].id,
+        previousLastAppliedMonth: single.rule.lastAppliedMonth,
+        createdAt: Date.now(),
+      });
+      scheduleUndoAutoDismiss();
+    }
+
+    if (evalResult.toPost.length > 0 || evalResult.skippedDuplicates.length > 0) {
+      setAutoPostNotice({
+        monthKey: evalResult.monthKey,
+        postedNames: evalResult.toPost.map((p) => p.rule.name),
+        skippedNames: evalResult.skippedDuplicates.map((s) => s.rule.name),
+        postedCount: evalResult.toPost.length,
+        skippedCount: evalResult.skippedDuplicates.length,
+      });
+    }
+
+    return {
+      postedCount: evalResult.toPost.length,
+      skippedCount: evalResult.skippedDuplicates.length,
+    };
+  }, [
+    isLoaded,
+    recurringRules,
+    transactions,
+    addTransactionsBatch,
+    queueCloudMutation,
+    scheduleUndoAutoDismiss,
+  ]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    runAutoPostForDueRules();
+  }, [isLoaded, runAutoPostForDueRules]);
+
+  const recurringHistorySuggestions = useMemo(() => {
+    const categoryNameMap = new Map(categories.map((c) => [c.id, c.name]));
+    return detectRecurringSuggestionsFromHistory({
+      transactions,
+      existingRules: recurringRules,
+      dismissedSignatures: settings.dismissedRecurringSuggestionKeys,
+      categoryNameMap,
+    });
+  }, [
+    transactions,
+    recurringRules,
+    categories,
+    settings.dismissedRecurringSuggestionKeys,
+  ]);
+
+  const acceptRecurringSuggestion = useCallback(
+    (
+      suggestion: RecurringHistorySuggestion,
+      options?: { autoPost?: boolean }
+    ): RecurringRule => {
+      const currentMonth = getCurrentMonthKey();
+      const newRule: RecurringRule = {
+        id: `rec_${Date.now()}`,
+        name: suggestion.suggestedName,
+        amount: suggestion.amount,
+        type: suggestion.type,
+        categoryId: suggestion.categoryId,
+        accountId: suggestion.accountId,
+        memberId: suggestion.memberId,
+        scope: suggestion.scope,
+        dayOfMonth: suggestion.dayOfMonth,
+        isActive: true,
+        autoPost: options?.autoPost ?? true,
+        lastAppliedMonth: suggestion.alreadyLoggedCurrentMonth
+          ? currentMonth
+          : undefined,
+        note: `Tạo từ lịch sử (${suggestion.confidenceLabel})`,
+      };
+      setRecurringRules((prev) => [...prev, newRule]);
+      queueCloudMutation({ type: "UPSERT_RECURRING_RULE", payload: newRule });
+      return newRule;
+    },
+    [queueCloudMutation]
+  );
+
+  const dismissRecurringSuggestion = useCallback(
+    (signature: string) => {
+      const current = settings.dismissedRecurringSuggestionKeys || [];
+      if (current.includes(signature)) return;
+      updateSettings({
+        dismissedRecurringSuggestionKeys: [...current, signature],
+      });
+    },
+    [settings.dismissedRecurringSuggestionKeys, updateSettings]
   );
 
   const resetToMockData = useCallback(() => {
@@ -3365,6 +3568,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const entry = quickRecordUndo;
 
     if (entry.kind === "RECURRING_RULE" && entry.ruleId) {
+      pausedAutoPostKeysRef.current.add(`${entry.ruleId}_${entry.monthKey}`);
       if (entry.transactionId) {
         deleteTransaction(entry.transactionId);
       }
@@ -3579,6 +3783,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     deleteRecurringRule,
     applyRecurringRule,
     applyAllPendingRecurringRules,
+    autoPostNotice,
+    dismissAutoPostNotice,
+    runAutoPostForDueRules,
+    recurringHistorySuggestions,
+    acceptRecurringSuggestion,
+    dismissRecurringSuggestion,
     skyoneLoan,
     skyoneAutoSyncedNotice,
     dismissSkyoneAutoSyncedNotice,
