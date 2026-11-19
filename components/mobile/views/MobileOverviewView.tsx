@@ -32,6 +32,7 @@ import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCar
 import { PeriodComparisonCompact } from "@/components/dashboard/PeriodComparisonCompact";
 import { QuickAddCard } from "@/components/dashboard/QuickAddCard";
 import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarCard";
+import { AdvancedAnalyticsSuite } from "@/components/dashboard/AdvancedAnalyticsSuite";
 
 interface MobileOverviewViewProps {
   onOpenPdfReport?: () => void;
@@ -546,6 +547,9 @@ export function MobileOverviewView({
 
       {/* 4D. SO SÁNH CÙNG KỲ (THÁNG TRƯỚC / NĂM NGOÁI) */}
       <PeriodComparisonCompact />
+
+      {/* 4E. BIỂU ĐỒ TRỰC QUAN TƯƠNG TÁC (THU VS CHI · XU HƯỚNG · SO SÁNH THÁNG) */}
+      <AdvancedAnalyticsSuite compact />
 
       {/* 5. DAILY ALLOWANCE MINI CARD */}
       <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-[#DCE4EE] dark:border-slate-800 shadow-xs flex items-center justify-between gap-2">

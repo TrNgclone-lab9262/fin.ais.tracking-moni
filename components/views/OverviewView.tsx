@@ -23,6 +23,7 @@ import { SpendingForecastCard } from "@/components/dashboard/SpendingForecastCar
 import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarCard";
 import { AssetDebtGoalsWidgets } from "@/components/dashboard/AssetDebtGoalsWidgets";
 import { RecentActivitySection } from "@/components/dashboard/RecentActivitySection";
+import { AdvancedAnalyticsSuite } from "@/components/dashboard/AdvancedAnalyticsSuite";
 
 interface OverviewViewProps {
   onOpenPdfReport?: () => void;
@@ -299,6 +300,9 @@ export function OverviewView({ onOpenPdfReport, onOpenAddModal }: OverviewViewPr
       <section aria-label="Dòng tiền gia đình">
         <FamilyCashflowWidget />
       </section>
+
+      {/* 3B. Bộ Biểu Đồ Trực Quan Tương Tác (Thu vs Chi · Xu hướng chi · So sánh tháng) */}
+      <AdvancedAnalyticsSuite />
 
       {/* 4. Hàng Biểu Đồ */}
       <section aria-label="Biểu đồ phân tích" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
