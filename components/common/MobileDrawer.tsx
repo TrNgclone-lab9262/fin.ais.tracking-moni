@@ -16,7 +16,6 @@ import {
   Lock,
   Building2,
   TrendingDown,
-  Table2,
   Calendar,
   Calculator,
   SlidersHorizontal,
@@ -109,10 +108,9 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   }[] = [
     { id: "OVERVIEW", label: "Tổng quan & Stress-Test", icon: TrendingDown },
     { id: "ADVISOR", label: "Cố vấn Chiến lược", icon: Compass },
-    { id: "CASHFLOW", label: "Chi tiết Dòng tiền", icon: Table2 },
-    { id: "SCHEDULE", label: "Lịch trả nợ hàng tháng", icon: Calendar },
+    { id: "SCHEDULE", label: "Lịch trả nợ & Dòng tiền", icon: Calendar },
     { id: "PREPAYMENT", label: "Trả gốc trước hạn", icon: Calculator },
-    { id: "CONTRACT", label: "Hợp đồng & Lãi suất", icon: SlidersHorizontal },
+    { id: "CONTRACT", label: "Hợp đồng & Hồ sơ Pháp lý", icon: SlidersHorizontal },
     { id: "DATA_ADMIN", label: "Quản trị Dữ liệu", icon: Database },
     { id: "SETTINGS", label: "Cài đặt chung", icon: Settings },
   ];

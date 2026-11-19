@@ -25,6 +25,10 @@ test("parseAppRoute resolves /finance and /skyone sub-app deep routes", () => {
   assert.equal(sky.app, "SKYONE");
   assert.equal(sky.skyoneTab, "SCHEDULE");
   assert.equal(sky.highlightPeriod, 16);
+
+  const legacyCashflow = parseAppRoute("/skyone/cashflow");
+  assert.equal(legacyCashflow.app, "SKYONE");
+  assert.equal(legacyCashflow.skyoneTab, "SCHEDULE");
 });
 
 test("buildAppPath and getAppDocumentTitle handle LAUNCHER, FINANCE, and SKYONE", () => {

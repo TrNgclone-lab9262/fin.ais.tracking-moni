@@ -930,10 +930,15 @@ export function calculateSkyOneTabMetrics(
   };
 }
 
+export const SKYONE_TRANCHE2_ID = "skyone_tranche2_q3_2027";
+export const SKYONE_PINKBOOK_5PCT_ID = "skyone_pinkbook_5pct_q3_2027";
+export const SKYONE_SHORT_UNIT_LABEL = "Căn hộ A.12A.07";
+
 export const REAL_BIDV_SKYONE_SNAPSHOT = {
   accountNumber: "8866102943",
   branchName: "PGD Nguyễn Đình Chiểu · 181 Nguyễn Đình Chiểu, TP.HCM",
   unitCode: SKYONE_A12A07_VERIFIED_FACTS.property.unitCode,
+  shortUnitLabel: SKYONE_SHORT_UNIT_LABEL,
   propertyValueHdmb: SKYONE_A12A07_VERIFIED_FACTS.pricing.totalContractPriceWithVat,
   maintenanceFee2Pct: SKYONE_A12A07_VERIFIED_FACTS.pricing.maintenanceFee2Pct,
   downPaymentActual5Tranches: SKYONE_A12A07_VERIFIED_FACTS.totalActualDownPayment,
@@ -944,7 +949,9 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
   pinkBook5PctAmount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount,
   openingBalanceBeforeDec2025: 698_898_193,
   verifiedRemainingBalanceNov2026: 662_226_193,
+  initial3PeriodsPrincipal: 9_168_001,
   verifiedPaidPrincipal12M: 36_672_000,
+  verifiedPaidPrincipal15M: 45_840_001,
   verifiedPaidInterest12M: 37_501_005,
   verifiedTotalCashPaid12M: 74_173_005,
   fixedInterestRate: 5.5,
@@ -961,10 +968,34 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
 } as const;
 
 export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
-  // 3 kỳ chuyển tiếp trước sao kê đầu tiên 10/12/2025 để giữ mốc kỳ #36 = 10/08/2028
-  { period: 1, paidAt: "2025-09-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp sau giải ngân 26/08/2025 (trước sao kê 10/12/2025)" },
-  { period: 2, paidAt: "2025-10-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
-  { period: 3, paidAt: "2025-11-10", paidPrincipal: 0, paidInterest: 0, appliedRate: 5.5, isVerified: false, note: "Kỳ chuyển tiếp (trước sao kê 10/12/2025)" },
+  // 3 kỳ gốc đầu sau giải ngân Đợt 1 (708.066.194 đ - 9.168.001 đ = 698.898.193 đ đầu sao kê 10/12/2025)
+  {
+    period: 1,
+    paidAt: "2025-09-10",
+    paidPrincipal: 3_056_001,
+    paidInterest: 0,
+    appliedRate: 5.5,
+    isVerified: false,
+    note: "Kỳ #1 sau giải ngân Đợt 1 (26/08/2025 · Gốc cố định trước sao kê 10/12/2025)",
+  },
+  {
+    period: 2,
+    paidAt: "2025-10-10",
+    paidPrincipal: 3_056_000,
+    paidInterest: 0,
+    appliedRate: 5.5,
+    isVerified: false,
+    note: "Kỳ #2 sau giải ngân Đợt 1 (Gốc cố định trước sao kê 10/12/2025)",
+  },
+  {
+    period: 3,
+    paidAt: "2025-11-10",
+    paidPrincipal: 3_056_000,
+    paidInterest: 0,
+    appliedRate: 5.5,
+    isVerified: false,
+    note: "Kỳ #3 sau giải ngân Đợt 1 · Khớp dư nợ đầu sao kê 10/12/2025: 698.898.193 đ",
+  },
   // 12 kỳ sao kê BIDV SmartBanking thực tế từ 10/12/2025 đến 10/11/2026
   { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 695.842.193 đ" },
   { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 692.786.193 đ" },
@@ -980,6 +1011,66 @@ export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
   { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.193 đ" },
 ];
 
+export function hasPinkBook5PctEnabled(contract: MortgageContract): boolean {
+  return (contract.plannedDisbursements || []).some(
+    (d) => d.id === SKYONE_PINKBOOK_5PCT_ID
+  );
+}
+
+export function togglePinkBook5PctDisbursement(
+  contract: MortgageContract,
+  enabled?: boolean
+): MortgageContract {
+  const currentlyEnabled = hasPinkBook5PctEnabled(contract);
+  const nextEnabled = enabled !== undefined ? enabled : !currentlyEnabled;
+  const existing = (contract.plannedDisbursements || []).filter(
+    (d) => d.id !== SKYONE_PINKBOOK_5PCT_ID
+  );
+
+  const nextDisbursements = nextEnabled
+    ? [
+        ...existing,
+        {
+          id: SKYONE_PINKBOOK_5PCT_ID,
+          afterPeriod: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod,
+          date: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedDate,
+          amount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount,
+          note: "Giải ngân bổ sung 5% nhận Giấy chứng nhận QSHNƠ (Sổ hồng · Q3/2027)",
+        },
+      ]
+    : existing;
+
+  return {
+    ...contract,
+    plannedDisbursements: nextDisbursements,
+  };
+}
+
+export function getPlannedDisbursementSummary(contract: MortgageContract): {
+  totalAmount: number;
+  primaryPeriod: number;
+  hasPinkBook5Pct: boolean;
+  pinkBookAmount: number;
+  tranche2Amount: number;
+} {
+  const list = contract.plannedDisbursements || [];
+  const totalAmount = list.reduce((sum, item) => sum + Math.max(0, item.amount), 0);
+  const tranche2 = list.find((d) => d.id === SKYONE_TRANCHE2_ID);
+  const pinkBook = list.find((d) => d.id === SKYONE_PINKBOOK_5PCT_ID);
+  const primaryPeriod =
+    tranche2?.afterPeriod ??
+    list[0]?.afterPeriod ??
+    SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod;
+
+  return {
+    totalAmount,
+    primaryPeriod,
+    hasPinkBook5Pct: Boolean(pinkBook),
+    pinkBookAmount: pinkBook?.amount ?? 0,
+    tranche2Amount: tranche2?.amount ?? 0,
+  };
+}
+
 export function isRealBidvProfileSynced(contract: MortgageContract): boolean {
   const verifiedPeriods = new Set(
     contract.paidRecords.filter((r) => r.isVerified).map((r) => r.period)
@@ -991,12 +1082,21 @@ export function isRealBidvProfileSynced(contract: MortgageContract): boolean {
       break;
     }
   }
+  const hasInitial3Principals = [1, 2, 3].every((p) => {
+    const rec = contract.paidRecords.find((r) => r.period === p);
+    return Boolean(rec && rec.paidPrincipal > 0);
+  });
+
   return (
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
     contract.disbursementDate === "2025-08-26" &&
+    contract.loanAmount === REAL_BIDV_SKYONE_SNAPSHOT.tranche1DisbursedAmount &&
+    contract.propertyValue === REAL_BIDV_SKYONE_SNAPSHOT.propertyValueHdmb &&
+    contract.downPayment === REAL_BIDV_SKYONE_SNAPSHOT.downPaymentActual5Tranches &&
     contract.fixedRateMonths === 36 &&
     Math.abs(contract.fixedInterestRate - 5.5) < 0.01 &&
     contract.paidRecords.length >= 15 &&
+    hasInitial3Principals &&
     hasAll12Verified
   );
 }
@@ -1014,6 +1114,13 @@ export function reconcileBidvSkyOneContract(
     (contract.periodOverrides && contract.periodOverrides.length > 0) ||
     contract.cashflowLocked === false;
   if (hasManualCashflowAdjustments) {
+    // Vẫn rút gọn nhãn hiển thị dài cũ nếu trùng chính xác chuỗi dài A.12A.07 trước đây
+    if (contract.unitCode === SKYONE_A12A07_VERIFIED_FACTS.property.unitDisplayLabel) {
+      return {
+        contract: { ...contract, unitCode: SKYONE_SHORT_UNIT_LABEL },
+        didAutoSync: false,
+      };
+    }
     return { contract, didAutoSync: false };
   }
 
@@ -1032,9 +1139,21 @@ export function reconcileBidvSkyOneContract(
     contract.downPayment === 645_000_000 &&
     contract.unitCode.includes("68m²");
 
+  const isLegacyZeroInitialPeriodsProfile =
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    contract.loanAmount === REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025 &&
+    contract.paidRecords.some((r) => r.period === 1 && r.paidPrincipal === 0);
+
+  const hasLongUnitCodeLabel =
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    contract.unitCode === SKYONE_A12A07_VERIFIED_FACTS.property.unitDisplayLabel;
+
   const isBidvUnverifiedOrIncomplete =
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
-    (!isRealBidvProfileSynced(contract) || isLegacyEstimatedSkyOneProperty);
+    (!isRealBidvProfileSynced(contract) ||
+      isLegacyEstimatedSkyOneProperty ||
+      isLegacyZeroInitialPeriodsProfile ||
+      hasLongUnitCodeLabel);
 
   if (!isLegacyMockDefault && !isBidvUnverifiedOrIncomplete) {
     return { contract, didAutoSync: false };
@@ -1083,7 +1202,7 @@ export function createDefaultSkyOneLoan(
   return {
     id: "skyone_apartment_loan",
     projectName: SKYONE_A12A07_VERIFIED_FACTS.property.projectName,
-    unitCode: SKYONE_A12A07_VERIFIED_FACTS.property.unitDisplayLabel,
+    unitCode: SKYONE_SHORT_UNIT_LABEL,
     bankName: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.bankName,
     accountNumber: REAL_BIDV_SKYONE_SNAPSHOT.accountNumber,
     branchName: REAL_BIDV_SKYONE_SNAPSHOT.branchName,
@@ -1091,7 +1210,7 @@ export function createDefaultSkyOneLoan(
     currentMarketValue: SKYONE_A12A07_VERIFIED_FACTS.pricing.estimatedMarketValue,
     downPayment: SKYONE_A12A07_VERIFIED_FACTS.totalActualDownPayment,
     creditLimit: REAL_BIDV_SKYONE_SNAPSHOT.creditLimit,
-    loanAmount: REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025,
+    loanAmount: REAL_BIDV_SKYONE_SNAPSHOT.tranche1DisbursedAmount,
     termMonths: MAX_MORTGAGE_TERM_MONTHS,
     disbursementDate: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.disbursementDate,
     paymentDayOfMonth: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.paymentDayOfMonth,
@@ -1113,11 +1232,11 @@ export function createDefaultSkyOneLoan(
     prepayments: [],
     plannedDisbursements: [
       {
-        id: "skyone_tranche2_q3_2027",
+        id: SKYONE_TRANCHE2_ID,
         afterPeriod: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod,
         date: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedDate,
         amount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAmount,
-        note: "Giải ngân Đợt 2 (Quý III/2027 · Bàn giao căn A.12A.07)",
+        note: "Giải ngân Đợt 2 (Quý III/2027 · Bàn giao căn hộ A.12A.07)",
       },
     ],
     cashflowLocked: true,

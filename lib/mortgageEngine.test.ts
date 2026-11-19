@@ -12,25 +12,38 @@ import {
   reconcileBidvSkyOneContract,
   calculateSkyOneTabMetrics,
   simulateTermReductionStrategy,
+  hasPinkBook5PctEnabled,
+  togglePinkBook5PctDisbursement,
+  getPlannedDisbursementSummary,
+  SKYONE_SHORT_UNIT_LABEL,
   MAX_MORTGAGE_TERM_MONTHS,
   MAX_MORTGAGE_TERM_YEARS,
   REAL_BIDV_SKYONE_SNAPSHOT,
 } from "./mortgageEngine";
 import { MortgageContract } from "@/types/finance";
 
-test("createDefaultSkyOneLoan khớp chính xác 100% sao kê BIDV thực tế (662.226.193đ, 5.5%/năm, 36 tháng)", () => {
+test("createDefaultSkyOneLoan khớp chính xác 100% HĐMB A.12A.07 & sao kê BIDV thực tế (708,07tr -> 662.226.193đ, 5.5%/năm, 36 tháng)", () => {
   const contract = createDefaultSkyOneLoan("2026-11-14");
   const schedule = generateMortgageSchedule(contract, "2026-11-14");
 
-  // 3 kỳ chuyển tiếp (09-11/2025) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026) = 15 kỳ PAID, trong đó 12 kỳ Đã xác thực
+  // Mã căn ngắn gọn chuẩn giao diện + Giải ngân Đợt 1 = 708.066.194đ
+  assert.equal(contract.unitCode, SKYONE_SHORT_UNIT_LABEL);
+  assert.equal(contract.loanAmount, 708_066_194);
+
+  // 3 kỳ đầu (09-11/2025: 9.168.001đ gốc) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026: 36.672.000đ gốc) = 15 kỳ PAID
   assert.equal(contract.paidRecords.length, 15);
   assert.equal(schedule.paidCount, 15);
   assert.equal(schedule.verifiedCount, 12);
+  const first3Principal = contract.paidRecords
+    .filter((r) => r.period <= 3)
+    .reduce((sum, r) => sum + r.paidPrincipal, 0);
+  assert.equal(first3Principal, REAL_BIDV_SKYONE_SNAPSHOT.initial3PeriodsPrincipal);
   assert.equal(schedule.rows.find((r) => r.period === 3)?.isVerified, false);
+  assert.equal(schedule.rows.find((r) => r.period === 4)?.openingBalance, REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025);
   assert.equal(schedule.rows.find((r) => r.period === 4)?.isVerified, true);
   assert.equal(schedule.rows.find((r) => r.period === 15)?.isVerified, true);
   assert.equal(schedule.remainingBalance, REAL_BIDV_SKYONE_SNAPSHOT.verifiedRemainingBalanceNov2026);
-  assert.equal(schedule.totalPrincipalPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidPrincipal12M);
+  assert.equal(schedule.totalPrincipalPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidPrincipal15M);
   assert.equal(schedule.totalInterestPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidInterest12M);
 
   // Kỳ kế tiếp #16 đến hạn 2026-12-10
@@ -46,6 +59,7 @@ test("createDefaultSkyOneLoan khớp chính xác 100% sao kê BIDV thực tế (
   assert.equal(contract.plannedDisbursements?.length, 1);
   assert.equal(contract.plannedDisbursements?.[0]?.amount, 393_370_110);
   assert.equal(contract.plannedDisbursements?.[0]?.afterPeriod, 24);
+  assert.equal(hasPinkBook5PctEnabled(contract), false);
 
   // Kỳ #36 rơi đúng tháng 08/2028 (cố định 36 tháng) và kỳ #37 (09/2028) chuyển sang thả nổi
   const period36 = schedule.rows.find((r) => r.period === 36);
@@ -55,6 +69,24 @@ test("createDefaultSkyOneLoan khớp chính xác 100% sao kê BIDV thực tế (
   assert.equal(period36?.appliedRate, 5.5);
   assert.equal(period37?.dueDate, "2028-09-10");
   assert.equal(period37?.stage, "FLOATING");
+});
+
+test("togglePinkBook5PctDisbursement bật/tắt linh hoạt mốc 5% Sổ hồng (+72.313.698đ) tại kỳ #24", () => {
+  const base = createDefaultSkyOneLoan("2026-11-14");
+  assert.equal(hasPinkBook5PctEnabled(base), false);
+  assert.equal(getPlannedDisbursementSummary(base).totalAmount, 393_370_110);
+
+  const withPinkBook = togglePinkBook5PctDisbursement(base, true);
+  assert.equal(hasPinkBook5PctEnabled(withPinkBook), true);
+  assert.equal(getPlannedDisbursementSummary(withPinkBook).totalAmount, 393_370_110 + 72_313_698);
+
+  const schedWithPinkBook = generateMortgageSchedule(withPinkBook, "2026-11-14");
+  const period24 = schedWithPinkBook.rows.find((r) => r.period === 24);
+  assert.equal(period24?.disbursedInPeriod, 393_370_110 + 72_313_698);
+
+  const turnedOff = togglePinkBook5PctDisbursement(withPinkBook, false);
+  assert.equal(hasPinkBook5PctEnabled(turnedOff), false);
+  assert.equal(getPlannedDisbursementSummary(turnedOff).totalAmount, 393_370_110);
 });
 
 test("generateMortgageSchedule giữ nguyên lịch sử và hỗ trợ 30/360 hoặc Actual/365 + giải ngân bổ sung", () => {
@@ -251,6 +283,32 @@ test("reconcileBidvSkyOneContract tự động nâng cấp hồ sơ mẫu cũ ho
   assert.equal(syncedHdmb.contract.propertyValue, 1_573_480_430);
   assert.equal(syncedHdmb.contract.downPayment, 323_655_950);
   assert.equal(syncedHdmb.contract.plannedDisbursements?.[0]?.amount, 393_370_110);
+
+  // 2B. Nâng cấp hồ sơ cũ loanAmount = 698.898.193đ (kỳ 1-3 gốc = 0) & mã căn dài -> giữ nguyên kỳ #16 đã đóng
+  const legacyZeroFirst3: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    unitCode: "Căn hộ A.12A.07 · Tầng 12A · 55,6m² (thông thủy 49,9m²)",
+    loanAmount: 698_898_193,
+    paidRecords: [
+      ...createDefaultSkyOneLoan("2026-11-14").paidRecords.map((r) =>
+        r.period <= 3 ? { ...r, paidPrincipal: 0 } : r
+      ),
+      {
+        period: 16,
+        paidAt: "2026-12-10",
+        paidPrincipal: 3_056_000,
+        paidInterest: 3_000_000,
+        appliedRate: 5.5,
+      },
+    ],
+  };
+  const upgradedFirst3 = reconcileBidvSkyOneContract(legacyZeroFirst3, "2026-11-14");
+  assert.equal(upgradedFirst3.didAutoSync, true);
+  assert.equal(upgradedFirst3.contract.loanAmount, 708_066_194);
+  assert.equal(upgradedFirst3.contract.unitCode, SKYONE_SHORT_UNIT_LABEL);
+  assert.equal(upgradedFirst3.contract.paidRecords.length, 16);
+  assert.equal(upgradedFirst3.contract.paidRecords.find((r) => r.period === 1)?.paidPrincipal, 3_056_001);
+  assert.equal(upgradedFirst3.contract.paidRecords.find((r) => r.period === 16)?.paidPrincipal, 3_056_000);
 
   // 3. Hợp đồng tùy chỉnh của ngân hàng khác không bị ghi đè
   const customLoan: MortgageContract = {

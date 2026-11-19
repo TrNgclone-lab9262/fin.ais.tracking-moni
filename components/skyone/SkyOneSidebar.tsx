@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Building2,
   TrendingDown,
-  Table2,
   Calendar,
   Calculator,
   SlidersHorizontal,
@@ -93,10 +92,9 @@ export function SkyOneSidebar() {
           icon: Compass,
           badge: { text: "08/2028", variant: "info" },
         },
-        { id: "CASHFLOW", label: "Chi tiết Dòng tiền", icon: Table2 },
         {
           id: "SCHEDULE",
-          label: "Lịch trả nợ",
+          label: "Lịch trả nợ & Dòng tiền",
           icon: Calendar,
           badge:
             urgentCount > 0
@@ -152,8 +150,8 @@ export function SkyOneSidebar() {
               <span className="font-black text-base tracking-wide text-white block truncate leading-tight">
                 SKYONE LOAN
               </span>
-              <span className="text-[10px] text-indigo-200 uppercase tracking-widest font-bold block mt-0.5 truncate">
-                {skyoneLoan.unitCode} · HOME MONI
+              <span className="text-[10px] text-indigo-200 tracking-wider font-bold block mt-0.5 truncate">
+                {skyoneLoan.unitCode}
               </span>
             </div>
           )}

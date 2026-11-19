@@ -95,6 +95,7 @@ import {
   getTodayIsoDate,
   reconcileBidvSkyOneContract,
   simulatePrepayment,
+  togglePinkBook5PctDisbursement,
 } from "@/lib/mortgageEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
@@ -398,6 +399,7 @@ interface FinanceContextType {
     contractPatch?: Partial<MortgageContract>;
     periodOverrides: MortgagePeriodCashflowOverride[];
   }) => void;
+  toggleSkyOnePinkBook5Pct: (enabled?: boolean) => void;
   resetSkyOneLoan: () => void;
 
   // Cài đặt & Sao lưu
@@ -1126,7 +1128,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           const { contract: reconciled, didAutoSync } = reconcileBidvSkyOneContract(prev);
           if (didAutoSync) {
             setSkyoneAutoSyncedNotice(
-              "Đã tự động nhận diện hồ sơ BIDV TK 8866102943 (5,5%/năm · 36 tháng) và đồng bộ 12 kỳ sao kê Đã xác thực."
+              "Đã tự động đồng bộ chuẩn HĐMB A.12A.07 (Đợt 1: 708,07tr · 15 kỳ khớp sao kê BIDV 662,23tr) và bảo toàn các kỳ/tùy chỉnh cá nhân."
             );
             return reconciled;
           }
@@ -2631,6 +2633,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [queueCloudMutation]
   );
 
+  const toggleSkyOnePinkBook5Pct = useCallback(
+    (enabled?: boolean) => {
+      setSkyoneLoan((prev) => {
+        const next: MortgageContract = {
+          ...togglePinkBook5PctDisbursement(prev, enabled),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
   const resetSkyOneLoan = useCallback(() => {
     const next = createDefaultSkyOneLoan();
     setSkyoneLoan(next);
@@ -3801,6 +3817,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     deleteSkyOneRateAdjustment,
     setSkyOneCashflowLocked,
     saveAndLockSkyOneCashflow,
+    toggleSkyOnePinkBook5Pct,
     resetSkyOneLoan,
     updateSettings,
     markNotificationRead,

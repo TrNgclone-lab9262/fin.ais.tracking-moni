@@ -24,10 +24,9 @@ interface SkyOneTopBarProps {
 const SKYONE_TITLES: Record<SkyOneRouteTab, string> = {
   OVERVIEW: "Tổng quan & Stress-Test Khoản vay",
   ADVISOR: "Cố vấn Chiến lược Tài chính & BĐS",
-  CASHFLOW: "Chi tiết Dòng tiền Trả nợ",
-  SCHEDULE: "Lịch trả nợ Hàng tháng",
+  SCHEDULE: "Lịch trả nợ & Dòng tiền",
   PREPAYMENT: "Mô phỏng & Trả gốc trước hạn",
-  CONTRACT: "Hợp đồng & Biến động Lãi suất",
+  CONTRACT: "Hợp đồng & Hồ sơ Pháp lý",
   DATA_ADMIN: "Quản trị Dữ liệu Hệ thống",
   SETTINGS: "Cài đặt & Bảo mật Tổ ấm",
 };
@@ -112,14 +111,18 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
             </div>
 
             <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 dark:text-indigo-300">
+              <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
                 <Building2 className="w-3.5 h-3.5" />
                 {skyoneLoan.projectName}
               </span>
               <span aria-hidden="true">·</span>
-              <span>Căn {skyoneLoan.unitCode}</span>
+              <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-300">
+                {skyoneLoan.unitCode.toLowerCase().startsWith("căn")
+                  ? skyoneLoan.unitCode
+                  : `Căn ${skyoneLoan.unitCode}`}
+              </span>
               <span aria-hidden="true">·</span>
-              <span>{skyoneLoan.bankName}</span>
+              <span className="truncate">{skyoneLoan.bankName}</span>
             </div>
             </div>
           </div>

@@ -346,7 +346,7 @@ export type FinanceTab =
   | 'guide'
   | 'settings';
 
-export type SkyOneSubTab = 'OVERVIEW' | 'ADVISOR' | 'CASHFLOW' | 'SCHEDULE' | 'PREPAYMENT' | 'CONTRACT';
+export type SkyOneSubTab = 'OVERVIEW' | 'ADVISOR' | 'SCHEDULE' | 'PREPAYMENT' | 'CONTRACT';
 
 export type SkyOneRouteTab = SkyOneSubTab | 'DATA_ADMIN' | 'SETTINGS';
 
