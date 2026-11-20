@@ -291,6 +291,240 @@ export interface SavingsChallenge {
   createdAt: string;
 }
 
+export type GoldCategory =
+  | 'NHAN_9999'
+  | 'SJC_BAR'
+  | 'GOLD_24K_JEWELRY'
+  | 'GOLD_18K'
+  | 'DIGITAL_GOLD';
+
+export type GoldStorageLocation = 'HOME_SAFE' | 'BANK_VAULT' | 'STORE_KEEP' | 'PARENTS';
+
+export type GoldLotStatus = 'HOLDING' | 'PARTIAL_SOLD' | 'SOLD';
+
+export type GoldSalePurpose = 'INTERIOR_HANDOVER' | 'SKYONE_PREPAY' | 'REBALANCE' | 'OTHER';
+
+export type GoldLiquidationStrategy = 'MIN_SPREAD_FIRST' | 'HIGHEST_PROFIT_FIRST' | 'FIFO';
+
+export interface GoldLot {
+  id: string;
+  category: GoldCategory;
+  brand: string;
+  purchaseDate: string;          // YYYY-MM-DD
+  quantityChi: number;           // Chuẩn hóa về Chỉ (1 Lượng = 10 Chỉ)
+  remainingChi: number;          // Số chỉ còn nắm giữ
+  unitBuyPricePerChi: number;    // Giá mua thực tế (VND / chỉ)
+  makingFee: number;             // Phí gia công / công chế tác (VND)
+  memberId: FamilyMember;
+  storageLocation: GoldStorageLocation;
+  invoiceNote?: string;
+  linkedTransactionId?: string;
+  status: GoldLotStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoldSaleAllocation {
+  lotId: string;
+  soldChi: number;
+  costBasisAllocated: number;
+}
+
+export interface GoldSaleEvent {
+  id: string;
+  saleDate: string;              // YYYY-MM-DD
+  category: GoldCategory;
+  allocations: GoldSaleAllocation[];
+  totalSoldChi: number;
+  unitSellPricePerChi: number;   // Giá tiệm mua lại thực nhận (Bid VND/chỉ)
+  totalProceeds: number;
+  costBasisAllocated: number;
+  realizedPnl: number;
+  purpose: GoldSalePurpose;
+  linkedTransactionId?: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface GoldPriceQuote {
+  category: GoldCategory;
+  brandLabel: string;
+  buyPricePerChi: number;        // Giá tiệm MUA VÀO (Bid — dùng tính Liquidation Value)
+  sellPricePerChi: number;       // Giá tiệm BÁN RA (Ask — dùng tính Spread & Breakeven)
+  updatedAt: string;
+  source: 'MANUAL' | 'SERVER_REFERENCE';
+}
+
+export interface GoldMacroContext {
+  worldXauUsdPerOz: number;      // Giá vàng thế giới (USD / Troy Ounce)
+  usdVndRate: number;            // Tỷ giá USD/VND tham chiếu
+  updatedAt: string;
+}
+
+export interface GoldDcaPlan {
+  enabled: boolean;
+  targetCategory: GoldCategory;
+  monthlyTargetChi: number;
+  monthlyBudgetVnd: number;
+  targetAllocationPercentOfNetWorth: number;
+  targetReserveChiFor2027: number;
+}
+
+export interface GoldPortfolioState {
+  lots: GoldLot[];
+  sales: GoldSaleEvent[];
+  quotes: Record<GoldCategory, GoldPriceQuote>;
+  macro: GoldMacroContext;
+  dcaPlan: GoldDcaPlan;
+  includeInNetWorth: boolean;
+  updatedAt: string;
+}
+
+export type InteriorStylePreset =
+  | 'MODERN_WARM'
+  | 'JAPANDI'
+  | 'MINIMALIST_SLATE'
+  | 'WARM_SCANDINAVIAN';
+
+export type InteriorTimeOfDay = 'MORNING_08' | 'NOON_12' | 'AFTERNOON_1630' | 'EVENING_20';
+
+export type InteriorCameraMode = 'ORBIT' | 'WALKTHROUGH';
+
+export type InteriorCameraPresetId =
+  | 'DOLLHOUSE'
+  | 'ENTRANCE'
+  | 'LIVING_BALCONY'
+  | 'KITCHEN_DINING'
+  | 'MASTER_BEDROOM'
+  | 'ROOM_05_STUDIO';
+
+export type InteriorViewMode = '3D' | '2D' | 'SPLIT';
+
+export type InteriorBoqGroup =
+  | 'WOOD_FURNITURE'
+  | 'APPLIANCES'
+  | 'FINISHING_DECOR'
+  | 'DEVELOPER_INCLUDED';
+
+export type InteriorItemSource = 'DEVELOPER_INCLUDED' | 'NEW_PURCHASE';
+
+export type InteriorProcurementStatus = 'PLANNED' | 'QUOTED' | 'DEPOSITED' | 'INSTALLED';
+
+export type InteriorPricingRule = 'FIXED_UNIT' | 'PER_LINEAR_METER' | 'PER_SQUARE_METER';
+
+export type InteriorCatalogKey =
+  | 'sofa_3seat'
+  | 'accent_armchair'
+  | 'coffee_table'
+  | 'area_rug'
+  | 'tv_console_slat'
+  | 'shoe_cabinet_tall'
+  | 'dining_set_4'
+  | 'kitchen_l_hafele'
+  | 'fridge_inverter'
+  | 'bed_master_160'
+  | 'bed_compact_140'
+  | 'nightstand'
+  | 'wardrobe_tall'
+  | 'wardrobe_compact'
+  | 'dual_workstation_desk'
+  | 'single_desk'
+  | 'ergonomic_chair'
+  | 'tall_bookshelf_led'
+  | 'pegboard_goal_wall'
+  | 'reading_lounge_chair'
+  | 'washer_dryer'
+  | 'ac_inverter'
+  | 'smart_tv'
+  | 'floor_plant'
+  | 'balcony_planter'
+  | 'wc_hafele_set';
+
+export type InteriorMaterialFinish =
+  | 'WARM_OAK'
+  | 'LIGHT_WALNUT'
+  | 'CREAM_BOUCLE'
+  | 'SAGE_LINEN'
+  | 'MATTE_CREAM'
+  | 'CHARCOAL_SLATE'
+  | 'WHITE_MARBLE'
+  | 'BRUSHED_TITANIUM';
+
+export interface InteriorDimensionsCm {
+  width: number;
+  depth: number;
+  height: number;
+}
+
+export interface InteriorFurnitureItem {
+  id: string;
+  catalogKey: InteriorCatalogKey;
+  name: string;
+  roomId: string;
+  source: InteriorItemSource;
+  position: { x: number; z: number }; // Mét, gốc tọa độ tâm căn hộ
+  rotationDeg: number;
+  dimensionsCm: InteriorDimensionsCm;
+  materialFinish: InteriorMaterialFinish;
+  isLocked?: boolean;
+  pricingRule: InteriorPricingRule;
+  unitPriceVnd: number;
+  boqGroup: InteriorBoqGroup;
+  procurementStatus: InteriorProcurementStatus;
+  linkedTransactionId?: string;
+  note?: string;
+}
+
+export interface InteriorExtraBoqItem {
+  id: string;
+  name: string;
+  roomId: string;
+  boqGroup: InteriorBoqGroup;
+  source: InteriorItemSource;
+  unit: string;
+  quantity: number;
+  unitPriceVnd: number;
+  procurementStatus: InteriorProcurementStatus;
+  linkedTransactionId?: string;
+  note?: string;
+}
+
+export interface InteriorDesignScenario {
+  id: string;
+  code: 'A' | 'B' | string;
+  name: string;
+  shortLabel: string;
+  description: string;
+  stylePreset: InteriorStylePreset;
+  targetBudgetMinVnd: number;
+  targetBudgetMaxVnd: number;
+  contingencyPercent: number;
+  items: InteriorFurnitureItem[];
+  extraBoqItems: InteriorExtraBoqItem[];
+  updatedAt: string;
+}
+
+export interface HandoverChecklistItem {
+  id: string;
+  zoneCode: string;              // '01' .. '08'
+  zoneName: string;
+  title: string;
+  specDetail: string;
+  checked: boolean;
+  note?: string;
+}
+
+export interface InteriorStudioState {
+  apartmentCode: string;         // 'A.12A.07 · Loại A2 (2PN 1WC)'
+  usableAreaSqm: number;         // 51.0 (CAD A2) / 51.9 (HĐMB)
+  builtUpAreaSqm: number;        // 55.3 (CAD A2)
+  orientation: 'EAST_SOUTHEAST' | 'EAST' | 'SOUTH' | 'WEST';
+  activeScenarioId: string;
+  scenarios: InteriorDesignScenario[];
+  handoverChecklist: HandoverChecklistItem[];
+  updatedAt: string;
+}
+
 export interface AppDataBackup {
   version: '3.0' | '4.0';
   exportedAt: string;
@@ -305,11 +539,13 @@ export interface AppDataBackup {
   savingsChallenges?: SavingsChallenge[];
   settings: AppSettings;
   skyoneLoan?: MortgageContract;
+  goldPortfolio?: GoldPortfolioState;
+  interiorStudio?: InteriorStudioState;
 }
 
 export interface FinancialSummary {
   currentBalance: number;   // Số dư khả dụng (Tiền trong các ví ngân hàng + tiền mặt)
-  netWorth: number;         // Tài sản ròng = Số dư ví + Đầu tư - Nợ - Dư nợ thẻ tín dụng
+  netWorth: number;         // Tài sản ròng = Số dư ví + Đầu tư + Vàng (Bid) - Nợ - Dư nợ thẻ tín dụng
   monthlyIncome: number;    // Tổng thu nhập gia đình
   monthlyExpense: number;   // Tổng chi tiêu gia đình
   savingsAmount: number;    // Tiết kiệm tháng = Thu - Chi
@@ -334,7 +570,7 @@ export interface CategoryExpenseStat {
   percentage: number;
 }
 
-export type SubAppId = 'LAUNCHER' | 'FINANCE' | 'SKYONE';
+export type SubAppId = 'LAUNCHER' | 'FINANCE' | 'SKYONE' | 'GOLD' | 'INTERIOR';
 
 export type FinanceTab =
   | 'overview'
@@ -350,10 +586,15 @@ export type SkyOneSubTab = 'OVERVIEW' | 'ADVISOR' | 'SCHEDULE' | 'PREPAYMENT' | 
 
 export type SkyOneRouteTab = SkyOneSubTab | 'DATA_ADMIN' | 'SETTINGS';
 
+export type GoldRouteTab = 'OVERVIEW' | 'LOTS' | 'PRICES' | 'DCA' | 'SIMULATOR';
+
+export type InteriorRouteTab = 'STUDIO' | 'BOQ' | 'READINESS' | 'CHECKLIST';
+
 export interface SkyOneTransactionLink {
   kind: 'INSTALLMENT' | 'PREPAYMENT';
   period?: number;
   prepaymentId?: string;
   label: string;
 }
+
 

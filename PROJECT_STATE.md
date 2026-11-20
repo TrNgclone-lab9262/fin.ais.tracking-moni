@@ -1,7 +1,7 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.6.0-phudong-skyone` | **Ngày phát hành:** 2026-11-13 | **Môi trường:** Production Ready (PWA / Full-Stack Express + Gemini AI)  
-> **Tiêu chuẩn Thiết kế:** Calm Slate Fintech (Slate/Blue/Emerald/Rose) | **Mô hình Kế toán:** Event Sourcing Dual-Member
+> **Phiên bản:** `v1.7.0-gold-interior-3d` | **Ngày phát hành:** 2026-11-20 | **Môi trường:** Production Ready (4 Sub-App Ecosystem · PWA · Three.js 3D · Express + Gemini AI)  
+> **Tiêu chuẩn Thiết kế:** Calm Slate Fintech + Warm Architectural Studio | **Mô hình Kế toán:** Event Sourcing Dual-Member + WAC/FIFO Gold Lots + Live BOQ
 
 ---
 
@@ -15,7 +15,7 @@
 | **Kho Lưu Trữ GitHub** | `https://github.com/TrNgclone-lab9262/fin.ais.tracking-moni` |
 | **Môi trường Trực tuyến** | Song song: **Google AI Studio** (`https://app-home-moni.ai.studio`) & **Google Antigravity** |
 | **Skill Phát Hành** | `home-moni-ais-git-release` (GitHub Flow + CI Check + Conventional Commits + SemVer) |
-| **Tech Stack** | React 19 (`^19.0.1`), TypeScript (`^7.0.2`), Vite (`^8.3.0`), Tailwind CSS v4 (`^4.3.3`), Recharts (`^3.10.1`), Motion (`^12.23.24`), Lucide React (`^0.546.0`), Zod (`^4.6.7`), `@google/genai` (`^2.4.0`) |
+| **Tech Stack** | React 19 (`^19.0.1`), TypeScript (`^7.0.2`), Vite (`^8.3.0`), Tailwind CSS v4 (`^4.3.3`), Three.js (`^0.187.0`), Recharts (`^3.10.1`), Motion (`^12.23.24`), Lucide React (`^0.546.0`), Zod (`^4.6.7`), `@google/genai` (`^3.4.0`) |
 | **Kiến trúc Trình diễn** | Responsive Adaptive Shell: Phân tách hoàn toàn Desktop Shell (`>= 768px`) và Mobile Shell (`< 768px`) để tối ưu hiệu năng và triệt tiêu lỗi render ẩn $0 \times 0$ của Recharts. |
 | **Tầng Dữ liệu** | Offline-First LocalStorage V4 Cache (`HOME_MONI_DATA_V4`, tự động migrate từ `homemoni_data_v3`) kết hợp Backend Express (`/api/ai/*`) & sẵn sàng đồng bộ Supabase Cloud. |
 
@@ -129,6 +129,19 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `lib/geminiReceiptService.ts` | Bridge gọi API `/api/ai/*` (quét hóa đơn, nhập liệu ngôn ngữ tự nhiên, phân tích tháng) kèm offline fallback | **STABLE** |
 | `lib/authSecurity.ts` | Bảo mật `/login` đa thành viên: băm SHA-256 + salt, WebAuthn Face ID, nén & lưu hình nền khóa từ thư viện thiết bị | **STABLE** |
 | `lib/authSecurity.test.ts` | Unit test kiểm tra định dạng mã Code, băm/kiểm chứng SHA-256 và cấu hình khóa đôi | **STABLE** |
+| `lib/appRegistry.ts` | Danh mục 4 Sub-app hệ sinh thái HOME MONI (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) & cảnh báo khẩn SKYONE | **STABLE** |
+| `lib/appRegistry.test.ts` | Unit test kiểm định cấu hình 4 Sub-app và điều kiện cảnh báo kỳ hạn SKYONE | **STABLE** |
+| `lib/appRouting.ts` | Điều phối deep-link SPA cho `/launcher`, `/finance/*`, `/skyone/*`, `/gold/*`, `/interior/*` | **STABLE** |
+| `lib/appRouting.test.ts` | Unit test kiểm định parse/build URL và tiêu đề tài liệu 4 Sub-app | **STABLE** |
+| `lib/offlineOutbox.ts` | Hàng đợi đồng bộ ngoại tuyến bền vững cho thay đổi cục bộ lên Supabase Cloud | **STABLE** |
+| `lib/goldEngine.ts` | Engine Kho Tích Sản Vàng: ưu tiên Nhẫn 9999, WAC/FIFO/Specific-Lot, định giá theo giá Mua vào (Bid), chênh lệch XAU/USD & giả lập thanh khoản Q3/2027 | **STABLE** |
+| `lib/goldEngine.test.ts` | Unit test kiểm định FIFO/Specific-Lot, Bid Valuation, Domestic Premium & kịch bản chốt lời Q3/2027 | **STABLE** |
+| `lib/interiorFloorplan.ts` | Bản vẽ số hóa chuẩn tỷ lệ 1:1 (`1 unit = 1m`) căn hộ Phú Đông SKYONE A.12A.07 (Loại A2 51.0m²/55.3m²), 26 món danh mục & 2 phương án 3D (PA-A PN2 & PA-B Dual Growth Studio) | **STABLE** |
+| `lib/interiorBoqEngine.ts` | Engine bóc tách dự toán BOQ thời gian thực, kiểm tra khoảng trống công thái học & cầu nối Sẵn sàng Bàn giao Q3/2027 (FINANCE + GOLD + SKYONE + INTERIOR) | **STABLE** |
+| `lib/interiorBoqEngine.test.ts` | Unit test kiểm định ngân sách 100–150tr PA-A/PA-B, Dual Growth Studio, không chồng lấn công thái học & Readiness Bridge | **STABLE** |
+| `lib/three/interiorMaterials.ts` | Bộ sinh chất liệu PBR procedural `CanvasTexture` (gỗ sồi ấm, gạch Changyih, vải bouclé, đá marble, 4 style preset) tối ưu WebGL | **STABLE** |
+| `lib/three/interiorFurnitureFactory.ts` | Factory dựng mô hình nội thất 3D parametric đa chi tiết cho đủ 26 món (hệ bàn đôi 2 PC/Laptop, kệ sách LED 3000K, Pegboard, bếp chữ L & WC 3 phân khu Hafele) | **STABLE** |
+| `lib/three/interiorSceneController.ts` | Bộ điều khiển Three.js lõi: kiến trúc 8 phân khu A.12A.07, trần giật cấp 2.85m, ánh nắng Đông Nam 4 mốc giờ, Orbit/Walkthrough 1.6m, Auto-Cutaway, kéo thả snap 5cm & xuất ảnh PNG | **STABLE** |
 
 ### 4.2. State Management & App Routing
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -157,6 +170,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/common/PWAUpdateBanner.tsx` | Banner thông báo bản mới trên di động/desktop với nút Cập nhật ngay 1 chạm & toast xác nhận sau nâng cấp | **STABLE** |
 | `components/common/ReleaseNotesModal.tsx` | Hộp thoại/Sheet xem nhật ký phiên bản, tính năng mới và cam kết bảo toàn dữ liệu khi cập nhật | **STABLE** |
 | `components/common/IOSInstallModal.tsx` | Modal hướng dẫn chi tiết cách cài đặt lên màn hình chính cho iPhone/iPad Safari | **STABLE** |
+| `components/common/AppSwitcherWaffle.tsx` | Popover chuyển đổi nhanh giữa 4 Sub-app (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) trên TopBar | **STABLE** |
+| `components/common/SubAppIcons.tsx` | Bộ icon vector định danh chuẩn mực cho 4 Sub-app hệ sinh thái HOME MONI | **STABLE** |
 
 ### 4.4. Desktop Dashboard Widgets (`components/dashboard/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -210,6 +225,19 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/views/GuideView.tsx` | Cẩm nang tài chính gia đình: Lời khuyên chi tiêu, hướng dẫn dùng thẻ tín dụng 45 ngày | **STABLE** |
 | `components/views/SettingsView.tsx` | Quản lý thành viên, Privacy Mode & PIN 4 số, quản lý danh mục, kiểm tra AI Server & sao lưu JSON | **STABLE** |
 | `components/views/DataAdminView.tsx` | Studio Quản trị Dữ liệu đa bảng (8 thực thể: Ngân sách, Mục tiêu, Nợ, Đầu tư, Giao dịch, Ví/Thẻ, Danh mục, Định kỳ) với kiểm toán Event Sourcing | **STABLE** |
+| `components/views/AppLauncherView.tsx` | Màn hình Điều phối Hệ sinh thái 4 Sub-app hiển thị KPI tổng hợp Gia sản, SKYONE, Vàng Bid & BOQ Nội thất 3D | **STABLE** |
+| `components/views/GoldVaultView.tsx` | Sub-app `GOLD` (5 phân khu: Tổng quan, Sổ lô vàng, Bảng giá & XAU/USD, Kế hoạch DCA, Giả lập thanh khoản Q3/2027) | **STABLE** |
+| `components/gold/GoldSidebar.tsx` | Thanh điều hướng Desktop chuyên biệt cho Sub-app Kho Tích Sản Vàng | **STABLE** |
+| `components/gold/GoldTopBar.tsx` | Thanh tiêu đề Desktop Sub-app Vàng tích hợp nút làm mới giá tham chiếu server & chuyển đổi Sub-app | **STABLE** |
+| `components/gold/GoldMobileHeader.tsx` | Header cô đọng trên Mobile cho Sub-app Kho Tích Sản Vàng | **STABLE** |
+| `components/gold/GoldBottomNavBar.tsx` | Bottom Navigation tối ưu ngón cái trên Mobile cho 5 tab Sub-app Vàng | **STABLE** |
+| `components/views/InteriorStudioView.tsx` | Sub-app `INTERIOR` (lazy-loaded): Studio 3D/2D song hành, Dự toán BOQ, Sẵn sàng Bàn giao Q3/2027 & Checklist 8 phân khu CĐT | **STABLE** |
+| `components/interior/Interior3DViewport.tsx` | Khung nhìn Three.js 3D tương tác (Orbit/Walkthrough/Cutaway/Sun 4 mốc giờ/chụp ảnh PNG/chuyển nhanh PA-A ↔ PA-B) | **STABLE** |
+| `components/interior/Interior2DBlueprint.tsx` | Trình chỉnh sửa mặt bằng CAD 2D SVG kèm lớp ảnh nền CAD & CĐT tùy chỉnh độ mờ, kéo thả snap 5cm & cảnh báo công thái học | **STABLE** |
+| `components/interior/InteriorSidebar.tsx` | Thanh điều hướng Desktop chuyên biệt cho SKYONE 3D Interior Studio | **STABLE** |
+| `components/interior/InteriorTopBar.tsx` | Thanh tiêu đề Desktop Studio Nội thất với bộ chuyển nhanh Phương án A/B & chế độ 3D/2D | **STABLE** |
+| `components/interior/InteriorMobileHeader.tsx` | Header cô đọng trên Mobile cho SKYONE 3D Interior Studio | **STABLE** |
+| `components/interior/InteriorBottomNavBar.tsx` | Bottom Navigation tối ưu ngón cái trên Mobile cho 4 tab Studio Nội thất | **STABLE** |
 
 ### 4.8. Release Engineering & Developer Skills
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -252,7 +280,9 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
     "sharedSplitRatioHusband": 50,
     "privacyMode": false
   },
-  "skyoneLoan": { ... }
+  "skyoneLoan": { ... },
+  "goldPortfolio": { ... },
+  "interiorStudio": { ... }
 }
 ```
 
@@ -328,6 +358,10 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.7.0-gold-interior-3d (2026-11-20):**
+  * Mở rộng hệ sinh thái HOME MONI từ 2 lên **4 Sub-app liên thông** (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) trên `AppLauncherView.tsx`, `AppSwitcherWaffle.tsx`, `MobileDrawer.tsx`, `lib/appRegistry.ts` và `lib/appRouting.ts`.
+  * Triển khai **Sub-app `GOLD` (`/gold/*`)** với `lib/goldEngine.ts`, `components/views/GoldVaultView.tsx`, endpoint tham chiếu `GET /api/gold/reference-prices` (cache 15 phút), hạch toán WAC/FIFO/Specific-Lot, định giá theo giá Mua vào (Bid), phân tích chênh lệch XAU/USD và giả lập thanh khoản Q3/2027.
+  * Triển khai **Sub-app `INTERIOR` (`/interior/*` · Three.js Core lazy-loaded)** cho căn hộ **Phú Đông SKYONE A.12A.07 (Loại A2 51.0m²/55.3m²)** với `lib/three/*`, `Interior3DViewport.tsx`, `Interior2DBlueprint.tsx`, `InteriorStudioView.tsx`: 2 phương án 3D so sánh trực tiếp (**PA-A Phòng Ngủ 2 Linh Hoạt ~118tr** & **PA-B Dual Growth Studio 2 dàn PC/Laptop cho 2 vợ chồng ~140tr**), ánh nắng Đông Nam 4 mốc giờ, Walkthrough 1.6m, BOQ live 100–150tr và Cầu nối Sẵn sàng Bàn giao Q3/2027.
 * **v1.6.0-phudong-skyone (2026-11-13):**
   * Thêm hợp đồng vay căn hộ `MortgageContract` (`skyoneLoan`) vào `types/finance.ts`, Zod contract `lib/validations.ts`, `lib/storage.ts` (kèm Smart Merge chống trùng kỳ đã đóng / đợt trả trước hạn / mốc lãi suất) và `FinanceContext.tsx`.
   * Xây dựng engine thuần túy `lib/mortgageEngine.ts` + bộ test `lib/mortgageEngine.test.ts` cho công thức dư nợ giảm dần không ân hạn gốc, 2 giai đoạn cố định/thả nổi, Equity %, DTI %, Stress-test lãi suất và mô phỏng trả gốc trước hạn.

@@ -8,6 +8,8 @@ import {
   DebtType,
   ExpenseScope,
   FamilyMember,
+  GoldPortfolioState,
+  InteriorStudioState,
   InvestmentItem,
   InvestmentType,
   MortgageContract,
@@ -17,7 +19,11 @@ import {
   Transaction,
   TransactionType,
 } from "@/types/finance";
-import { MortgageContractSchema } from "@/lib/validations";
+import {
+  GoldPortfolioStateSchema,
+  InteriorStudioStateSchema,
+  MortgageContractSchema,
+} from "@/lib/validations";
 
 export interface DbCategory {
   household_id: string;
@@ -403,6 +409,56 @@ export function mapSkyOneLoanToDb(
     id: contract.id || "skyone_default",
     contract_data: contract,
     updated_at: contract.updatedAt || new Date().toISOString(),
+  };
+}
+
+export interface DbGoldPortfolio {
+  household_id: string;
+  id: string;
+  portfolio_data: unknown;
+  updated_at?: string;
+}
+
+export function mapDbToGoldPortfolio(row: DbGoldPortfolio): GoldPortfolioState | null {
+  const parsed = GoldPortfolioStateSchema.safeParse(row.portfolio_data);
+  if (!parsed.success) return null;
+  return parsed.data;
+}
+
+export function mapGoldPortfolioToDb(
+  portfolio: GoldPortfolioState,
+  householdId: string
+): DbGoldPortfolio {
+  return {
+    household_id: householdId,
+    id: "gold_default",
+    portfolio_data: portfolio,
+    updated_at: portfolio.updatedAt || new Date().toISOString(),
+  };
+}
+
+export interface DbInteriorStudio {
+  household_id: string;
+  id: string;
+  studio_data: unknown;
+  updated_at?: string;
+}
+
+export function mapDbToInteriorStudio(row: DbInteriorStudio): InteriorStudioState | null {
+  const parsed = InteriorStudioStateSchema.safeParse(row.studio_data);
+  if (!parsed.success) return null;
+  return parsed.data;
+}
+
+export function mapInteriorStudioToDb(
+  studio: InteriorStudioState,
+  householdId: string
+): DbInteriorStudio {
+  return {
+    household_id: householdId,
+    id: "interior_a12a07",
+    studio_data: studio,
+    updated_at: studio.updatedAt || new Date().toISOString(),
   };
 }
 

@@ -255,7 +255,7 @@ export function TopBar({
             {/* Light / Dark Theme Toggle */}
             <button
               type="button"
-              onClick={toggleThemeMode}
+              onClick={(e) => toggleThemeMode(e)}
               data-testid="desktop-theme-toggle"
               aria-label={themeMode === "dark" ? "Chuyển sang giao diện Sáng" : "Chuyển sang giao diện Tối"}
               title={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}

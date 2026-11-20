@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { APP_ECOSYSTEM_REGISTRY, getUrgentSkyOneAlert } from "./appRegistry";
 import { createDefaultSkyOneLoan } from "./mortgageEngine";
 
-test("APP_ECOSYSTEM_REGISTRY exposes FINANCE and SKYONE definitions", () => {
-  assert.equal(APP_ECOSYSTEM_REGISTRY.length, 2);
+test("APP_ECOSYSTEM_REGISTRY exposes FINANCE, SKYONE, GOLD, and INTERIOR definitions", () => {
+  assert.equal(APP_ECOSYSTEM_REGISTRY.length, 4);
   assert.deepEqual(
     APP_ECOSYSTEM_REGISTRY.map((item) => item.id),
-    ["FINANCE", "SKYONE"]
+    ["FINANCE", "SKYONE", "GOLD", "INTERIOR"]
   );
   for (const app of APP_ECOSYSTEM_REGISTRY) {
     assert.ok(app.title.length > 0);

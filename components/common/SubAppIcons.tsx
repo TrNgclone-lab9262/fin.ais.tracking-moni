@@ -108,3 +108,82 @@ export function SkyOneAppIconSvg({ className = "w-14 h-14" }: SubAppIconProps) {
     </svg>
   );
 }
+
+/**
+ * Biểu tượng đa sắc cho phân hệ Kho Tích Sản Vàng (HOME MONI GOLD)
+ * Kết hợp nhẫn tròn 9999 tinh xảo, thỏi vàng khối chamfer và khiên phòng vệ tài sản.
+ */
+export function GoldAppIconSvg({ className = "w-14 h-14" }: SubAppIconProps) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={className}
+    >
+      {/* Nền khiên phòng vệ hổ phách */}
+      <rect x="9" y="12" width="46" height="40" rx="10" fill="#FEF3C7" opacity="0.35" />
+
+      {/* Thỏi vàng đáy */}
+      <path d="M12 46L17 34H47L52 46H12Z" fill="#B45309" />
+      <path d="M17 34H47L43 40H21L17 34Z" fill="#F59E0B" />
+      <path d="M12 46L21 40H43L52 46H12Z" fill="#D97706" />
+
+      {/* Nhẫn trơn 9999 nổi bật phía trên */}
+      <circle cx="32" cy="24" r="12" stroke="#D97706" strokeWidth="5.5" />
+      <circle cx="32" cy="24" r="12" stroke="#FBBF24" strokeWidth="2.4" />
+      <path
+        d="M24 18C26.2 15.6 29.2 14.5 32.5 14.8"
+        stroke="#FEF3C7"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+
+      {/* Khắc dấu 9999 tối giản */}
+      <rect x="26" y="41.5" width="12" height="2.4" rx="1.2" fill="#FEF3C7" opacity="0.85" />
+    </svg>
+  );
+}
+
+/**
+ * Biểu tượng đa sắc cho phân hệ SKYONE 3D Interior Studio (Three.js)
+ * Kết hợp khối isometric căn hộ 3D, mặt sàn ấm áp và đường gióng kiến trúc.
+ */
+export function InteriorAppIconSvg({ className = "w-14 h-14" }: SubAppIconProps) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={className}
+    >
+      {/* Sàn isometric căn hộ */}
+      <path d="M32 54L10 42L32 30L54 42L32 54Z" fill="#D4A373" />
+
+      {/* Tường trái (Teal Architectural) */}
+      <path d="M10 22L32 10V30L10 42V22Z" fill="#0F766E" />
+      <path d="M15 24.5L27 18V27L15 33.5V24.5Z" fill="#99F6E4" opacity="0.7" />
+
+      {/* Tường phải (Slate-Teal sâu hơn) */}
+      <path d="M54 22L32 10V30L54 42V22Z" fill="#115E59" />
+      {/* Cửa lùa ban công hướng Đông Nam */}
+      <path d="M37 18L49 24.5V34L37 27.5V18Z" fill="#CCFBF1" opacity="0.85" />
+      <path d="M43 21.2V30.8" stroke="#0F766E" strokeWidth="1.6" />
+
+      {/* Khối nội thất trung tâm (Sofa / Bàn Dual Studio) */}
+      <path d="M32 45L22 39.5L32 34L42 39.5L32 45Z" fill="#FEF3C7" />
+      <path d="M22 39.5V43.5L32 49V45L22 39.5Z" fill="#D97706" />
+      <path d="M42 39.5V43.5L32 49V45L42 39.5Z" fill="#B45309" />
+
+      {/* Viền isometric sắc nét */}
+      <path
+        d="M10 22L32 10L54 22V42L32 54L10 42V22Z"
+        stroke="#0D9488"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

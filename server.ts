@@ -95,6 +95,140 @@ async function startServer() {
     next();
   });
 
+  // 0. GET /api/gold/reference-prices — Giá vàng tham khảo VN (Nhẫn 9999 ưu tiên, SJC, 24K, 18K) + XAU/USD (cache 15 phút)
+  interface GoldReferenceResponse {
+    source: 'SERVER_REFERENCE';
+    mode: 'LIVE_FEED' | 'BENCHMARK_FALLBACK';
+    fetchedAt: string;
+    cacheAgeSeconds: number;
+    note: string;
+    macro: {
+      worldXauUsdPerOz: number;
+      usdVndRate: number;
+    };
+    quotes: {
+      NHAN_9999: { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number };
+      SJC_BAR: { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number };
+      GOLD_24K_JEWELRY: { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number };
+      GOLD_18K: { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number };
+      DIGITAL_GOLD: { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number };
+    };
+  }
+
+  let cachedGoldReference: { expiresAt: number; fetchedAtMs: number; payload: GoldReferenceResponse } | null = null;
+  const GOLD_CACHE_TTL_MS = 15 * 60 * 1000;
+
+  app.get('/api/gold/reference-prices', async (req, res) => {
+    const forceRefresh = req.query.force === '1';
+    const now = Date.now();
+    if (!forceRefresh && cachedGoldReference && cachedGoldReference.expiresAt > now) {
+      return res.json({
+        ...cachedGoldReference.payload,
+        cacheAgeSeconds: Math.max(0, Math.round((now - cachedGoldReference.fetchedAtMs) / 1000)),
+      });
+    }
+
+    let worldXauUsdPerOz = 2780;
+    let usdVndRate = 25450;
+    let mode: 'LIVE_FEED' | 'BENCHMARK_FALLBACK' = 'BENCHMARK_FALLBACK';
+    let note =
+      'Giá tham chiếu chuẩn thị trường VN (có thể điều chỉnh thủ công theo hóa đơn PNJ/SJC/BTMC thực tế).';
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      const [xauRes, fxRes] = await Promise.allSettled([
+        fetch('https://api.gold-api.com/price/XAU', { signal: controller.signal }),
+        fetch('https://open.er-api.com/v6/latest/USD', { signal: controller.signal }),
+      ]);
+      clearTimeout(timer);
+
+      let gotLive = false;
+      if (xauRes.status === 'fulfilled' && xauRes.value.ok) {
+        const xauJson = (await xauRes.value.json()) as { price?: number };
+        if (typeof xauJson.price === 'number' && xauJson.price > 1500 && xauJson.price < 10000) {
+          worldXauUsdPerOz = Math.round(xauJson.price * 10) / 10;
+          gotLive = true;
+        }
+      }
+      if (fxRes.status === 'fulfilled' && fxRes.value.ok) {
+        const fxJson = (await fxRes.value.json()) as { rates?: { VND?: number } };
+        const vnd = fxJson.rates?.VND;
+        if (typeof vnd === 'number' && vnd > 20000 && vnd < 35000) {
+          usdVndRate = Math.round(vnd);
+          gotLive = true;
+        }
+      }
+      if (gotLive) {
+        mode = 'LIVE_FEED';
+        note =
+          'Quy đổi trực tiếp từ XAU/USD & USD/VND quốc tế cộng biên độ tham khảo nội địa (ưu tiên Nhẫn trơn 9999).';
+      }
+    } catch {
+      // Fall back to safe benchmark below
+    }
+
+    // Quy đổi thế giới (VND/chỉ): XAU * USDVND * 1.205653 / 10
+    const worldPerChi = Math.round(((worldXauUsdPerOz * usdVndRate * 1.205653027) / 10) / 10000) * 10000;
+    const nhanSell = Math.round((worldPerChi * 1.035) / 10000) * 10000;
+    const nhanBuy = Math.max(1000000, nhanSell - 180000);
+    const sjcSell = Math.round((worldPerChi * 1.06) / 10000) * 10000;
+    const sjcBuy = Math.max(1000000, sjcSell - 220000);
+    const gold24Sell = Math.max(1000000, nhanSell - 50000);
+    const gold24Buy = Math.max(1000000, gold24Sell - 250000);
+    const gold18Sell = Math.round((worldPerChi * 0.77) / 10000) * 10000;
+    const gold18Buy = Math.max(1000000, gold18Sell - 380000);
+    const digitalSell = nhanSell;
+    const digitalBuy = Math.max(1000000, digitalSell - 150000);
+
+    const payload: GoldReferenceResponse = {
+      source: 'SERVER_REFERENCE',
+      mode,
+      fetchedAt: new Date(now).toISOString(),
+      cacheAgeSeconds: 0,
+      note,
+      macro: {
+        worldXauUsdPerOz,
+        usdVndRate,
+      },
+      quotes: {
+        NHAN_9999: {
+          brandLabel: 'Nhẫn trơn 9999 (PNJ/SJC/BTMC)',
+          buyPricePerChi: nhanBuy,
+          sellPricePerChi: nhanSell,
+        },
+        SJC_BAR: {
+          brandLabel: 'Vàng miếng SJC 9999',
+          buyPricePerChi: sjcBuy,
+          sellPricePerChi: sjcSell,
+        },
+        GOLD_24K_JEWELRY: {
+          brandLabel: 'Vàng 24K Trang sức',
+          buyPricePerChi: gold24Buy,
+          sellPricePerChi: gold24Sell,
+        },
+        GOLD_18K: {
+          brandLabel: 'Vàng 18K (750)',
+          buyPricePerChi: gold18Buy,
+          sellPricePerChi: gold18Sell,
+        },
+        DIGITAL_GOLD: {
+          brandLabel: 'Vàng tích lũy / eGold',
+          buyPricePerChi: digitalBuy,
+          sellPricePerChi: digitalSell,
+        },
+      },
+    };
+
+    cachedGoldReference = {
+      expiresAt: now + GOLD_CACHE_TTL_MS,
+      fetchedAtMs: now,
+      payload,
+    };
+
+    return res.json(payload);
+  });
+
   // 1. POST /api/ai/scan-receipt — Multimodal Receipt OCR + Itemized Split Suggestions
   app.post('/api/ai/scan-receipt', async (req, res) => {
     const ai = getGeminiClient();

@@ -11,6 +11,8 @@ import {
   RecurringRule,
   MortgageContract,
   SavingsChallenge,
+  GoldPortfolioState,
+  InteriorStudioState,
 } from "@/types/finance";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import {
@@ -24,8 +26,15 @@ import {
   DEFAULT_RECURRING_RULES,
   DEFAULT_SAVINGS_CHALLENGES,
 } from "@/constants/mockData";
-import { AppDataBackupSchema, MortgageContractSchema } from "./validations";
+import {
+  AppDataBackupSchema,
+  GoldPortfolioStateSchema,
+  InteriorStudioStateSchema,
+  MortgageContractSchema,
+} from "./validations";
 import { createDefaultSkyOneLoan, reconcileBidvSkyOneContract } from "./mortgageEngine";
+import { createDefaultGoldPortfolio } from "./goldEngine";
+import { createDefaultInteriorStudio } from "./interiorFloorplan";
 
 export const STORAGE_KEY_V3 = "HOME_MONI_DATA_V4";
 
@@ -41,6 +50,8 @@ export interface StoredAppStateV3 {
   savingsChallenges?: SavingsChallenge[];
   settings: AppSettings;
   skyoneLoan: MortgageContract;
+  goldPortfolio: GoldPortfolioState;
+  interiorStudio: InteriorStudioState;
 }
 
 function isStorageAvailable(): boolean {
@@ -108,6 +119,8 @@ export function seedInitialDataV3(): StoredAppStateV3 {
     savingsChallenges: DEFAULT_SAVINGS_CHALLENGES,
     settings: DEFAULT_SETTINGS,
     skyoneLoan: createDefaultSkyOneLoan(),
+    goldPortfolio: createDefaultGoldPortfolio(),
+    interiorStudio: createDefaultInteriorStudio(),
   };
 
   initialData.accounts = recalculateAccountBalances(initialData.accounts, initialData.transactions);
@@ -140,6 +153,8 @@ export function loadStoredDataV3(): StoredAppStateV3 {
         const { contract: reconciledSkyOne, didAutoSync } = reconcileBidvSkyOneContract(
           skyoneParsed.success ? skyoneParsed.data : undefined
         );
+        const goldParsed = GoldPortfolioStateSchema.safeParse(parsed.goldPortfolio);
+        const interiorParsed = InteriorStudioStateSchema.safeParse(parsed.interiorStudio);
         const nextState: StoredAppStateV3 = {
           categories: parsed.categories?.length ? parsed.categories : DEFAULT_CATEGORIES,
           accounts: parsed.accounts?.length ? parsed.accounts : DEFAULT_ACCOUNTS,
@@ -156,6 +171,10 @@ export function loadStoredDataV3(): StoredAppStateV3 {
             : DEFAULT_SAVINGS_CHALLENGES,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
           skyoneLoan: reconciledSkyOne,
+          goldPortfolio: goldParsed.success ? goldParsed.data : createDefaultGoldPortfolio(),
+          interiorStudio: interiorParsed.success
+            ? interiorParsed.data
+            : createDefaultInteriorStudio(),
         };
         if (didAutoSync) {
           saveStoredDataV3(nextState);
@@ -200,6 +219,8 @@ export function buildSyncBundlePayload(state: StoredAppStateV3): AppDataBackup {
     savingsChallenges: state.savingsChallenges ?? [],
     settings: state.settings,
     skyoneLoan: state.skyoneLoan,
+    goldPortfolio: state.goldPortfolio,
+    interiorStudio: state.interiorStudio,
   };
 }
 
@@ -334,6 +355,8 @@ export function parseSyncBundleText(text: string): {
       savingsChallenges: validData.savingsChallenges ?? DEFAULT_SAVINGS_CHALLENGES,
       settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
       skyoneLoan: reconcileBidvSkyOneContract(validData.skyoneLoan).contract,
+      goldPortfolio: validData.goldPortfolio ?? createDefaultGoldPortfolio(),
+      interiorStudio: validData.interiorStudio ?? createDefaultInteriorStudio(),
     };
 
     appState.accounts = recalculateAccountBalances(appState.accounts, appState.transactions);
@@ -356,6 +379,8 @@ export interface MergeDiffPreview {
   newMortgagePaidRecords: number;
   newMortgagePrepayments: number;
   newMortgageRateAdjustments: number;
+  newGoldLots?: number;
+  newGoldSales?: number;
   totalNewItems: number;
   totalIncomingTransactions: number;
 }
@@ -412,6 +437,15 @@ export function previewMergeDiff(
     incoming.skyoneLoan.rateAdjustments
   );
 
+  const newGoldLots = countNewById(
+    current.goldPortfolio?.lots || [],
+    incoming.goldPortfolio?.lots || []
+  );
+  const newGoldSales = countNewById(
+    current.goldPortfolio?.sales || [],
+    incoming.goldPortfolio?.sales || []
+  );
+
   const totalNewItems =
     newTransactions +
     newAccounts +
@@ -424,7 +458,9 @@ export function previewMergeDiff(
     newSavingsChallenges +
     newMortgagePaidRecords +
     newMortgagePrepayments +
-    newMortgageRateAdjustments;
+    newMortgageRateAdjustments +
+    newGoldLots +
+    newGoldSales;
 
   return {
     newTransactions,
@@ -439,6 +475,8 @@ export function previewMergeDiff(
     newMortgagePaidRecords,
     newMortgagePrepayments,
     newMortgageRateAdjustments,
+    newGoldLots,
+    newGoldSales,
     totalNewItems,
     totalIncomingTransactions: incoming.transactions.length,
   };
@@ -521,6 +559,23 @@ export function mergeFinanceData(
     updatedAt: new Date().toISOString(),
   };
 
+  const curGold = current.goldPortfolio || createDefaultGoldPortfolio();
+  const incGold = incoming.goldPortfolio || createDefaultGoldPortfolio();
+  const incomingGoldNewer = incGold.updatedAt.localeCompare(curGold.updatedAt) > 0;
+  const mergedGoldPortfolio: GoldPortfolioState = {
+    ...(incomingGoldNewer ? incGold : curGold),
+    lots: mergeById(curGold.lots, incGold.lots),
+    sales: mergeById(curGold.sales, incGold.sales),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const curInterior = current.interiorStudio || createDefaultInteriorStudio();
+  const incInterior = incoming.interiorStudio || createDefaultInteriorStudio();
+  const incomingInteriorNewer = incInterior.updatedAt.localeCompare(curInterior.updatedAt) > 0;
+  const mergedInteriorStudio: InteriorStudioState = incomingInteriorNewer
+    ? incInterior
+    : curInterior;
+
   const mergedAccounts = recalculateAccountBalances(mergedAccountsRaw, mergedTransactions);
 
   return {
@@ -539,6 +594,8 @@ export function mergeFinanceData(
       ...securitySlice,
     },
     skyoneLoan: mergedSkyOneLoan,
+    goldPortfolio: mergedGoldPortfolio,
+    interiorStudio: mergedInteriorStudio,
   };
 }
 

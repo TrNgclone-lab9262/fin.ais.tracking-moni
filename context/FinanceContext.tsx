@@ -10,6 +10,11 @@ import React, {
   useRef,
   ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
+import {
+  runThemeCircularReveal,
+  ThemeTransitionTriggerEvent,
+} from "@/lib/themeTransition";
 import {
   Category,
   Account,
@@ -36,11 +41,26 @@ import {
   SubAppId,
   FinanceTab,
   SkyOneRouteTab,
+  GoldRouteTab,
+  InteriorRouteTab,
   SkyOneTransactionLink,
   BudgetProgressItem,
   MortgagePeriodCashflowOverride,
   QuickAuthViewId,
   SavingsChallenge,
+  GoldCategory,
+  GoldDcaPlan,
+  GoldLot,
+  GoldMacroContext,
+  GoldPortfolioState,
+  GoldPriceQuote,
+  GoldSaleEvent,
+  GoldSalePurpose,
+  InteriorDesignScenario,
+  InteriorExtraBoqItem,
+  InteriorFurnitureItem,
+  InteriorProcurementStatus,
+  InteriorStudioState,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -98,6 +118,13 @@ import {
   simulatePrepayment,
   togglePinkBook5PctDisbursement,
 } from "@/lib/mortgageEngine";
+import {
+  allocateFifoGoldSale,
+  allocateSpecificLotSale,
+  computeGoldPortfolioMetrics,
+  createDefaultGoldPortfolio,
+} from "@/lib/goldEngine";
+import { createDefaultInteriorStudio } from "@/lib/interiorFloorplan";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   supabaseService,
@@ -204,11 +231,17 @@ interface FinanceContextType {
   setSkyoneTab: (tab: SkyOneRouteTab, highlightPeriod?: number | null) => void;
   skyoneHighlightPeriod: number | null;
   clearSkyoneHighlightPeriod: () => void;
+  goldTab: GoldRouteTab;
+  setGoldTab: (tab: GoldRouteTab) => void;
+  interiorTab: InteriorRouteTab;
+  setInteriorTab: (tab: InteriorRouteTab) => void;
   switchSubApp: (
     app: SubAppId,
     options?: {
       financeTab?: FinanceTab;
       skyoneTab?: SkyOneRouteTab;
+      goldTab?: GoldRouteTab;
+      interiorTab?: InteriorRouteTab;
       highlightPeriod?: number | null;
     }
   ) => void;
@@ -252,8 +285,8 @@ interface FinanceContextType {
 
   // Chế độ sáng/tối & Riêng tư, /login & Khóa bảo mật đa thành viên
   themeMode: ThemeMode;
-  setThemeMode: (mode: ThemeMode) => void;
-  toggleThemeMode: () => void;
+  setThemeMode: (mode: ThemeMode, event?: ThemeTransitionTriggerEvent) => void;
+  toggleThemeMode: (event?: ThemeTransitionTriggerEvent) => void;
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
   isAppLocked: boolean;
@@ -403,6 +436,82 @@ interface FinanceContextType {
   toggleSkyOnePinkBook5Pct: (enabled?: boolean) => void;
   resetSkyOneLoan: () => void;
 
+  // Quản lý Kho Tích Sản Vàng (GOLD Sub-App)
+  goldPortfolio: GoldPortfolioState;
+  addGoldLot: (
+    lot: Omit<GoldLot, "id" | "remainingChi" | "status" | "createdAt" | "updatedAt">,
+    options?: { linkAccountId?: string }
+  ) => GoldLot;
+  updateGoldLot: (id: string, patch: Partial<GoldLot>) => void;
+  deleteGoldLot: (id: string) => void;
+  recordGoldSale: (input: {
+    saleDate: string;
+    category: GoldCategory;
+    quantityChi: number;
+    unitSellPricePerChi: number;
+    mode: "FIFO" | "SPECIFIC_LOT";
+    specificLotId?: string;
+    purpose: GoldSalePurpose;
+    note?: string;
+    linkAccountId?: string;
+  }) => { ok: boolean; saleEvent?: GoldSaleEvent; error?: string };
+  updateGoldPriceQuote: (
+    category: GoldCategory,
+    patch: Partial<Pick<GoldPriceQuote, "brandLabel" | "buyPricePerChi" | "sellPricePerChi" | "source">>
+  ) => void;
+  updateGoldMacro: (patch: Partial<Pick<GoldMacroContext, "worldXauUsdPerOz" | "usdVndRate">>) => void;
+  updateGoldDcaPlan: (patch: Partial<GoldDcaPlan>) => void;
+  toggleGoldIncludeInNetWorth: (include: boolean) => void;
+  fetchReferenceGoldPrices: (force?: boolean) => Promise<{ ok: boolean; mode?: string; note?: string; error?: string }>;
+  resetGoldPortfolio: () => void;
+
+  // Quản lý Thiết kế Nội thất 3D & Dự toán BOQ (INTERIOR Sub-App)
+  interiorStudio: InteriorStudioState;
+  setActiveInteriorScenario: (scenarioId: string) => void;
+  updateInteriorScenarioMeta: (
+    scenarioId: string,
+    patch: Partial<
+      Pick<
+        InteriorDesignScenario,
+        "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent"
+      >
+    >
+  ) => void;
+  duplicateInteriorScenario: (sourceScenarioId: string, newName?: string) => InteriorDesignScenario | null;
+  addInteriorFurnitureItem: (item: Omit<InteriorFurnitureItem, "id">) => InteriorFurnitureItem;
+  updateInteriorFurnitureItem: (
+    id: string,
+    patch: Partial<InteriorFurnitureItem>,
+    options?: { skipUndoHistory?: boolean }
+  ) => void;
+  deleteInteriorFurnitureItem: (id: string) => void;
+  addInteriorExtraBoqItem: (item: Omit<InteriorExtraBoqItem, "id">) => InteriorExtraBoqItem;
+  updateInteriorExtraBoqItem: (id: string, patch: Partial<InteriorExtraBoqItem>) => void;
+  deleteInteriorExtraBoqItem: (id: string) => void;
+  updateBoqItemStatus: (
+    origin: "3D_ITEM" | "EXTRA_LINE",
+    id: string,
+    status: InteriorProcurementStatus
+  ) => void;
+  recordBoqPaymentToFinance: (input: {
+    origin: "3D_ITEM" | "EXTRA_LINE";
+    itemId: string;
+    itemName: string;
+    amountVnd: number;
+    accountId: string;
+    memberId: FamilyMember;
+    date: string;
+    statusAfter: "DEPOSITED" | "INSTALLED";
+    note?: string;
+  }) => Transaction;
+  toggleHandoverChecklistItem: (id: string) => void;
+  updateHandoverChecklistNote: (id: string, note: string) => void;
+  undoInteriorChange: () => void;
+  redoInteriorChange: () => void;
+  canUndoInterior: boolean;
+  canRedoInterior: boolean;
+  resetInteriorStudio: () => void;
+
   // Cài đặt & Sao lưu
   updateSettings: (settings: Partial<AppSettings>) => void;
   markNotificationRead: (id: string) => void;
@@ -453,6 +562,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTabState] = useState<NavTab>("overview");
   const [skyoneTab, setSkyoneTabState] = useState<SkyOneRouteTab>("OVERVIEW");
   const [skyoneHighlightPeriod, setSkyoneHighlightPeriod] = useState<number | null>(null);
+  const [goldTab, setGoldTabState] = useState<GoldRouteTab>("OVERVIEW");
+  const [interiorTab, setInteriorTabState] = useState<InteriorRouteTab>("STUDIO");
   const [activePerspective, setActivePerspective] = useState<PerspectiveMode>("ALL");
 
   // Supabase Cloud, Profile, Household & Outbox State
@@ -479,6 +590,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   );
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [skyoneLoan, setSkyoneLoan] = useState<MortgageContract>(() => createDefaultSkyOneLoan());
+  const [goldPortfolio, setGoldPortfolio] = useState<GoldPortfolioState>(() =>
+    createDefaultGoldPortfolio()
+  );
+  const [interiorStudio, setInteriorStudio] = useState<InteriorStudioState>(() =>
+    createDefaultInteriorStudio()
+  );
+  const [interiorUndoStack, setInteriorUndoStack] = useState<InteriorStudioState[]>([]);
+  const [interiorRedoStack, setInteriorRedoStack] = useState<InteriorStudioState[]>([]);
   const [skyoneAutoSyncedNotice, setSkyoneAutoSyncedNotice] = useState<string | null>(null);
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
@@ -502,6 +621,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     savingsChallenges: DEFAULT_SAVINGS_CHALLENGES,
     settings: DEFAULT_SETTINGS,
     skyoneLoan: createDefaultSkyOneLoan(),
+    goldPortfolio: createDefaultGoldPortfolio(),
+    interiorStudio: createDefaultInteriorStudio(),
   });
 
   useEffect(() => {
@@ -521,6 +642,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     };
   }, [
     categories,
@@ -534,6 +657,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     savingsChallenges,
     settings,
     skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
   ]);
 
   // Bộ lọc
@@ -551,7 +676,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const hasRemotePayload =
       cloudData.accounts.length > 0 ||
       cloudData.transactions.length > 0 ||
-      Boolean(cloudData.skyoneLoan);
+      Boolean(cloudData.skyoneLoan) ||
+      Boolean(cloudData.goldPortfolio) ||
+      Boolean(cloudData.interiorStudio);
 
     if (!hasRemotePayload) {
       return;
@@ -565,6 +692,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     if (cloudData.recurringRules.length > 0) setRecurringRules(cloudData.recurringRules);
     if (cloudData.skyoneLoan) {
       setSkyoneLoan(reconcileBidvSkyOneContract(cloudData.skyoneLoan).contract);
+    }
+    if (cloudData.goldPortfolio) {
+      setGoldPortfolio(cloudData.goldPortfolio);
+    }
+    if (cloudData.interiorStudio) {
+      setInteriorStudio(cloudData.interiorStudio);
     }
     if (cloudData.sharedSettings) {
       const shared = cloudData.sharedSettings;
@@ -854,6 +987,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
                   )
                 : stateSnapshotRef.current.settings,
               skyoneLoan: remoteData.skyoneLoan || stateSnapshotRef.current.skyoneLoan,
+              goldPortfolio: remoteData.goldPortfolio || stateSnapshotRef.current.goldPortfolio,
+              interiorStudio: remoteData.interiorStudio || stateSnapshotRef.current.interiorStudio,
             };
 
             const merged = mergeFinanceData(remoteAsStored, stateSnapshotRef.current, {
@@ -871,6 +1006,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
             setRecurringRules(merged.recurringRules);
             setSettings(merged.settings);
             setSkyoneLoan(merged.skyoneLoan);
+            setGoldPortfolio(merged.goldPortfolio);
+            setInteriorStudio(merged.interiorStudio);
             saveStoredDataV3(merged);
 
             ignoreRealtimeUntilRef.current = Date.now() + 3000;
@@ -939,6 +1076,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setSettings(data.settings);
     const { contract: reconciledOnLoad } = reconcileBidvSkyOneContract(data.skyoneLoan);
     setSkyoneLoan(reconciledOnLoad);
+    setGoldPortfolio(data.goldPortfolio || createDefaultGoldPortfolio());
+    setInteriorStudio(data.interiorStudio || createDefaultInteriorStudio());
 
     // Chọn tháng mặc định thông minh: ưu tiên tháng hiện tại nếu có dữ liệu, ngược lại dùng tháng gần nhất có giao dịch
     const currentKey = getCurrentMonthKey();
@@ -966,6 +1105,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setActiveApp(initialRoute.app);
       setActiveTabState(initialRoute.financeTab);
       setSkyoneTabState(initialRoute.skyoneTab);
+      setGoldTabState(initialRoute.goldTab);
+      setInteriorTabState(initialRoute.interiorTab);
       setSkyoneHighlightPeriod(initialRoute.highlightPeriod);
       saveActiveApp(initialRoute.app);
     }
@@ -1097,6 +1238,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setActiveApp(parsed.app);
       setActiveTabState(parsed.financeTab);
       setSkyoneTabState(parsed.skyoneTab);
+      setGoldTabState(parsed.goldTab);
+      setInteriorTabState(parsed.interiorTab);
       setSkyoneHighlightPeriod(parsed.highlightPeriod);
       saveActiveApp(parsed.app);
     };
@@ -1107,8 +1250,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoaded || typeof document === "undefined") return;
-    document.title = getAppDocumentTitle(activeApp, activeTab, skyoneTab);
-  }, [isLoaded, activeApp, activeTab, skyoneTab]);
+    document.title = getAppDocumentTitle(activeApp, activeTab, skyoneTab, goldTab, interiorTab);
+  }, [isLoaded, activeApp, activeTab, skyoneTab, goldTab, interiorTab]);
 
   const switchSubApp = useCallback(
     (
@@ -1116,11 +1259,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       options?: {
         financeTab?: FinanceTab;
         skyoneTab?: SkyOneRouteTab;
+        goldTab?: GoldRouteTab;
+        interiorTab?: InteriorRouteTab;
         highlightPeriod?: number | null;
       }
     ) => {
       const nextFinanceTab = options?.financeTab ?? activeTab;
       const nextSkyoneTab = options?.skyoneTab ?? skyoneTab;
+      const nextGoldTab = options?.goldTab ?? goldTab;
+      const nextInteriorTab = options?.interiorTab ?? interiorTab;
       const nextHighlight =
         options?.highlightPeriod !== undefined ? options.highlightPeriod : null;
 
@@ -1144,18 +1291,31 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (options?.skyoneTab) {
         setSkyoneTabState(options.skyoneTab);
       }
+      if (options?.goldTab) {
+        setGoldTabState(options.goldTab);
+      }
+      if (options?.interiorTab) {
+        setInteriorTabState(options.interiorTab);
+      }
       setSkyoneHighlightPeriod(nextHighlight);
       saveActiveApp(app);
 
       if (typeof window !== "undefined") {
-        const targetPath = buildAppPath(app, nextFinanceTab, nextSkyoneTab, nextHighlight);
+        const targetPath = buildAppPath(
+          app,
+          nextFinanceTab,
+          nextSkyoneTab,
+          nextHighlight,
+          nextGoldTab,
+          nextInteriorTab
+        );
         const currentFull = `${window.location.pathname}${window.location.search}`;
         if (currentFull !== targetPath) {
           window.history.pushState(null, "", targetPath);
         }
       }
     },
-    [activeTab, skyoneTab]
+    [activeTab, skyoneTab, goldTab, interiorTab]
   );
 
   const setActiveTab = useCallback(
@@ -1171,6 +1331,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         skyoneTab: tab,
         highlightPeriod: highlightPeriod ?? null,
       });
+    },
+    [switchSubApp]
+  );
+
+  const setGoldTab = useCallback(
+    (tab: GoldRouteTab) => {
+      switchSubApp("GOLD", { goldTab: tab });
+    },
+    [switchSubApp]
+  );
+
+  const setInteriorTab = useCallback(
+    (tab: InteriorRouteTab) => {
+      switchSubApp("INTERIOR", { interiorTab: tab });
     },
     [switchSubApp]
   );
@@ -1202,6 +1376,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     });
   }, [
     categories,
@@ -1215,6 +1391,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     savingsChallenges,
     settings,
     skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
     isLoaded,
   ]);
 
@@ -1246,29 +1424,57 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // Light / Dark Mode synchronization (mặc định Light Mode)
   const themeMode: ThemeMode = settings.themeMode === "dark" ? "dark" : "light";
 
+  const syncThemeDocumentState = useCallback(
+    (mode: ThemeMode, locked: boolean) => {
+      if (typeof document === "undefined") return;
+      const isDark = mode === "dark";
+      document.documentElement.classList.toggle("dark", isDark);
+      let metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (!metaTheme) {
+        metaTheme = document.createElement("meta");
+        metaTheme.setAttribute("name", "theme-color");
+        document.head.appendChild(metaTheme);
+      }
+      metaTheme.setAttribute("content", isDark || locked ? "#0f172a" : "#ffffff");
+    },
+    []
+  );
+
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const isDark = themeMode === "dark";
-    document.documentElement.classList.toggle("dark", isDark);
-    let metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (!metaTheme) {
-      metaTheme = document.createElement("meta");
-      metaTheme.setAttribute("name", "theme-color");
-      document.head.appendChild(metaTheme);
-    }
-    metaTheme.setAttribute("content", isDark || isAppLocked ? "#0f172a" : "#ffffff");
-  }, [themeMode, isAppLocked]);
+    syncThemeDocumentState(themeMode, isAppLocked);
+  }, [themeMode, isAppLocked, syncThemeDocumentState]);
 
-  const setThemeMode = useCallback((mode: ThemeMode) => {
-    setSettings((prev) => ({ ...prev, themeMode: mode }));
-  }, []);
+  const setThemeMode = useCallback(
+    (mode: ThemeMode, event?: ThemeTransitionTriggerEvent) => {
+      if (mode === themeMode) return;
+      runThemeCircularReveal({
+        event,
+        commitTheme: () => {
+          syncThemeDocumentState(mode, isAppLocked);
+          flushSync(() => {
+            setSettings((prev) => ({ ...prev, themeMode: mode }));
+          });
+        },
+      });
+    },
+    [themeMode, isAppLocked, syncThemeDocumentState]
+  );
 
-  const toggleThemeMode = useCallback(() => {
-    setSettings((prev) => ({
-      ...prev,
-      themeMode: prev.themeMode === "dark" ? "light" : "dark",
-    }));
-  }, []);
+  const toggleThemeMode = useCallback(
+    (event?: ThemeTransitionTriggerEvent) => {
+      const nextMode: ThemeMode = themeMode === "dark" ? "light" : "dark";
+      runThemeCircularReveal({
+        event,
+        commitTheme: () => {
+          syncThemeDocumentState(nextMode, isAppLocked);
+          flushSync(() => {
+            setSettings((prev) => ({ ...prev, themeMode: nextMode }));
+          });
+        },
+      });
+    },
+    [themeMode, isAppLocked, syncThemeDocumentState]
+  );
 
   // Privacy, /login Route & Multi-Member Security Lock
   const isPrivacyMode = Boolean(settings.privacyMode);
@@ -2875,6 +3081,608 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     [settings.dismissedRecurringSuggestionKeys, updateSettings]
   );
 
+  // =========================================================================
+  // KHO TÍCH SẢN VÀNG (GOLD SUB-APP) ACTIONS
+  // =========================================================================
+  const updateGoldPortfolioState = useCallback(
+    (updater: (prev: GoldPortfolioState) => GoldPortfolioState) => {
+      setGoldPortfolio((prev) => {
+        const next = {
+          ...updater(prev),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_GOLD_PORTFOLIO", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
+  const addGoldLot = useCallback(
+    (
+      lot: Omit<GoldLot, "id" | "remainingChi" | "status" | "createdAt" | "updatedAt">,
+      options?: { linkAccountId?: string }
+    ): GoldLot => {
+      const nowIso = new Date().toISOString();
+      let linkedTransactionId = lot.linkedTransactionId;
+      const totalBuyCost = Math.round(lot.quantityChi * lot.unitBuyPricePerChi + lot.makingFee);
+
+      if (options?.linkAccountId && totalBuyCost > 0) {
+        const tx = addTransaction({
+          amount: totalBuyCost,
+          date: lot.purchaseDate,
+          type: "EXPENSE",
+          categoryId:
+            categories.find((c) => c.type === "EXPENSE" && c.name.toLowerCase().includes("đầu tư"))?.id ||
+            "cat_expense_other",
+          accountId: options.linkAccountId,
+          memberId: lot.memberId,
+          scope: "FAMILY",
+          tag: "INVESTMENT",
+          note: `Mua ${lot.quantityChi} chỉ ${lot.brand} (${lot.category})${lot.invoiceNote ? ` · ${lot.invoiceNote}` : ""}`,
+        });
+        linkedTransactionId = tx.id;
+      }
+
+      const newLot: GoldLot = {
+        ...lot,
+        id: `gold_lot_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        remainingChi: lot.quantityChi,
+        status: "HOLDING",
+        linkedTransactionId,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: [newLot, ...prev.lots],
+      }));
+      return newLot;
+    },
+    [addTransaction, categories, updateGoldPortfolioState]
+  );
+
+  const updateGoldLot = useCallback(
+    (id: string, patch: Partial<GoldLot>) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: prev.lots.map((l) =>
+          l.id === id ? { ...l, ...patch, updatedAt: new Date().toISOString() } : l
+        ),
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const deleteGoldLot = useCallback(
+    (id: string) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: prev.lots.filter((l) => l.id !== id),
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const recordGoldSale = useCallback(
+    (input: {
+      saleDate: string;
+      category: GoldCategory;
+      quantityChi: number;
+      unitSellPricePerChi: number;
+      mode: "FIFO" | "SPECIFIC_LOT";
+      specificLotId?: string;
+      purpose: GoldSalePurpose;
+      note?: string;
+      linkAccountId?: string;
+    }): { ok: boolean; saleEvent?: GoldSaleEvent; error?: string } => {
+      const allocationResult =
+        input.mode === "SPECIFIC_LOT" && input.specificLotId
+          ? allocateSpecificLotSale(goldPortfolio.lots, input.specificLotId, input.quantityChi)
+          : allocateFifoGoldSale(goldPortfolio.lots, input.category, input.quantityChi);
+
+      if (!allocationResult.ok) {
+        return { ok: false, error: allocationResult.error };
+      }
+
+      const totalCostBasis = allocationResult.allocations.reduce(
+        (sum, alloc) => sum + alloc.costBasisAllocated,
+        0
+      );
+      const totalProceeds = Math.round(input.quantityChi * input.unitSellPricePerChi);
+      const realizedPnl = totalProceeds - totalCostBasis;
+
+      let linkedTransactionId: string | undefined;
+      if (input.linkAccountId && totalProceeds > 0) {
+        const tx = addTransaction({
+          amount: totalProceeds,
+          date: input.saleDate,
+          type: "INCOME",
+          categoryId:
+            categories.find((c) => c.type === "INCOME" && c.name.toLowerCase().includes("đầu tư"))?.id ||
+            categories.find((c) => c.type === "INCOME")?.id ||
+            "cat_income_other",
+          accountId: input.linkAccountId,
+          memberId: "SHARED",
+          scope: "FAMILY",
+          tag: "INVESTMENT",
+          note: `Bán ${input.quantityChi} chỉ vàng (${input.category}) · ${input.purpose}${input.note ? ` · ${input.note}` : ""}`,
+        });
+        linkedTransactionId = tx.id;
+      }
+
+      const saleEvent: GoldSaleEvent = {
+        id: `gold_sale_${Date.now()}`,
+        saleDate: input.saleDate,
+        category: input.category,
+        allocations: allocationResult.allocations,
+        totalSoldChi: input.quantityChi,
+        unitSellPricePerChi: input.unitSellPricePerChi,
+        totalProceeds,
+        costBasisAllocated: totalCostBasis,
+        realizedPnl,
+        purpose: input.purpose,
+        linkedTransactionId,
+        note: input.note,
+        createdAt: new Date().toISOString(),
+      };
+
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: allocationResult.updatedLots,
+        sales: [saleEvent, ...prev.sales],
+      }));
+
+      return { ok: true, saleEvent };
+    },
+    [goldPortfolio.lots, addTransaction, categories, updateGoldPortfolioState]
+  );
+
+  const updateGoldPriceQuote = useCallback(
+    (
+      category: GoldCategory,
+      patch: Partial<Pick<GoldPriceQuote, "brandLabel" | "buyPricePerChi" | "sellPricePerChi" | "source">>
+    ) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        quotes: {
+          ...prev.quotes,
+          [category]: {
+            ...prev.quotes[category],
+            ...patch,
+            source: patch.source ?? "MANUAL",
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const updateGoldMacro = useCallback(
+    (patch: Partial<Pick<GoldMacroContext, "worldXauUsdPerOz" | "usdVndRate">>) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        macro: {
+          ...prev.macro,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const updateGoldDcaPlan = useCallback(
+    (patch: Partial<GoldDcaPlan>) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        dcaPlan: {
+          ...prev.dcaPlan,
+          ...patch,
+        },
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const toggleGoldIncludeInNetWorth = useCallback(
+    (include: boolean) => {
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        includeInNetWorth: include,
+      }));
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const fetchReferenceGoldPrices = useCallback(
+    async (
+      force = false
+    ): Promise<{ ok: boolean; mode?: string; note?: string; error?: string }> => {
+      try {
+        const res = await fetch(`/api/gold/reference-prices${force ? "?force=1" : ""}`);
+        if (!res.ok) {
+          return { ok: false, error: "Không thể lấy giá tham khảo từ máy chủ." };
+        }
+        const data = (await res.json()) as {
+          mode?: string;
+          fetchedAt?: string;
+          note?: string;
+          macro?: { worldXauUsdPerOz: number; usdVndRate: number };
+          quotes?: Record<
+            GoldCategory,
+            { brandLabel: string; buyPricePerChi: number; sellPricePerChi: number }
+          >;
+        };
+        const ts = data.fetchedAt || new Date().toISOString();
+        updateGoldPortfolioState((prev) => {
+          const nextQuotes = { ...prev.quotes };
+          if (data.quotes) {
+            (Object.keys(data.quotes) as GoldCategory[]).forEach((cat) => {
+              const incoming = data.quotes![cat];
+              if (incoming) {
+                nextQuotes[cat] = {
+                  category: cat,
+                  brandLabel: incoming.brandLabel,
+                  buyPricePerChi: incoming.buyPricePerChi,
+                  sellPricePerChi: incoming.sellPricePerChi,
+                  updatedAt: ts,
+                  source: "SERVER_REFERENCE",
+                };
+              }
+            });
+          }
+          return {
+            ...prev,
+            quotes: nextQuotes,
+            macro: data.macro
+              ? {
+                  worldXauUsdPerOz: data.macro.worldXauUsdPerOz,
+                  usdVndRate: data.macro.usdVndRate,
+                  updatedAt: ts,
+                }
+              : prev.macro,
+          };
+        });
+        return { ok: true, mode: data.mode, note: data.note };
+      } catch {
+        return { ok: false, error: "Đang ngoại tuyến hoặc máy chủ không phản hồi." };
+      }
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const resetGoldPortfolio = useCallback(() => {
+    const fresh = createDefaultGoldPortfolio();
+    setGoldPortfolio(fresh);
+    queueCloudMutation({ type: "UPSERT_GOLD_PORTFOLIO", payload: fresh });
+  }, [queueCloudMutation]);
+
+  // =========================================================================
+  // SKYONE 3D INTERIOR STUDIO ACTIONS (WITH UNDO / REDO)
+  // =========================================================================
+  const updateInteriorState = useCallback(
+    (
+      updater: (prev: InteriorStudioState) => InteriorStudioState,
+      options?: { skipUndoHistory?: boolean }
+    ) => {
+      setInteriorStudio((prev) => {
+        if (!options?.skipUndoHistory) {
+          setInteriorUndoStack((stack) => [...stack.slice(-24), prev]);
+          setInteriorRedoStack([]);
+        }
+        const next: InteriorStudioState = {
+          ...updater(prev),
+          updatedAt: new Date().toISOString(),
+        };
+        queueCloudMutation({ type: "UPSERT_INTERIOR_STUDIO", payload: next });
+        return next;
+      });
+    },
+    [queueCloudMutation]
+  );
+
+  const setActiveInteriorScenario = useCallback(
+    (scenarioId: string) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          activeScenarioId: prev.scenarios.some((s) => s.id === scenarioId)
+            ? scenarioId
+            : prev.activeScenarioId,
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorScenarioMeta = useCallback(
+    (
+      scenarioId: string,
+      patch: Partial<
+        Pick<
+          InteriorDesignScenario,
+          "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent"
+        >
+      >
+    ) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === scenarioId
+            ? { ...sc, ...patch, updatedAt: new Date().toISOString() }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const duplicateInteriorScenario = useCallback(
+    (sourceScenarioId: string, newName?: string): InteriorDesignScenario | null => {
+      const source = interiorStudio.scenarios.find((s) => s.id === sourceScenarioId);
+      if (!source) return null;
+      const nowIso = new Date().toISOString();
+      const nextCode = String.fromCharCode(65 + interiorStudio.scenarios.length);
+      const clone: InteriorDesignScenario = {
+        ...source,
+        id: `scenario_${Date.now()}`,
+        code: nextCode,
+        name: newName?.trim() || `${source.name} (Bản sao)`,
+        shortLabel: `Phương án ${nextCode}`,
+        items: source.items.map((it) => ({ ...it, position: { ...it.position }, dimensionsCm: { ...it.dimensionsCm } })),
+        extraBoqItems: source.extraBoqItems.map((ex) => ({ ...ex })),
+        updatedAt: nowIso,
+      };
+      updateInteriorState((prev) => ({
+        ...prev,
+        activeScenarioId: clone.id,
+        scenarios: [...prev.scenarios, clone],
+      }));
+      return clone;
+    },
+    [interiorStudio.scenarios, updateInteriorState]
+  );
+
+  const addInteriorFurnitureItem = useCallback(
+    (item: Omit<InteriorFurnitureItem, "id">): InteriorFurnitureItem => {
+      const created: InteriorFurnitureItem = {
+        ...item,
+        id: `furn_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      };
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? { ...sc, items: [...sc.items, created], updatedAt: new Date().toISOString() }
+            : sc
+        ),
+      }));
+      return created;
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorFurnitureItem = useCallback(
+    (
+      id: string,
+      patch: Partial<InteriorFurnitureItem>,
+      options?: { skipUndoHistory?: boolean }
+    ) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) =>
+            sc.id === prev.activeScenarioId
+              ? {
+                  ...sc,
+                  items: sc.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+                  updatedAt: new Date().toISOString(),
+                }
+              : sc
+          ),
+        }),
+        options
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const deleteInteriorFurnitureItem = useCallback(
+    (id: string) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                items: sc.items.filter((it) => it.id !== id),
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const addInteriorExtraBoqItem = useCallback(
+    (item: Omit<InteriorExtraBoqItem, "id">): InteriorExtraBoqItem => {
+      const created: InteriorExtraBoqItem = {
+        ...item,
+        id: `boq_extra_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      };
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                extraBoqItems: [...sc.extraBoqItems, created],
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+      return created;
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorExtraBoqItem = useCallback(
+    (id: string, patch: Partial<InteriorExtraBoqItem>) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                extraBoqItems: sc.extraBoqItems.map((ex) =>
+                  ex.id === id ? { ...ex, ...patch } : ex
+                ),
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const deleteInteriorExtraBoqItem = useCallback(
+    (id: string) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                extraBoqItems: sc.extraBoqItems.filter((ex) => ex.id !== id),
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const updateBoqItemStatus = useCallback(
+    (origin: "3D_ITEM" | "EXTRA_LINE", id: string, status: InteriorProcurementStatus) => {
+      if (origin === "3D_ITEM") {
+        updateInteriorFurnitureItem(id, { procurementStatus: status });
+      } else {
+        updateInteriorExtraBoqItem(id, { procurementStatus: status });
+      }
+    },
+    [updateInteriorFurnitureItem, updateInteriorExtraBoqItem]
+  );
+
+  const recordBoqPaymentToFinance = useCallback(
+    (input: {
+      origin: "3D_ITEM" | "EXTRA_LINE";
+      itemId: string;
+      itemName: string;
+      amountVnd: number;
+      accountId: string;
+      memberId: FamilyMember;
+      date: string;
+      statusAfter: "DEPOSITED" | "INSTALLED";
+      note?: string;
+    }): Transaction => {
+      const tx = addTransaction({
+        amount: input.amountVnd,
+        date: input.date,
+        type: "EXPENSE",
+        categoryId:
+          categories.find((c) => c.type === "EXPENSE" && c.name.toLowerCase().includes("mua sắm"))?.id ||
+          "cat_expense_shopping",
+        accountId: input.accountId,
+        memberId: input.memberId,
+        scope: "FAMILY",
+        tag: "NORMAL",
+        note: `[Nội thất A.12A.07] ${input.itemName}${input.note ? ` · ${input.note}` : ""}`,
+      });
+
+      if (input.origin === "3D_ITEM") {
+        updateInteriorFurnitureItem(input.itemId, {
+          procurementStatus: input.statusAfter,
+          linkedTransactionId: tx.id,
+        });
+      } else {
+        updateInteriorExtraBoqItem(input.itemId, {
+          procurementStatus: input.statusAfter,
+          linkedTransactionId: tx.id,
+        });
+      }
+      return tx;
+    },
+    [addTransaction, categories, updateInteriorFurnitureItem, updateInteriorExtraBoqItem]
+  );
+
+  const toggleHandoverChecklistItem = useCallback(
+    (id: string) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: prev.handoverChecklist.map((it) =>
+            it.id === id ? { ...it, checked: !it.checked } : it
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const updateHandoverChecklistNote = useCallback(
+    (id: string, note: string) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: prev.handoverChecklist.map((it) =>
+            it.id === id ? { ...it, note } : it
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const undoInteriorChange = useCallback(() => {
+    setInteriorUndoStack((stack) => {
+      if (stack.length === 0) return stack;
+      const previous = stack[stack.length - 1];
+      setInteriorRedoStack((redo) => [...redo.slice(-24), interiorStudio]);
+      setInteriorStudio(previous);
+      queueCloudMutation({ type: "UPSERT_INTERIOR_STUDIO", payload: previous });
+      return stack.slice(0, -1);
+    });
+  }, [interiorStudio, queueCloudMutation]);
+
+  const redoInteriorChange = useCallback(() => {
+    setInteriorRedoStack((stack) => {
+      if (stack.length === 0) return stack;
+      const next = stack[stack.length - 1];
+      setInteriorUndoStack((undo) => [...undo.slice(-24), interiorStudio]);
+      setInteriorStudio(next);
+      queueCloudMutation({ type: "UPSERT_INTERIOR_STUDIO", payload: next });
+      return stack.slice(0, -1);
+    });
+  }, [interiorStudio, queueCloudMutation]);
+
+  const resetInteriorStudio = useCallback(() => {
+    const fresh = createDefaultInteriorStudio();
+    setInteriorUndoStack([]);
+    setInteriorRedoStack([]);
+    setInteriorStudio(fresh);
+    queueCloudMutation({ type: "UPSERT_INTERIOR_STUDIO", payload: fresh });
+  }, [queueCloudMutation]);
+
   const resetToMockData = useCallback(() => {
     const seeded = seedInitialDataV3();
     setCategories(seeded.categories);
@@ -2888,6 +3696,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setSavingsChallenges(seeded.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
     setSettings(seeded.settings);
     setSkyoneLoan(seeded.skyoneLoan);
+    setGoldPortfolio(seeded.goldPortfolio);
+    setInteriorStudio(seeded.interiorStudio);
+    setInteriorUndoStack([]);
+    setInteriorRedoStack([]);
     setSelectedMonth("2026-10");
     setActivePerspective("ALL");
     setIsAppLocked(false);
@@ -2911,6 +3723,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     });
   }, [
     categories,
@@ -2924,6 +3738,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     savingsChallenges,
     settings,
     skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
   ]);
 
   const exportCsvReport = useCallback(() => {
@@ -2952,6 +3768,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setSavingsChallenges(res.data.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
         setSettings(res.data.settings);
         setSkyoneLoan(reconcileBidvSkyOneContract(res.data.skyoneLoan).contract);
+        setGoldPortfolio(res.data.goldPortfolio || createDefaultGoldPortfolio());
+        setInteriorStudio(res.data.interiorStudio || createDefaultInteriorStudio());
         saveStoredDataV3(res.data);
 
         if (isSupabaseConfigured && householdRef.current) {
@@ -2979,6 +3797,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     });
   }, [
     categories,
@@ -2992,6 +3812,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     savingsChallenges,
     settings,
     skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
   ]);
 
   const previewSyncBundle = useCallback(
@@ -3013,6 +3835,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           savingsChallenges,
           settings,
           skyoneLoan,
+          goldPortfolio,
+          interiorStudio,
         },
         parsed.data
       );
@@ -3030,6 +3854,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     ]
   );
 
@@ -3047,6 +3873,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         savingsChallenges,
         settings,
         skyoneLoan,
+        goldPortfolio,
+        interiorStudio,
       };
       const diff = previewMergeDiff(currentState, incoming);
       const nextState = mergeFinanceData(currentState, incoming, options);
@@ -3062,6 +3890,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setSavingsChallenges(nextState.savingsChallenges || DEFAULT_SAVINGS_CHALLENGES);
       setSettings(nextState.settings);
       setSkyoneLoan(nextState.skyoneLoan);
+      setGoldPortfolio(nextState.goldPortfolio);
+      setInteriorStudio(nextState.interiorStudio);
       saveStoredDataV3(nextState);
 
       if (isSupabaseConfigured && householdRef.current) {
@@ -3083,6 +3913,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       savingsChallenges,
       settings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     ]
   );
 
@@ -3131,15 +3963,21 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       })
       .reduce((sum, d) => sum + Math.max(0, d.totalAmount - d.paidAmount), 0);
 
-    const totalInvested = investments
-      .filter((i) => i.status === "ACTIVE")
-      .filter((i) => {
-        if (activePerspective === "ALL") return true;
-        if (activePerspective === "HUSBAND") return i.memberId === "HUSBAND" || i.memberId === "SHARED";
-        if (activePerspective === "WIFE") return i.memberId === "WIFE" || i.memberId === "SHARED";
-        return true;
-      })
-      .reduce((sum, i) => sum + (i.currentValue || i.amount), 0);
+    const goldBidValuation = goldPortfolio.includeInNetWorth
+      ? computeGoldPortfolioMetrics(goldPortfolio).totalLiquidationValueBid
+      : 0;
+
+    const totalInvested =
+      investments
+        .filter((i) => i.status === "ACTIVE")
+        .filter((i) => {
+          if (activePerspective === "ALL") return true;
+          if (activePerspective === "HUSBAND") return i.memberId === "HUSBAND" || i.memberId === "SHARED";
+          if (activePerspective === "WIFE") return i.memberId === "WIFE" || i.memberId === "SHARED";
+          return true;
+        })
+        .reduce((sum, i) => sum + (i.currentValue || i.amount), 0) +
+      (activePerspective === "ALL" ? goldBidValuation : 0);
 
     const netWorth = currentBalance + totalInvested - totalDebt - totalCreditDebt;
 
@@ -3193,7 +4031,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       familySharedExpense,
       totalCreditDebt,
     };
-  }, [accounts, debts, investments, transactions, selectedMonth, activePerspective]);
+  }, [accounts, debts, investments, transactions, selectedMonth, activePerspective, goldPortfolio]);
 
   // Ngân sách tháng (Dynamic daysRemaining)
   const budgetSummary = useMemo<BudgetSummary>(() => {
@@ -3724,6 +4562,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setSkyoneTab,
     skyoneHighlightPeriod,
     clearSkyoneHighlightPeriod,
+    goldTab,
+    setGoldTab,
+    interiorTab,
+    setInteriorTab,
     switchSubApp,
     openAppLauncher,
     getSkyOneLinkForTransaction,
@@ -3849,6 +4691,36 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     saveAndLockSkyOneCashflow,
     toggleSkyOnePinkBook5Pct,
     resetSkyOneLoan,
+    goldPortfolio,
+    addGoldLot,
+    updateGoldLot,
+    deleteGoldLot,
+    recordGoldSale,
+    updateGoldPriceQuote,
+    updateGoldMacro,
+    updateGoldDcaPlan,
+    toggleGoldIncludeInNetWorth,
+    fetchReferenceGoldPrices,
+    resetGoldPortfolio,
+    interiorStudio,
+    setActiveInteriorScenario,
+    updateInteriorScenarioMeta,
+    duplicateInteriorScenario,
+    addInteriorFurnitureItem,
+    updateInteriorFurnitureItem,
+    deleteInteriorFurnitureItem,
+    addInteriorExtraBoqItem,
+    updateInteriorExtraBoqItem,
+    deleteInteriorExtraBoqItem,
+    updateBoqItemStatus,
+    recordBoqPaymentToFinance,
+    toggleHandoverChecklistItem,
+    updateHandoverChecklistNote,
+    undoInteriorChange,
+    redoInteriorChange,
+    canUndoInterior: interiorUndoStack.length > 0,
+    canRedoInterior: interiorRedoStack.length > 0,
+    resetInteriorStudio,
     updateSettings,
     markNotificationRead,
     unifiedDueReminders,

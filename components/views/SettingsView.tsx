@@ -343,8 +343,9 @@ export function SettingsView({
           <button
             type="button"
             data-testid="settings-theme-light"
-            onClick={() => {
-              setThemeMode("light");
+            onClick={(e) => {
+              if (themeMode === "light") return;
+              setThemeMode("light", e);
               flashSaved("Đã chuyển sang Light Mode (Nền sáng mặc định).");
             }}
             className={`min-h-[48px] p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -368,8 +369,9 @@ export function SettingsView({
           <button
             type="button"
             data-testid="settings-theme-dark"
-            onClick={() => {
-              setThemeMode("dark");
+            onClick={(e) => {
+              if (themeMode === "dark") return;
+              setThemeMode("dark", e);
               flashSaved("Đã chuyển sang Dark Mode (Dịu mắt ban đêm).");
             }}
             className={`min-h-[48px] p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${

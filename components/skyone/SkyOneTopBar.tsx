@@ -142,7 +142,7 @@ export function SkyOneTopBar({ onOpenBackupModal }: SkyOneTopBarProps) {
 
             <button
               type="button"
-              onClick={toggleThemeMode}
+              onClick={(e) => toggleThemeMode(e)}
               data-testid="skyone-desktop-theme-toggle"
               aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
               title={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}

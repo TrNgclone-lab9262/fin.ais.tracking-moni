@@ -261,6 +261,231 @@ export const SavingsChallengeSchema = z.object({
   createdAt: z.string(),
 });
 
+export const GoldCategorySchema = z.enum([
+  "NHAN_9999",
+  "SJC_BAR",
+  "GOLD_24K_JEWELRY",
+  "GOLD_18K",
+  "DIGITAL_GOLD",
+]);
+
+export const GoldStorageLocationSchema = z.enum([
+  "HOME_SAFE",
+  "BANK_VAULT",
+  "STORE_KEEP",
+  "PARENTS",
+]);
+
+export const GoldLotSchema = z.object({
+  id: z.string().min(1),
+  category: GoldCategorySchema,
+  brand: z.string().min(1),
+  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  quantityChi: z.number().positive(),
+  remainingChi: z.number().nonnegative(),
+  unitBuyPricePerChi: z.number().positive(),
+  makingFee: z.number().nonnegative(),
+  memberId: FamilyMemberSchema,
+  storageLocation: GoldStorageLocationSchema,
+  invoiceNote: z.string().optional(),
+  linkedTransactionId: z.string().optional(),
+  status: z.enum(["HOLDING", "PARTIAL_SOLD", "SOLD"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const GoldSaleAllocationSchema = z.object({
+  lotId: z.string().min(1),
+  soldChi: z.number().positive(),
+  costBasisAllocated: z.number().nonnegative(),
+});
+
+export const GoldSaleEventSchema = z.object({
+  id: z.string().min(1),
+  saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: GoldCategorySchema,
+  allocations: z.array(GoldSaleAllocationSchema),
+  totalSoldChi: z.number().positive(),
+  unitSellPricePerChi: z.number().positive(),
+  totalProceeds: z.number().nonnegative(),
+  costBasisAllocated: z.number().nonnegative(),
+  realizedPnl: z.number(),
+  purpose: z.enum(["INTERIOR_HANDOVER", "SKYONE_PREPAY", "REBALANCE", "OTHER"]),
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export const GoldPriceQuoteSchema = z.object({
+  category: GoldCategorySchema,
+  brandLabel: z.string().min(1),
+  buyPricePerChi: z.number().positive(),
+  sellPricePerChi: z.number().positive(),
+  updatedAt: z.string(),
+  source: z.enum(["MANUAL", "SERVER_REFERENCE"]),
+});
+
+export const GoldMacroContextSchema = z.object({
+  worldXauUsdPerOz: z.number().nonnegative(),
+  usdVndRate: z.number().positive(),
+  updatedAt: z.string(),
+});
+
+export const GoldDcaPlanSchema = z.object({
+  enabled: z.boolean(),
+  targetCategory: GoldCategorySchema,
+  monthlyTargetChi: z.number().nonnegative(),
+  monthlyBudgetVnd: z.number().nonnegative(),
+  targetAllocationPercentOfNetWorth: z.number().min(0).max(100),
+  targetReserveChiFor2027: z.number().nonnegative(),
+});
+
+export const GoldPortfolioStateSchema = z.object({
+  lots: z.array(GoldLotSchema),
+  sales: z.array(GoldSaleEventSchema),
+  quotes: z.object({
+    NHAN_9999: GoldPriceQuoteSchema,
+    SJC_BAR: GoldPriceQuoteSchema,
+    GOLD_24K_JEWELRY: GoldPriceQuoteSchema,
+    GOLD_18K: GoldPriceQuoteSchema,
+    DIGITAL_GOLD: GoldPriceQuoteSchema,
+  }),
+  macro: GoldMacroContextSchema,
+  dcaPlan: GoldDcaPlanSchema,
+  includeInNetWorth: z.boolean(),
+  updatedAt: z.string(),
+});
+
+export const InteriorStylePresetSchema = z.enum([
+  "MODERN_WARM",
+  "JAPANDI",
+  "MINIMALIST_SLATE",
+  "WARM_SCANDINAVIAN",
+]);
+
+export const InteriorBoqGroupSchema = z.enum([
+  "WOOD_FURNITURE",
+  "APPLIANCES",
+  "FINISHING_DECOR",
+  "DEVELOPER_INCLUDED",
+]);
+
+export const InteriorCatalogKeySchema = z.enum([
+  "sofa_3seat",
+  "accent_armchair",
+  "coffee_table",
+  "area_rug",
+  "tv_console_slat",
+  "shoe_cabinet_tall",
+  "dining_set_4",
+  "kitchen_l_hafele",
+  "fridge_inverter",
+  "bed_master_160",
+  "bed_compact_140",
+  "nightstand",
+  "wardrobe_tall",
+  "wardrobe_compact",
+  "dual_workstation_desk",
+  "single_desk",
+  "ergonomic_chair",
+  "tall_bookshelf_led",
+  "pegboard_goal_wall",
+  "reading_lounge_chair",
+  "washer_dryer",
+  "ac_inverter",
+  "smart_tv",
+  "floor_plant",
+  "balcony_planter",
+  "wc_hafele_set",
+]);
+
+export const InteriorMaterialFinishSchema = z.enum([
+  "WARM_OAK",
+  "LIGHT_WALNUT",
+  "CREAM_BOUCLE",
+  "SAGE_LINEN",
+  "MATTE_CREAM",
+  "CHARCOAL_SLATE",
+  "WHITE_MARBLE",
+  "BRUSHED_TITANIUM",
+]);
+
+export const InteriorFurnitureItemSchema = z.object({
+  id: z.string().min(1),
+  catalogKey: InteriorCatalogKeySchema,
+  name: z.string().min(1),
+  roomId: z.string().min(1),
+  source: z.enum(["DEVELOPER_INCLUDED", "NEW_PURCHASE"]),
+  position: z.object({
+    x: z.number(),
+    z: z.number(),
+  }),
+  rotationDeg: z.number(),
+  dimensionsCm: z.object({
+    width: z.number().positive(),
+    depth: z.number().positive(),
+    height: z.number().positive(),
+  }),
+  materialFinish: InteriorMaterialFinishSchema,
+  isLocked: z.boolean().optional(),
+  pricingRule: z.enum(["FIXED_UNIT", "PER_LINEAR_METER", "PER_SQUARE_METER"]),
+  unitPriceVnd: z.number().nonnegative(),
+  boqGroup: InteriorBoqGroupSchema,
+  procurementStatus: z.enum(["PLANNED", "QUOTED", "DEPOSITED", "INSTALLED"]),
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const InteriorExtraBoqItemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  roomId: z.string().min(1),
+  boqGroup: InteriorBoqGroupSchema,
+  source: z.enum(["DEVELOPER_INCLUDED", "NEW_PURCHASE"]),
+  unit: z.string().min(1),
+  quantity: z.number().positive(),
+  unitPriceVnd: z.number().nonnegative(),
+  procurementStatus: z.enum(["PLANNED", "QUOTED", "DEPOSITED", "INSTALLED"]),
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const InteriorDesignScenarioSchema = z.object({
+  id: z.string().min(1),
+  code: z.string().min(1),
+  name: z.string().min(1),
+  shortLabel: z.string().min(1),
+  description: z.string(),
+  stylePreset: InteriorStylePresetSchema,
+  targetBudgetMinVnd: z.number().nonnegative(),
+  targetBudgetMaxVnd: z.number().positive(),
+  contingencyPercent: z.number().min(0).max(50),
+  items: z.array(InteriorFurnitureItemSchema),
+  extraBoqItems: z.array(InteriorExtraBoqItemSchema),
+  updatedAt: z.string(),
+});
+
+export const HandoverChecklistItemSchema = z.object({
+  id: z.string().min(1),
+  zoneCode: z.string().min(1),
+  zoneName: z.string().min(1),
+  title: z.string().min(1),
+  specDetail: z.string(),
+  checked: z.boolean(),
+  note: z.string().optional(),
+});
+
+export const InteriorStudioStateSchema = z.object({
+  apartmentCode: z.string().min(1),
+  usableAreaSqm: z.number().positive(),
+  builtUpAreaSqm: z.number().positive(),
+  orientation: z.enum(["EAST_SOUTHEAST", "EAST", "SOUTH", "WEST"]),
+  activeScenarioId: z.string().min(1),
+  scenarios: z.array(InteriorDesignScenarioSchema).min(1),
+  handoverChecklist: z.array(HandoverChecklistItemSchema),
+  updatedAt: z.string(),
+});
+
 export const AppDataBackupSchema = z.object({
   version: z.string(),
   exportedAt: z.string(),
@@ -275,6 +500,8 @@ export const AppDataBackupSchema = z.object({
   savingsChallenges: z.array(SavingsChallengeSchema).optional(),
   settings: AppSettingsSchema.optional(),
   skyoneLoan: MortgageContractSchema.optional(),
+  goldPortfolio: GoldPortfolioStateSchema.optional(),
+  interiorStudio: InteriorStudioStateSchema.optional(),
 });
 
 export type TransactionInput = z.infer<typeof TransactionInputSchema>;

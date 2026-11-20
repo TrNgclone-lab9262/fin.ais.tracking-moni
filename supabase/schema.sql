@@ -531,6 +531,22 @@ create table if not exists public.skyone_loans (
   primary key (household_id, id)
 );
 
+create table if not exists public.gold_portfolios (
+  household_id uuid not null references public.households(id) on delete cascade,
+  id text not null default 'gold_default',
+  portfolio_data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (household_id, id)
+);
+
+create table if not exists public.interior_studios (
+  household_id uuid not null references public.households(id) on delete cascade,
+  id text not null default 'interior_a12a07',
+  studio_data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (household_id, id)
+);
+
 create table if not exists public.household_settings (
   household_id uuid primary key references public.households(id) on delete cascade,
   theme_color text not null default 'blue',
@@ -555,6 +571,8 @@ alter table public.debts enable row level security;
 alter table public.investments enable row level security;
 alter table public.recurring_rules enable row level security;
 alter table public.skyone_loans enable row level security;
+alter table public.gold_portfolios enable row level security;
+alter table public.interior_studios enable row level security;
 alter table public.household_settings enable row level security;
 
 -- Profiles policies: self + paired household members only; household_id & role protected via RPC
@@ -618,6 +636,8 @@ begin
     'investments',
     'recurring_rules',
     'skyone_loans',
+    'gold_portfolios',
+    'interior_studios',
     'household_settings'
   ]
   loop
@@ -648,6 +668,8 @@ begin
     'investments',
     'recurring_rules',
     'skyone_loans',
+    'gold_portfolios',
+    'interior_studios',
     'household_settings'
   ]
   loop

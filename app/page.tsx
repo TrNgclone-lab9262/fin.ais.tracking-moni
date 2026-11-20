@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, lazy, useState } from "react";
 import { useFinance } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -13,6 +13,14 @@ import { SkyOneSidebar } from "@/components/skyone/SkyOneSidebar";
 import { SkyOneTopBar } from "@/components/skyone/SkyOneTopBar";
 import { SkyOneMobileHeader } from "@/components/skyone/SkyOneMobileHeader";
 import { SkyOneBottomNavBar } from "@/components/skyone/SkyOneBottomNavBar";
+import { GoldSidebar } from "@/components/gold/GoldSidebar";
+import { GoldTopBar } from "@/components/gold/GoldTopBar";
+import { GoldMobileHeader } from "@/components/gold/GoldMobileHeader";
+import { GoldBottomNavBar } from "@/components/gold/GoldBottomNavBar";
+import { InteriorSidebar } from "@/components/interior/InteriorSidebar";
+import { InteriorTopBar } from "@/components/interior/InteriorTopBar";
+import { InteriorMobileHeader } from "@/components/interior/InteriorMobileHeader";
+import { InteriorBottomNavBar } from "@/components/interior/InteriorBottomNavBar";
 
 // 1. Sub-App & Shared Views
 import { OverviewView } from "@/components/views/OverviewView";
@@ -21,10 +29,15 @@ import { AccountsView } from "@/components/views/AccountsView";
 import { PlanningView } from "@/components/views/PlanningView";
 import { DebtsInvestView } from "@/components/views/DebtsInvestView";
 import { SkyOneLoanView } from "@/components/views/SkyOneLoanView";
+import { GoldVaultView } from "@/components/views/GoldVaultView";
 import { DataAdminView } from "@/components/views/DataAdminView";
 import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
 import { AppLauncherView } from "@/components/views/AppLauncherView";
+
+const LazyInteriorStudioView = lazy(
+  () => import("@/components/views/InteriorStudioView")
+);
 
 // 2. Mobile-Specific Views (Thu chi)
 import { MobileOverviewView } from "@/components/mobile/views/MobileOverviewView";
@@ -109,6 +122,27 @@ export default function HomePage() {
   }
 
   const renderMainView = (mobileViewport: boolean) => {
+    if (activeApp === "GOLD") {
+      return <GoldVaultView />;
+    }
+
+    if (activeApp === "INTERIOR") {
+      return (
+        <Suspense
+          fallback={
+            <div className="space-y-4">
+              <div className="h-20 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
+              <div className="h-[520px] rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse flex items-center justify-center text-xs font-bold text-slate-500">
+                Đang khởi tạo không gian 3D SKYONE A.12A.07…
+              </div>
+            </div>
+          }
+        >
+          <LazyInteriorStudioView />
+        </Suspense>
+      );
+    }
+
     if (activeApp === "SKYONE") {
       if (skyoneTab === "DATA_ADMIN") {
         return (
@@ -219,6 +253,59 @@ export default function HomePage() {
     pwaUpdateStatus === "JUST_UPDATED" ||
     (hasPWAUpdate && !isUpdateDismissed);
 
+  const renderDesktopSidebar = () => {
+    if (activeApp === "SKYONE") return <SkyOneSidebar />;
+    if (activeApp === "GOLD") return <GoldSidebar />;
+    if (activeApp === "INTERIOR") return <InteriorSidebar />;
+    return <Sidebar />;
+  };
+
+  const renderDesktopTopBar = () => {
+    if (activeApp === "SKYONE") {
+      return <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />;
+    }
+    if (activeApp === "GOLD") {
+      return <GoldTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />;
+    }
+    if (activeApp === "INTERIOR") {
+      return <InteriorTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />;
+    }
+    return (
+      <TopBar
+        onOpenAddModal={() => setIsAddModalOpen(true)}
+        onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
+        onOpenScanner={() => setIsGlobalScannerOpen(true)}
+      />
+    );
+  };
+
+  const renderMobileHeader = () => {
+    if (activeApp === "SKYONE") {
+      return <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />;
+    }
+    if (activeApp === "GOLD") {
+      return <GoldMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />;
+    }
+    if (activeApp === "INTERIOR") {
+      return <InteriorMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />;
+    }
+    return (
+      <MobileHeader
+        onOpenDrawer={() => setIsMobileMenuOpen(true)}
+        onOpenScanner={() => setIsGlobalScannerOpen(true)}
+        onOpenNotifications={() => setIsMobileNotifOpen(true)}
+      />
+    );
+  };
+
+  const renderMobileBottomNav = () => {
+    if (activeApp === "SKYONE") return <SkyOneBottomNavBar />;
+    if (activeApp === "GOLD") return <GoldBottomNavBar />;
+    if (activeApp === "INTERIOR") return <InteriorBottomNavBar />;
+    return <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />;
+  };
+
   return (
     <>
       {showUpdateBanner ? <PWAUpdateBanner /> : <PWAInstallBanner />}
@@ -228,18 +315,9 @@ export default function HomePage() {
       ) : !isMobileShell ? (
         /* 1. UNIFIED DESKTOP SHELL (>= 768px) */
         <div className="flex min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased transition-colors duration-200">
-          {activeApp === "SKYONE" ? <SkyOneSidebar /> : <Sidebar />}
+          {renderDesktopSidebar()}
           <div className="flex-1 flex flex-col min-w-0">
-            {activeApp === "SKYONE" ? (
-              <SkyOneTopBar onOpenBackupModal={() => setIsBackupModalOpen(true)} />
-            ) : (
-              <TopBar
-                onOpenAddModal={() => setIsAddModalOpen(true)}
-                onOpenBackupModal={() => setIsBackupModalOpen(true)}
-                onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
-                onOpenScanner={() => setIsGlobalScannerOpen(true)}
-              />
-            )}
+            {renderDesktopTopBar()}
             <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-8 py-8">
               {activeApp === "FINANCE" && <RecurringReminderBanner />}
               {renderMainView(false)}
@@ -249,26 +327,14 @@ export default function HomePage() {
       ) : (
         /* 2. UNIFIED MOBILE SHELL (< 768px) */
         <div className="min-h-screen bg-[#F6F8FB] dark:bg-[#0B1220] text-[#172B4D] dark:text-slate-100 font-sans antialiased pb-safe-main transition-colors duration-200">
-          {activeApp === "SKYONE" ? (
-            <SkyOneMobileHeader onOpenDrawer={() => setIsMobileMenuOpen(true)} />
-          ) : (
-            <MobileHeader
-              onOpenDrawer={() => setIsMobileMenuOpen(true)}
-              onOpenScanner={() => setIsGlobalScannerOpen(true)}
-              onOpenNotifications={() => setIsMobileNotifOpen(true)}
-            />
-          )}
+          {renderMobileHeader()}
 
           <main className="p-3.5 space-y-3.5">
             {activeApp === "FINANCE" && <RecurringReminderBanner />}
             {renderMainView(true)}
           </main>
 
-          {activeApp === "SKYONE" ? (
-            <SkyOneBottomNavBar />
-          ) : (
-            <BottomNavBar onOpenAddModal={() => setIsMobileNumpadOpen(true)} />
-          )}
+          {renderMobileBottomNav()}
         </div>
       )}
 

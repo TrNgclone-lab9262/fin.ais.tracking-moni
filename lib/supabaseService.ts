@@ -4,7 +4,9 @@ import {
   DbCategory,
   DbCategoryBudget,
   DbDebt,
+  DbGoldPortfolio,
   DbHouseholdSettings,
+  DbInteriorStudio,
   DbInvestment,
   DbRecurringRule,
   DbSavingsGoal,
@@ -19,6 +21,8 @@ import {
   mapDbToCategory,
   mapDbToDebt,
   mapDbToGoal,
+  mapDbToGoldPortfolio,
+  mapDbToInteriorStudio,
   mapDbToInvestment,
   mapDbToRecurringRule,
   mapDbToSharedSettings,
@@ -26,6 +30,8 @@ import {
   mapDbToTransaction,
   mapDebtToDb,
   mapGoalToDb,
+  mapGoldPortfolioToDb,
+  mapInteriorStudioToDb,
   mapInvestmentToDb,
   mapRecurringRuleToDb,
   mapSharedSettingsToDb,
@@ -40,6 +46,8 @@ import {
   Category,
   CategoryBudget,
   DebtItem,
+  GoldPortfolioState,
+  InteriorStudioState,
   InvestmentItem,
   MortgageContract,
   RecurringRule,
@@ -102,6 +110,8 @@ export interface CloudFullData {
   recurringRules: RecurringRule[];
   sharedSettings?: SharedHouseholdSettings;
   skyoneLoan?: MortgageContract;
+  goldPortfolio?: GoldPortfolioState;
+  interiorStudio?: InteriorStudioState;
 }
 
 interface DbHouseholdRow {
@@ -497,6 +507,8 @@ export const supabaseService = {
       recRes,
       skyRes,
       setRes,
+      goldRes,
+      interiorRes,
     ] = await Promise.all([
       supabase.from("categories").select("*").eq("household_id", householdId),
       supabase.from("accounts").select("*").eq("household_id", householdId),
@@ -516,6 +528,8 @@ export const supabaseService = {
         .select("*")
         .eq("household_id", householdId)
         .maybeSingle<DbHouseholdSettings>(),
+      supabase.from("gold_portfolios").select("*").eq("household_id", householdId).limit(1),
+      supabase.from("interior_studios").select("*").eq("household_id", householdId).limit(1),
     ]);
 
     if (
@@ -572,6 +586,18 @@ export const supabaseService = {
       ? reconcileBidvSkyOneContract(rawSkyOne).contract
       : undefined;
 
+    const goldRow = !goldRes.error
+      ? ((goldRes.data || [])[0] as DbGoldPortfolio | undefined)
+      : undefined;
+    const goldPortfolio = goldRow ? (mapDbToGoldPortfolio(goldRow) ?? undefined) : undefined;
+
+    const interiorRow = !interiorRes.error
+      ? ((interiorRes.data || [])[0] as DbInteriorStudio | undefined)
+      : undefined;
+    const interiorStudio = interiorRow
+      ? (mapDbToInteriorStudio(interiorRow) ?? undefined)
+      : undefined;
+
     const sharedSettings = setRes.data
       ? mapDbToSharedSettings(setRes.data)
       : undefined;
@@ -587,6 +613,8 @@ export const supabaseService = {
       recurringRules,
       sharedSettings,
       skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
     };
   },
 
@@ -689,6 +717,23 @@ export const supabaseService = {
     if (failed?.error) {
       throw new Error(failed.error.message);
     }
+
+    // Best-effort sync cho 2 phân hệ mới (không làm hỏng luồng cũ nếu SQL schema chưa nâng cấp)
+    if (state.goldPortfolio) {
+      await supabase
+        .from("gold_portfolios")
+        .upsert(mapGoldPortfolioToDb(state.goldPortfolio, householdId), {
+          onConflict: "household_id,id",
+        });
+    }
+    if (state.interiorStudio) {
+      await supabase
+        .from("interior_studios")
+        .upsert(mapInteriorStudioToDb(state.interiorStudio, householdId), {
+          onConflict: "household_id,id",
+        });
+    }
+
     return true;
   },
 
@@ -870,6 +915,22 @@ export const supabaseService = {
           });
         break;
 
+      case "UPSERT_GOLD_PORTFOLIO":
+        res = await supabase
+          .from("gold_portfolios")
+          .upsert(mapGoldPortfolioToDb(mutation.payload, householdId), {
+            onConflict: "household_id,id",
+          });
+        break;
+
+      case "UPSERT_INTERIOR_STUDIO":
+        res = await supabase
+          .from("interior_studios")
+          .upsert(mapInteriorStudioToDb(mutation.payload, householdId), {
+            onConflict: "household_id,id",
+          });
+        break;
+
       case "UPSERT_SETTINGS":
         res = await supabase
           .from("household_settings")
@@ -905,6 +966,8 @@ export const supabaseService = {
       "investments",
       "recurring_rules",
       "skyone_loans",
+      "gold_portfolios",
+      "interior_studios",
       "household_settings",
       "household_members",
       "profiles",

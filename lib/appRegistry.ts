@@ -10,8 +10,8 @@ export interface EcosystemAppDefinition {
   waffleSubtitle: string;
   launcherDescription: string;
   ctaLabel: string;
-  accentTone: "blue" | "indigo";
-  testIdKey: "finance" | "skyone";
+  accentTone: "blue" | "indigo" | "amber" | "teal";
+  testIdKey: "finance" | "skyone" | "gold" | "interior";
 }
 
 export interface UrgentSkyOneAlert {
@@ -43,6 +43,24 @@ export const APP_ECOSYSTEM_REGISTRY: readonly EcosystemAppDefinition[] = [
     ctaLabel: "Mở SKYONE",
     accentTone: "indigo",
     testIdKey: "skyone",
+  },
+  {
+    id: "GOLD",
+    title: "Kho Tích Sản Vàng",
+    waffleSubtitle: "Nhẫn 9999, SJC & Thanh khoản Q3/2027",
+    launcherDescription: "Định giá Bid thực thu, giá vốn WAC/FIFO & mô phỏng bán vàng",
+    ctaLabel: "Mở Kho Vàng",
+    accentTone: "amber",
+    testIdKey: "gold",
+  },
+  {
+    id: "INTERIOR",
+    title: "SKYONE 3D Interior",
+    waffleSubtitle: "Phối cảnh 3D A.12A.07 & Dự toán BOQ",
+    launcherDescription: "Thiết kế 3D Three.js căn hộ A.12A.07 (51m²) & dự toán trọn gói",
+    ctaLabel: "Mở 3D Studio",
+    accentTone: "teal",
+    testIdKey: "interior",
   },
 ] as const;
 

@@ -1,4 +1,10 @@
-import { FinanceTab, SkyOneRouteTab, SubAppId } from "@/types/finance";
+import {
+  FinanceTab,
+  GoldRouteTab,
+  InteriorRouteTab,
+  SkyOneRouteTab,
+  SubAppId,
+} from "@/types/finance";
 
 export const ACTIVE_APP_STORAGE_KEY = "HOME_MONI_ACTIVE_APP";
 
@@ -6,6 +12,8 @@ export interface ParsedAppRoute {
   app: SubAppId;
   financeTab: FinanceTab;
   skyoneTab: SkyOneRouteTab;
+  goldTab: GoldRouteTab;
+  interiorTab: InteriorRouteTab;
   highlightPeriod: number | null;
   isLoginRoute: boolean;
 }
@@ -56,12 +64,45 @@ const SEGMENT_TO_SKYONE_TAB: Record<string, SkyOneRouteTab> = {
   settings: "SETTINGS",
 };
 
+const GOLD_TAB_TO_SEGMENT: Record<GoldRouteTab, string> = {
+  OVERVIEW: "overview",
+  LOTS: "lots",
+  PRICES: "prices",
+  DCA: "dca",
+  SIMULATOR: "simulator",
+};
+
+const SEGMENT_TO_GOLD_TAB: Record<string, GoldRouteTab> = {
+  overview: "OVERVIEW",
+  lots: "LOTS",
+  prices: "PRICES",
+  dca: "DCA",
+  simulator: "SIMULATOR",
+};
+
+const INTERIOR_TAB_TO_SEGMENT: Record<InteriorRouteTab, string> = {
+  STUDIO: "studio",
+  BOQ: "boq",
+  READINESS: "readiness",
+  CHECKLIST: "checklist",
+};
+
+const SEGMENT_TO_INTERIOR_TAB: Record<string, InteriorRouteTab> = {
+  studio: "STUDIO",
+  "3d": "STUDIO",
+  boq: "BOQ",
+  readiness: "READINESS",
+  checklist: "CHECKLIST",
+};
+
 export function getSavedActiveApp(): SubAppId {
   if (typeof window === "undefined") return "LAUNCHER";
   try {
     const raw = window.localStorage.getItem(ACTIVE_APP_STORAGE_KEY);
     if (raw === "SKYONE") return "SKYONE";
     if (raw === "FINANCE") return "FINANCE";
+    if (raw === "GOLD") return "GOLD";
+    if (raw === "INTERIOR") return "INTERIOR";
     return "LAUNCHER";
   } catch {
     return "LAUNCHER";
@@ -102,6 +143,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       app: "LAUNCHER",
       financeTab: "overview",
       skyoneTab: "OVERVIEW",
+      goldTab: "OVERVIEW",
+      interiorTab: "STUDIO",
       highlightPeriod: null,
       isLoginRoute: true,
     };
@@ -112,6 +155,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       app: "LAUNCHER",
       financeTab: "overview",
       skyoneTab: "OVERVIEW",
+      goldTab: "OVERVIEW",
+      interiorTab: "STUDIO",
       highlightPeriod: null,
       isLoginRoute: false,
     };
@@ -124,7 +169,37 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       app: "SKYONE",
       financeTab: "overview",
       skyoneTab,
+      goldTab: "OVERVIEW",
+      interiorTab: "STUDIO",
       highlightPeriod,
+      isLoginRoute: false,
+    };
+  }
+
+  if (parts[0] === "gold") {
+    const seg = parts[1] || "overview";
+    const goldTab = SEGMENT_TO_GOLD_TAB[seg] || "OVERVIEW";
+    return {
+      app: "GOLD",
+      financeTab: "overview",
+      skyoneTab: "OVERVIEW",
+      goldTab,
+      interiorTab: "STUDIO",
+      highlightPeriod: null,
+      isLoginRoute: false,
+    };
+  }
+
+  if (parts[0] === "interior") {
+    const seg = parts[1] || "studio";
+    const interiorTab = SEGMENT_TO_INTERIOR_TAB[seg] || "STUDIO";
+    return {
+      app: "INTERIOR",
+      financeTab: "overview",
+      skyoneTab: "OVERVIEW",
+      goldTab: "OVERVIEW",
+      interiorTab,
+      highlightPeriod: null,
       isLoginRoute: false,
     };
   }
@@ -136,6 +211,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       app: "FINANCE",
       financeTab,
       skyoneTab: "OVERVIEW",
+      goldTab: "OVERVIEW",
+      interiorTab: "STUDIO",
       highlightPeriod: null,
       isLoginRoute: false,
     };
@@ -146,6 +223,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
     app: "LAUNCHER",
     financeTab: "overview",
     skyoneTab: "OVERVIEW",
+    goldTab: "OVERVIEW",
+    interiorTab: "STUDIO",
     highlightPeriod: null,
     isLoginRoute: false,
   };
@@ -155,7 +234,9 @@ export function buildAppPath(
   app: SubAppId,
   financeTab: FinanceTab,
   skyoneTab: SkyOneRouteTab,
-  highlightPeriod?: number | null
+  highlightPeriod?: number | null,
+  goldTab: GoldRouteTab = "OVERVIEW",
+  interiorTab: InteriorRouteTab = "STUDIO"
 ): string {
   if (app === "LAUNCHER") {
     return "/launcher";
@@ -170,6 +251,16 @@ export function buildAppPath(
     return base;
   }
 
+  if (app === "GOLD") {
+    const seg = GOLD_TAB_TO_SEGMENT[goldTab] || "overview";
+    return `/gold/${seg}`;
+  }
+
+  if (app === "INTERIOR") {
+    const seg = INTERIOR_TAB_TO_SEGMENT[interiorTab] || "studio";
+    return `/interior/${seg}`;
+  }
+
   const seg = FINANCE_TAB_TO_SEGMENT[financeTab] || "overview";
   return `/finance/${seg}`;
 }
@@ -177,7 +268,9 @@ export function buildAppPath(
 export function getAppDocumentTitle(
   app: SubAppId,
   financeTab: FinanceTab,
-  skyoneTab: SkyOneRouteTab
+  skyoneTab: SkyOneRouteTab,
+  goldTab: GoldRouteTab = "OVERVIEW",
+  interiorTab: InteriorRouteTab = "STUDIO"
 ): string {
   if (app === "LAUNCHER") {
     return "App Launcher · HOME MONI";
@@ -194,6 +287,27 @@ export function getAppDocumentTitle(
       SETTINGS: "Cài đặt hệ thống · Phú Đông SKYONE",
     };
     return map[skyoneTab];
+  }
+
+  if (app === "GOLD") {
+    const map: Record<GoldRouteTab, string> = {
+      OVERVIEW: "Kho Tích Sản Vàng · HOME MONI",
+      LOTS: "Sổ Lô Vàng & Giá Vốn · HOME MONI GOLD",
+      PRICES: "Bảng Giá & Chênh Lệch Nội–Ngoại · HOME MONI GOLD",
+      DCA: "Kế Hoạch Tích Lũy DCA · HOME MONI GOLD",
+      SIMULATOR: "Mô Phỏng Bán Vàng Q3/2027 · HOME MONI GOLD",
+    };
+    return map[goldTab];
+  }
+
+  if (app === "INTERIOR") {
+    const map: Record<InteriorRouteTab, string> = {
+      STUDIO: "Phối Cảnh 3D A.12A.07 · SKYONE Interior",
+      BOQ: "Dự Toán Nội Thất BOQ · SKYONE Interior",
+      READINESS: "Độ Sẵn Sàng Bàn Giao Q3/2027 · SKYONE Interior",
+      CHECKLIST: "Checklist Nghiệm Thu A.12A.07 · SKYONE Interior",
+    };
+    return map[interiorTab];
   }
 
   const map: Record<FinanceTab, string> = {

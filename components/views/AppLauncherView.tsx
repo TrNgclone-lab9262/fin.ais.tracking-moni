@@ -22,8 +22,13 @@ import {
 import {
   FinanceAppIconSvg,
   SkyOneAppIconSvg,
+  GoldAppIconSvg,
+  InteriorAppIconSvg,
 } from "@/components/common/SubAppIcons";
 import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
+import { computeGoldPortfolioMetrics, formatChiWeight } from "@/lib/goldEngine";
+import { calculateScenarioBoq } from "@/lib/interiorBoqEngine";
+import { formatShortVNDMasked } from "@/lib/formatters";
 
 interface AppLauncherViewProps {
   onOpenBackupModal: () => void;
@@ -35,12 +40,17 @@ const APP_ICON_MAP: Record<
 > = {
   FINANCE: FinanceAppIconSvg,
   SKYONE: SkyOneAppIconSvg,
+  GOLD: GoldAppIconSvg,
+  INTERIOR: InteriorAppIconSvg,
 };
 
 export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
   const {
     settings,
     skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
+    isPrivacyMode,
     switchSubApp,
     themeMode,
     toggleThemeMode,
@@ -62,11 +72,31 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     [skyoneLoan]
   );
 
+  const goldMetrics = useMemo(
+    () => computeGoldPortfolioMetrics(goldPortfolio),
+    [goldPortfolio]
+  );
+
+  const activeInteriorSummary = useMemo(() => {
+    const activeScenario =
+      interiorStudio.scenarios.find((s) => s.id === interiorStudio.activeScenarioId) ||
+      interiorStudio.scenarios[0];
+    if (!activeScenario) return null;
+    return {
+      scenario: activeScenario,
+      boq: calculateScenarioBoq(activeScenario),
+    };
+  }, [interiorStudio]);
+
   const handleOpenSubApp = (appId: EcosystemAppId) => {
     if (appId === "FINANCE") {
       switchSubApp("FINANCE", { financeTab: "overview" });
-    } else {
+    } else if (appId === "SKYONE") {
       switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" });
+    } else if (appId === "GOLD") {
+      switchSubApp("GOLD", { goldTab: "OVERVIEW" });
+    } else {
+      switchSubApp("INTERIOR", { interiorTab: "STUDIO" });
     }
   };
 
@@ -145,7 +175,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
 
             <button
               type="button"
-              onClick={toggleThemeMode}
+              onClick={(e) => toggleThemeMode(e)}
               data-testid="launcher-theme-toggle"
               aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
               className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-[#DCE4EE] dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-amber-300 transition-colors cursor-pointer shrink-0"
@@ -179,23 +209,33 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
           </p>
         </div>
 
-        {/* 2 Streamlined App Cards driven by Declarative Registry */}
+        {/* 4 Streamlined App Cards (2x2 Grid) driven by Declarative Registry */}
         <section
           aria-label="Danh sách ứng dụng"
-          className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 items-stretch"
         >
           {APP_ECOSYSTEM_REGISTRY.map((app) => {
             const IconComponent = APP_ICON_MAP[app.id];
             const isSkyOne = app.id === "SKYONE";
+            const isGold = app.id === "GOLD";
+            const isInterior = app.id === "INTERIOR";
             const displayTitle = isSkyOne ? skyoneLoan.projectName : app.title;
             const hoverBorderClass =
               app.accentTone === "indigo"
                 ? "hover:border-indigo-500 dark:hover:border-indigo-500 focus-visible:ring-indigo-600"
-                : "hover:border-blue-500 dark:hover:border-blue-500 focus-visible:ring-blue-600";
+                : app.accentTone === "amber"
+                  ? "hover:border-amber-500 dark:hover:border-amber-500 focus-visible:ring-amber-600"
+                  : app.accentTone === "teal"
+                    ? "hover:border-teal-500 dark:hover:border-teal-500 focus-visible:ring-teal-600"
+                    : "hover:border-blue-500 dark:hover:border-blue-500 focus-visible:ring-blue-600";
             const ctaTextClass =
               app.accentTone === "indigo"
                 ? "text-[#312E81] dark:text-indigo-300"
-                : "text-[#1E3A8A] dark:text-blue-400";
+                : app.accentTone === "amber"
+                  ? "text-amber-800 dark:text-amber-300"
+                  : app.accentTone === "teal"
+                    ? "text-teal-800 dark:text-teal-300"
+                    : "text-[#1E3A8A] dark:text-blue-400";
 
             return (
               <button
@@ -203,15 +243,15 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                 type="button"
                 data-testid={`launcher-card-${app.testIdKey}`}
                 onClick={() => handleOpenSubApp(app.id)}
-                className={`group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 ${hoverBorderClass} p-7 sm:p-8 text-center flex flex-col items-center justify-between gap-6 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2`}
+                className={`group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 ${hoverBorderClass} p-6 sm:p-7 text-center flex flex-col items-center justify-between gap-5 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2`}
               >
-                <div className="flex flex-col items-center space-y-5">
-                  <div className="w-24 h-24 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
-                    <IconComponent className="w-16 h-16" />
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="w-20 h-20 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
+                    <IconComponent className="w-14 h-14" />
                   </div>
 
                   <div className="space-y-1.5">
-                    <h2 className="text-xl font-black text-[#0F172A] dark:text-slate-100">
+                    <h2 className="text-lg sm:text-xl font-black text-[#0F172A] dark:text-slate-100">
                       {displayTitle}
                     </h2>
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -232,6 +272,23 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                           <Clock className="w-3.5 h-3.5 shrink-0" />
                         )}
                         <span>{urgentSkyoneAlert.detailLabel}</span>
+                      </p>
+                    )}
+
+                    {isGold && (
+                      <p className="pt-1 text-xs font-bold text-amber-700 dark:text-amber-300 tabular-nums">
+                        {formatChiWeight(goldMetrics.totalRemainingChi, isPrivacyMode)} · Bid{" "}
+                        {formatShortVNDMasked(goldMetrics.totalLiquidationValueBid, isPrivacyMode)}
+                      </p>
+                    )}
+
+                    {isInterior && activeInteriorSummary && (
+                      <p className="pt-1 text-xs font-bold text-teal-700 dark:text-teal-300 tabular-nums">
+                        {activeInteriorSummary.scenario.shortLabel} · BOQ{" "}
+                        {formatShortVNDMasked(
+                          activeInteriorSummary.boq.grandTotalWithContingency,
+                          isPrivacyMode
+                        )}
                       </p>
                     )}
                   </div>

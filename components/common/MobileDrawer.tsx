@@ -20,11 +20,17 @@ import {
   Calculator,
   SlidersHorizontal,
   Compass,
+  Layers,
+  Box,
+  ClipboardCheck,
+  TrendingUp,
+  Scale,
+  Wallet,
 } from "lucide-react";
 import { useFinance, NavTab } from "@/context/FinanceContext";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { APP_VERSION } from "@/constants/appVersion";
-import { SkyOneRouteTab } from "@/types/finance";
+import { GoldRouteTab, InteriorRouteTab, SkyOneRouteTab } from "@/types/finance";
 import { useHaptic } from "@/src/hooks/useHaptic";
 
 interface MobileDrawerProps {
@@ -39,6 +45,10 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     setActiveTab,
     skyoneTab,
     setSkyoneTab,
+    goldTab,
+    setGoldTab,
+    interiorTab,
+    setInteriorTab,
     activePerspective,
     setActivePerspective,
     isCloudConnected,
@@ -115,6 +125,29 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     { id: "SETTINGS", label: "Cài đặt chung", icon: Settings },
   ];
 
+  const goldNavItems: {
+    id: GoldRouteTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    { id: "OVERVIEW", label: "Tổng quan Kho Vàng", icon: Coins },
+    { id: "LOTS", label: "Sổ Lô Vàng & Giá Vốn", icon: Layers },
+    { id: "PRICES", label: "Bảng Giá & Chênh Lệch", icon: TrendingUp },
+    { id: "DCA", label: "Kế hoạch DCA", icon: Target },
+    { id: "SIMULATOR", label: "Mô phỏng Bán Q3/2027", icon: Scale },
+  ];
+
+  const interiorNavItems: {
+    id: InteriorRouteTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    { id: "STUDIO", label: "Phối cảnh 3D & Mặt bằng 2D", icon: Box },
+    { id: "BOQ", label: "Dự toán Nội thất BOQ", icon: Calculator },
+    { id: "READINESS", label: "Sẵn sàng Bàn giao Q3/2027", icon: Wallet },
+    { id: "CHECKLIST", label: "Checklist Nghiệm thu", icon: ClipboardCheck },
+  ];
+
   const handleSelectTab = (tab: NavTab) => {
     haptic.light();
     setActiveTab(tab);
@@ -127,6 +160,45 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
     onClose();
   };
 
+  const handleSelectGoldTab = (tab: GoldRouteTab) => {
+    haptic.light();
+    setGoldTab(tab);
+    onClose();
+  };
+
+  const handleSelectInteriorTab = (tab: InteriorRouteTab) => {
+    haptic.light();
+    setInteriorTab(tab);
+    onClose();
+  };
+
+  const drawerBgClass =
+    activeApp === "SKYONE"
+      ? "bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D]"
+      : activeApp === "GOLD"
+        ? "bg-gradient-to-b from-[#451A03] via-[#78350F] to-[#1C1917] dark:from-[#1C1917] dark:via-[#292524] dark:to-[#0C0A09]"
+        : activeApp === "INTERIOR"
+          ? "bg-gradient-to-b from-[#134E4A] via-[#115E59] to-[#0F172A] dark:from-[#0F172A] dark:via-[#132A2E] dark:to-[#090F1D]"
+          : "bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D]";
+
+  const brandTitle =
+    activeApp === "SKYONE"
+      ? "SKYONE LOAN"
+      : activeApp === "GOLD"
+        ? "GOLD VAULT"
+        : activeApp === "INTERIOR"
+          ? "SKYONE 3D"
+          : "HOME MONI";
+
+  const brandSubtitle =
+    activeApp === "SKYONE"
+      ? "Phú Đông SKYONE"
+      : activeApp === "GOLD"
+        ? "Kho Tích Sản Vàng"
+        : activeApp === "INTERIOR"
+          ? "A.12A.07 Interior Studio"
+          : "🏡 My Home";
+
   return (
     <div className="fixed inset-0 z-50 flex md:hidden animate-in fade-in duration-200">
       {/* Backdrop */}
@@ -137,11 +209,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
 
       {/* Drawer content */}
       <div
-        className={`relative w-full max-w-[320px] text-white h-full pt-safe pb-safe shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none ${
-          activeApp === "SKYONE"
-            ? "bg-gradient-to-b from-[#1E1B4B] via-[#312E81] to-[#0F172A] dark:from-[#0F172A] dark:via-[#111827] dark:to-[#090F1D]"
-            : "bg-gradient-to-b from-[#1E3A8A] via-[#1D4ED8] to-[#172554] dark:from-[#0F172A] dark:via-[#111C33] dark:to-[#090F1D]"
-        }`}
+        className={`relative w-full max-w-[320px] text-white h-full pt-safe pb-safe shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200 select-none ${drawerBgClass}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="overflow-y-auto">
@@ -151,16 +219,20 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
               <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-amber-400 via-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
                 {activeApp === "SKYONE" ? (
                   <Building2 className="w-5 h-5" />
+                ) : activeApp === "GOLD" ? (
+                  <Coins className="w-5 h-5" />
+                ) : activeApp === "INTERIOR" ? (
+                  <Box className="w-5 h-5" />
                 ) : (
                   <Home className="w-5 h-5" />
                 )}
               </div>
               <div>
                 <span className="font-black text-base tracking-wider block leading-tight">
-                  {activeApp === "SKYONE" ? "SKYONE LOAN" : "HOME MONI"}
+                  {brandTitle}
                 </span>
                 <span className="text-[10px] text-blue-200 uppercase tracking-widest font-bold">
-                  {activeApp === "SKYONE" ? "Phú Đông SKYONE" : "🏡 My Home"}
+                  {brandSubtitle}
                 </span>
               </div>
             </div>
@@ -265,38 +337,88 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                     </button>
                   );
                 })
-              : navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleSelectTab(item.id)}
-                      className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
-                        isActive
-                          ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
-                          : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      <Icon
-                        className={`w-5 h-5 shrink-0 ${
-                          isActive ? "text-blue-700 dark:text-white" : "text-blue-200 dark:text-slate-400"
+              : activeApp === "GOLD"
+                ? goldNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = goldTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectGoldTab(item.id)}
+                        className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
+                          isActive
+                            ? "bg-white dark:bg-amber-600 text-amber-950 dark:text-white shadow-md font-black"
+                            : "text-amber-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
                         }`}
-                      />
-                      <span className="flex-1 text-left">{item.label}</span>
-                      {item.badge && (
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            item.badgeColor || "bg-blue-800 text-white"
+                      >
+                        <Icon
+                          className={`w-5 h-5 shrink-0 ${
+                            isActive
+                              ? "text-amber-700 dark:text-white"
+                              : "text-amber-200 dark:text-slate-400"
+                          }`}
+                        />
+                        <span className="flex-1 text-left">{item.label}</span>
+                      </button>
+                    );
+                  })
+                : activeApp === "INTERIOR"
+                  ? interiorNavItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = interiorTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleSelectInteriorTab(item.id)}
+                          className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
+                            isActive
+                              ? "bg-white dark:bg-teal-600 text-teal-950 dark:text-white shadow-md font-black"
+                              : "text-teal-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
                           }`}
                         >
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                          <Icon
+                            className={`w-5 h-5 shrink-0 ${
+                              isActive
+                                ? "text-teal-700 dark:text-white"
+                                : "text-teal-200 dark:text-slate-400"
+                            }`}
+                          />
+                          <span className="flex-1 text-left">{item.label}</span>
+                        </button>
+                      );
+                    })
+                  : navItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleSelectTab(item.id)}
+                          className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer ${
+                            isActive
+                              ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-md font-black"
+                              : "text-blue-100 dark:text-slate-300 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          <Icon
+                            className={`w-5 h-5 shrink-0 ${
+                              isActive ? "text-blue-700 dark:text-white" : "text-blue-200 dark:text-slate-400"
+                            }`}
+                          />
+                          <span className="flex-1 text-left">{item.label}</span>
+                          {item.badge && (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                item.badgeColor || "bg-blue-800 text-white"
+                              }`}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
           </nav>
         </div>
 

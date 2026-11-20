@@ -11,6 +11,8 @@ import { Account, Transaction } from '@/types/finance';
 import { DEFAULT_CATEGORIES } from '@/constants/defaultCategories';
 import { DEFAULT_SETTINGS } from '@/constants/mockData';
 import { createDefaultSkyOneLoan } from './mortgageEngine';
+import { createDefaultGoldPortfolio } from './goldEngine';
+import { createDefaultInteriorStudio } from './interiorFloorplan';
 
 test('recalculateAccountBalances calculates bank and credit card balances accurately', () => {
   const accounts: Account[] = [
@@ -114,6 +116,8 @@ function createBaseState(): StoredAppStateV3 {
       },
     },
     skyoneLoan: createDefaultSkyOneLoan('2026-11-13'),
+    goldPortfolio: createDefaultGoldPortfolio(),
+    interiorStudio: createDefaultInteriorStudio(),
   };
 }
 

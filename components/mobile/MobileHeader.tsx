@@ -104,9 +104,9 @@ export function MobileHeader({
         {/* Light / Dark Toggle */}
         <button
           type="button"
-          onClick={() => {
+          onClick={(e) => {
             haptic.light();
-            toggleThemeMode();
+            toggleThemeMode(e);
           }}
           data-testid="mobile-theme-toggle"
           aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}

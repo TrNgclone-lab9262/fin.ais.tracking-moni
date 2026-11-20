@@ -4,6 +4,8 @@ import {
   Category,
   CategoryBudget,
   DebtItem,
+  GoldPortfolioState,
+  InteriorStudioState,
   InvestmentItem,
   MortgageContract,
   RecurringRule,
@@ -36,6 +38,8 @@ export type CloudMutation =
   | { type: "UPSERT_RECURRING_RULES_BATCH"; payload: RecurringRule[] }
   | { type: "DELETE_RECURRING_RULE"; id: string }
   | { type: "UPSERT_SKYONE_LOAN"; payload: MortgageContract }
+  | { type: "UPSERT_GOLD_PORTFOLIO"; payload: GoldPortfolioState }
+  | { type: "UPSERT_INTERIOR_STUDIO"; payload: InteriorStudioState }
   | { type: "UPSERT_SETTINGS"; payload: AppSettings };
 
 export interface OutboxEntry {
@@ -97,6 +101,10 @@ export function getOutboxMutationKey(mutation: CloudMutation): string {
       return `rec_batch:${mutation.payload.map((r) => r.id).sort().join(",")}`;
     case "UPSERT_SKYONE_LOAN":
       return `skyone:${mutation.payload.id || "skyone_default"}`;
+    case "UPSERT_GOLD_PORTFOLIO":
+      return "gold:default";
+    case "UPSERT_INTERIOR_STUDIO":
+      return "interior:a12a07";
     case "UPSERT_SETTINGS":
       return "settings:household";
   }

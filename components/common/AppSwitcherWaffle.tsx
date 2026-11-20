@@ -17,6 +17,8 @@ import {
 import {
   FinanceAppIconSvg,
   SkyOneAppIconSvg,
+  GoldAppIconSvg,
+  InteriorAppIconSvg,
 } from "@/components/common/SubAppIcons";
 
 interface AppSwitcherWaffleProps {
@@ -30,6 +32,8 @@ const APP_ICON_MAP: Record<
 > = {
   FINANCE: FinanceAppIconSvg,
   SKYONE: SkyOneAppIconSvg,
+  GOLD: GoldAppIconSvg,
+  INTERIOR: InteriorAppIconSvg,
 };
 
 function NineDotsWaffleSvg({ className }: { className?: string }) {
@@ -134,8 +138,12 @@ export function AppSwitcherWaffle({
     if (activeApp !== targetApp) {
       if (targetApp === "FINANCE") {
         switchSubApp("FINANCE", { financeTab: "overview" });
-      } else {
+      } else if (targetApp === "SKYONE") {
         switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" });
+      } else if (targetApp === "GOLD") {
+        switchSubApp("GOLD", { goldTab: "OVERVIEW" });
+      } else {
+        switchSubApp("INTERIOR", { interiorTab: "STUDIO" });
       }
     }
   };
@@ -241,11 +249,19 @@ export function AppSwitcherWaffle({
               const activeStyles =
                 app.accentTone === "indigo"
                   ? "bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800"
-                  : "bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800";
+                  : app.accentTone === "amber"
+                    ? "bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800"
+                    : app.accentTone === "teal"
+                      ? "bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800"
+                      : "bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800";
               const activeBadgeColor =
                 app.accentTone === "indigo"
                   ? "text-indigo-700 dark:text-indigo-300"
-                  : "text-blue-700 dark:text-blue-300";
+                  : app.accentTone === "amber"
+                    ? "text-amber-700 dark:text-amber-300"
+                    : app.accentTone === "teal"
+                      ? "text-teal-700 dark:text-teal-300"
+                      : "text-blue-700 dark:text-blue-300";
               const displayTitle =
                 app.id === "SKYONE" ? skyoneLoan.projectName : app.title;
 

@@ -67,9 +67,9 @@ export function SkyOneMobileHeader({ onOpenDrawer }: SkyOneMobileHeaderProps) {
 
         <button
           type="button"
-          onClick={() => {
+          onClick={(e) => {
             haptic.light();
-            toggleThemeMode();
+            toggleThemeMode(e);
           }}
           aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
           className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
