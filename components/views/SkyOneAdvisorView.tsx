@@ -349,7 +349,7 @@ export function SkyOneAdvisorView({
               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <p className="leading-relaxed">
                 Hồ sơ đang lưu khác với bộ chuẩn HĐMB A.12A.07 &amp; sao kê BIDV ({" "}
-                <strong className="tabular-nums">662.226.193 VND</strong>, lãi{" "}
+                <strong className="tabular-nums">662.226.194 VND</strong>, lãi{" "}
                 <strong className="tabular-nums">5,5%/năm</strong>, 15 kỳ đã trả). Mở tab{" "}
                 <strong>Hợp đồng &amp; HĐMB</strong> nếu bạn muốn nạp lại hồ sơ chuẩn.
               </p>

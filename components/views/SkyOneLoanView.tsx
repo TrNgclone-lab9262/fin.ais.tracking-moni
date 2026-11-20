@@ -21,6 +21,7 @@ import { useFinance } from "@/context/FinanceContext";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import { formatDateVN, formatVNDMasked } from "@/lib/formatters";
 import {
+  applyActualPaymentDateOverrides,
   calculateFamilyMonthlyIncome,
   calculateRateStressTest,
   calculateRealEstateMetrics,
@@ -28,6 +29,7 @@ import {
   evaluateSkyOneReminders,
   generateMortgageSchedule,
   getTodayIsoDate,
+  isValidIsoDate,
 } from "@/lib/mortgageEngine";
 import { MortgagePrepayStrategy, SkyOneSubTab } from "@/types/finance";
 
@@ -160,7 +162,10 @@ export function SkyOneLoanView() {
       nonCreditAccounts[0]?.id ||
       "";
 
-    setConfirmPaidDate(getTodayIsoDate());
+    // Mặc định lấy đúng Ngày trả của kỳ khi xác nhận đơn kỳ để tính Actual/365 chuẩn ngay từ đầu
+    setConfirmPaidDate(
+      unpaidTargets.length === 1 ? unpaidTargets[0].dueDate : getTodayIsoDate()
+    );
     setConfirmNote(
       unpaidTargets.length === 1
         ? `Thanh toán kỳ #${unpaidTargets[0].period}`
@@ -177,7 +182,7 @@ export function SkyOneLoanView() {
           : `Xác nhận đóng ${unpaidTargets.length} kỳ đã chọn`,
       description:
         unpaidTargets.length === 1
-          ? `Kỳ hạn ${formatDateVN(unpaidTargets[0].dueDate)} · Gốc ${formatVNDMasked(
+          ? `Ngày trả ${formatDateVN(unpaidTargets[0].dueDate)} · Gốc ${formatVNDMasked(
               unpaidTargets[0].principal,
               isPrivacyMode
             )} + Lãi ${formatVNDMasked(unpaidTargets[0].interest, isPrivacyMode)}.`
@@ -187,6 +192,53 @@ export function SkyOneLoanView() {
       totalCashOutflow: totalCash,
     });
   };
+
+  // Tính lại trực tiếp số tiền gốc + lãi Actual/365 khi người dùng đổi Ngày thanh toán trong hộp thoại
+  const confirmPeriodsPreview = useMemo(() => {
+    if (!pendingConfirm || pendingConfirm.kind !== "PERIODS" || !pendingConfirm.periods?.length) {
+      return null;
+    }
+    const validDate = isValidIsoDate(confirmPaidDate);
+    if (!validDate) {
+      return {
+        rows: [],
+        totalPrincipal: 0,
+        totalInterest: 0,
+        totalCashOutflow: pendingConfirm.totalCashOutflow,
+        invalidRow: null as (typeof schedule.rows)[number] | null,
+        isDateInvalid: true,
+        invalidMessage: "Vui lòng chọn Ngày thanh toán hợp lệ.",
+      };
+    }
+
+    const previewContract = applyActualPaymentDateOverrides(
+      skyoneLoan,
+      pendingConfirm.periods,
+      confirmPaidDate
+    );
+    const previewSchedule = generateMortgageSchedule(previewContract);
+    const periodSet = new Set(pendingConfirm.periods);
+    const targetRows = previewSchedule.rows.filter(
+      (r) => periodSet.has(r.period) && r.status !== "PAID"
+    );
+    const invalidRow = targetRows.find((r) => r.isDateOrderInvalid) || null;
+    const totalPrincipal = targetRows.reduce((s, r) => s + r.principal, 0);
+    const totalInterest = targetRows.reduce((s, r) => s + r.interest, 0);
+
+    return {
+      rows: targetRows,
+      totalPrincipal,
+      totalInterest,
+      totalCashOutflow: totalPrincipal + totalInterest,
+      invalidRow,
+      isDateInvalid: Boolean(invalidRow),
+      invalidMessage: invalidRow
+        ? `Ngày thanh toán kỳ #${invalidRow.period} phải sau ${formatDateVN(
+            invalidRow.interestStartDate
+          )} để tính lãi Actual/365.`
+        : null,
+    };
+  }, [pendingConfirm, confirmPaidDate, skyoneLoan]);
 
   const openConfirmPrepaymentModal = (input: {
     amount: number;
@@ -228,6 +280,9 @@ export function SkyOneLoanView() {
 
   const executePendingConfirm = () => {
     if (!pendingConfirm) return;
+    if (pendingConfirm.kind === "PERIODS" && confirmPeriodsPreview?.isDateInvalid) {
+      return;
+    }
     const accountToLink = linkToWallet && linkAccountId ? linkAccountId : undefined;
 
     if (pendingConfirm.kind === "PERIODS" && pendingConfirm.periods) {
@@ -418,31 +473,68 @@ export function SkyOneLoanView() {
               <h3 className="text-base font-extrabold text-[#0F172A] dark:text-slate-100">
                 {pendingConfirm.title}
               </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                {pendingConfirm.description}
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed tabular-nums">
+                {confirmPeriodsPreview && confirmPeriodsPreview.rows.length === 1
+                  ? `Ngày trả ${formatDateVN(confirmPeriodsPreview.rows[0].dueDate)} (${
+                      confirmPeriodsPreview.rows[0].dayCountUsed
+                    } ngày Actual/365) · Gốc ${formatVNDMasked(
+                      confirmPeriodsPreview.rows[0].principal,
+                      isPrivacyMode
+                    )} + Lãi ${formatVNDMasked(
+                      confirmPeriodsPreview.rows[0].interest,
+                      isPrivacyMode
+                    )}.`
+                  : pendingConfirm.description}
               </p>
             </div>
 
             <div className="p-5 space-y-4 text-xs">
-              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-between">
-                <span className="font-bold text-blue-900 dark:text-blue-200">
-                  Tổng số tiền thực chi
-                </span>
-                <span className="text-base font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
-                  {formatVNDMasked(pendingConfirm.totalCashOutflow, isPrivacyMode)}
-                </span>
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-blue-900 dark:text-blue-200">
+                    Tổng số tiền thực chi
+                  </span>
+                  <span className="text-base font-black text-[#1E3A8A] dark:text-blue-300 tabular-nums">
+                    {formatVNDMasked(
+                      confirmPeriodsPreview
+                        ? confirmPeriodsPreview.totalCashOutflow
+                        : pendingConfirm.totalCashOutflow,
+                      isPrivacyMode
+                    )}
+                  </span>
+                </div>
+                {confirmPeriodsPreview && confirmPeriodsPreview.rows.length > 0 && (
+                  <p className="text-[11px] text-blue-800/85 dark:text-blue-300/85 tabular-nums">
+                    Gốc {formatVNDMasked(confirmPeriodsPreview.totalPrincipal, isPrivacyMode)} + Lãi{" "}
+                    {formatVNDMasked(confirmPeriodsPreview.totalInterest, isPrivacyMode)} (tự tính theo Actual/365)
+                  </p>
+                )}
               </div>
+
+              {confirmPeriodsPreview?.invalidMessage && (
+                <div
+                  role="alert"
+                  className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-semibold flex items-start gap-2 tabular-nums"
+                >
+                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <span>{confirmPeriodsPreview.invalidMessage}</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    Ngày thanh toán
+                    Ngày thanh toán (Ngày trả)
                   </label>
                   <input
                     type="date"
                     value={confirmPaidDate}
                     onChange={(e) => setConfirmPaidDate(e.target.value)}
-                    className="w-full min-h-[40px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
+                    className={`w-full min-h-[40px] px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border font-semibold tabular-nums ${
+                      confirmPeriodsPreview?.isDateInvalid
+                        ? "border-rose-500 text-rose-700 dark:text-rose-300"
+                        : "border-[#DCE4EE] dark:border-slate-700 text-slate-800 dark:text-slate-100"
+                    }`}
                   />
                 </div>
                 <div>
@@ -509,8 +601,9 @@ export function SkyOneLoanView() {
                 </button>
                 <button
                   type="button"
+                  disabled={Boolean(confirmPeriodsPreview?.isDateInvalid)}
                   onClick={executePendingConfirm}
-                  className="flex-1 min-h-[44px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-extrabold cursor-pointer"
+                  className="flex-1 min-h-[44px] px-4 py-2 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold cursor-pointer"
                 >
                   Xác nhận lưu
                 </button>
@@ -524,7 +617,7 @@ export function SkyOneLoanView() {
       <ConfirmDialog
         isOpen={isResetModalOpen}
         title="Khôi phục chuẩn HĐMB A.12A.07 & BIDV?"
-        message="Hệ thống sẽ đặt lại thông số gốc căn hộ A.12A.07 (HĐMB 1.573.480.430 đ · Tự có 5 đợt 323.655.950 đ · Đợt 1 BIDV 708.066.194 đ · Đợt 2 Q3/2027 393.370.110 đ · Lãi 5,5%/năm cố định 36 tháng tới 08/2028) cùng đủ 15 kỳ (3 kỳ đầu + 12 kỳ sao kê xác thực → dư nợ 662.226.193 đ). Giao dịch trên HOME MONI không bị ảnh hưởng."
+        message="Hệ thống sẽ đặt lại thông số gốc căn hộ A.12A.07 (HĐMB 1.573.480.430 đ · Tự có 5 đợt 323.655.950 đ · Đợt 1 BIDV 708.066.194 đ · Đợt 2 Q3/2027 393.370.110 đ · Lãi 5,5%/năm cố định 36 tháng tới 08/2028) cùng đủ 15 kỳ gốc đều 3.056.000 đ/kỳ (3 kỳ đầu + 12 kỳ sao kê xác thực → dư nợ 662.226.194 đ). Giao dịch trên HOME MONI không bị ảnh hưởng."
         confirmLabel="Khôi phục chuẩn A.12A.07"
         cancelLabel="Hủy"
         isDanger={false}

@@ -15,6 +15,9 @@ import {
   hasPinkBook5PctEnabled,
   togglePinkBook5PctDisbursement,
   getPlannedDisbursementSummary,
+  isValidIsoDate,
+  calculateActual365Interest,
+  applyActualPaymentDateOverrides,
   SKYONE_SHORT_UNIT_LABEL,
   MAX_MORTGAGE_TERM_MONTHS,
   MAX_MORTGAGE_TERM_YEARS,
@@ -22,7 +25,7 @@ import {
 } from "./mortgageEngine";
 import { MortgageContract } from "@/types/finance";
 
-test("createDefaultSkyOneLoan khớp chính xác 100% HĐMB A.12A.07 & sao kê BIDV thực tế (708,07tr -> 662.226.193đ, 5.5%/năm, 36 tháng)", () => {
+test("createDefaultSkyOneLoan cố định gốc đều 3.056.000đ xuyên suốt (708,07tr -> 662.226.194đ, 5.5%/năm, 36 tháng)", () => {
   const contract = createDefaultSkyOneLoan("2026-11-14");
   const schedule = generateMortgageSchedule(contract, "2026-11-14");
 
@@ -30,7 +33,7 @@ test("createDefaultSkyOneLoan khớp chính xác 100% HĐMB A.12A.07 & sao kê B
   assert.equal(contract.unitCode, SKYONE_SHORT_UNIT_LABEL);
   assert.equal(contract.loanAmount, 708_066_194);
 
-  // 3 kỳ đầu (09-11/2025: 9.168.001đ gốc) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026: 36.672.000đ gốc) = 15 kỳ PAID
+  // 3 kỳ đầu (09-11/2025: 9.168.000đ gốc) + 12 kỳ sao kê thật (10/12/2025 - 10/11/2026: 36.672.000đ gốc) = 15 kỳ PAID
   assert.equal(contract.paidRecords.length, 15);
   assert.equal(schedule.paidCount, 15);
   assert.equal(schedule.verifiedCount, 12);
@@ -38,13 +41,24 @@ test("createDefaultSkyOneLoan khớp chính xác 100% HĐMB A.12A.07 & sao kê B
     .filter((r) => r.period <= 3)
     .reduce((sum, r) => sum + r.paidPrincipal, 0);
   assert.equal(first3Principal, REAL_BIDV_SKYONE_SNAPSHOT.initial3PeriodsPrincipal);
+  assert.equal(schedule.rows.find((r) => r.period === 1)?.principal, 3_056_000);
   assert.equal(schedule.rows.find((r) => r.period === 3)?.isVerified, false);
   assert.equal(schedule.rows.find((r) => r.period === 4)?.openingBalance, REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025);
   assert.equal(schedule.rows.find((r) => r.period === 4)?.isVerified, true);
+  assert.equal(schedule.rows.find((r) => r.period === 5)?.dueDate, "2026-01-12");
   assert.equal(schedule.rows.find((r) => r.period === 15)?.isVerified, true);
   assert.equal(schedule.remainingBalance, REAL_BIDV_SKYONE_SNAPSHOT.verifiedRemainingBalanceNov2026);
   assert.equal(schedule.totalPrincipalPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidPrincipal15M);
   assert.equal(schedule.totalInterestPaid, REAL_BIDV_SKYONE_SNAPSHOT.verifiedPaidInterest12M);
+
+  // Mọi kỳ thường từ #1 đến #359 đều cố định gốc 3.056.000đ
+  for (let p = 1; p <= 359; p++) {
+    assert.equal(
+      schedule.rows.find((r) => r.period === p)?.principal,
+      3_056_000,
+      `Kỳ #${p} phải cố định gốc 3.056.000đ`
+    );
+  }
 
   // Kỳ kế tiếp #16 đến hạn 2026-12-10
   assert.equal(schedule.nextUnpaidInstallment?.period, 16);
@@ -307,8 +321,19 @@ test("reconcileBidvSkyOneContract tự động nâng cấp hồ sơ mẫu cũ ho
   assert.equal(upgradedFirst3.contract.loanAmount, 708_066_194);
   assert.equal(upgradedFirst3.contract.unitCode, SKYONE_SHORT_UNIT_LABEL);
   assert.equal(upgradedFirst3.contract.paidRecords.length, 16);
-  assert.equal(upgradedFirst3.contract.paidRecords.find((r) => r.period === 1)?.paidPrincipal, 3_056_001);
+  assert.equal(upgradedFirst3.contract.paidRecords.find((r) => r.period === 1)?.paidPrincipal, 3_056_000);
   assert.equal(upgradedFirst3.contract.paidRecords.find((r) => r.period === 16)?.paidPrincipal, 3_056_000);
+
+  // 2C. Nâng cấp hồ sơ cũ có kỳ #1 lệch 1đ (3.056.001đ) về chuẩn cố định 3.056.000đ
+  const legacyPeriod1Rounding: MortgageContract = {
+    ...createDefaultSkyOneLoan("2026-11-14"),
+    paidRecords: createDefaultSkyOneLoan("2026-11-14").paidRecords.map((r) =>
+      r.period === 1 ? { ...r, paidPrincipal: 3_056_001 } : r
+    ),
+  };
+  const upgradedRounding = reconcileBidvSkyOneContract(legacyPeriod1Rounding, "2026-11-14");
+  assert.equal(upgradedRounding.didAutoSync, true);
+  assert.equal(upgradedRounding.contract.paidRecords.find((r) => r.period === 1)?.paidPrincipal, 3_056_000);
 
   // 3. Hợp đồng tùy chỉnh của ngân hàng khác không bị ghi đè
   const customLoan: MortgageContract = {
@@ -420,6 +445,100 @@ test("periodOverrides điều chỉnh trực tiếp Lãi trả nợ, Gốc, Lãi
     "2026-11-14"
   );
   assert.equal(unlockedResult.didAutoSync, false);
+});
+
+test("chỉnh sửa Ngày trả (paidAt) qua periodOverrides tự động tính lại lãi Actual/365 cho kỳ đó và kỳ liền kề", () => {
+  const base = createDefaultSkyOneLoan("2026-11-14");
+  const baseSchedule = generateMortgageSchedule(base, "2026-11-14");
+  const baseP16 = baseSchedule.rows.find((r) => r.period === 16)!;
+  const baseP17 = baseSchedule.rows.find((r) => r.period === 17)!;
+
+  // Dịch Ngày trả kỳ #16 từ 2026-12-10 sang 2026-12-15 (+5 ngày)
+  const shiftedUnpaid: MortgageContract = {
+    ...base,
+    periodOverrides: [{ period: 16, paidAt: "2026-12-15" }],
+  };
+  const shiftedSchedule = generateMortgageSchedule(shiftedUnpaid, "2026-11-14");
+  const newP16 = shiftedSchedule.rows.find((r) => r.period === 16)!;
+  const newP17 = shiftedSchedule.rows.find((r) => r.period === 17)!;
+
+  assert.equal(newP16.dueDate, "2026-12-15");
+  assert.equal(newP16.dayCountUsed, baseP16.dayCountUsed + 5);
+  assert.ok(newP16.interest > baseP16.interest);
+  assert.equal(newP17.dayCountUsed, baseP17.dayCountUsed - 5);
+  assert.ok(newP17.interest < baseP17.interest);
+
+  // Dịch Ngày trả trên 1 kỳ đã đóng (#15: 2026-11-10 -> 2026-11-13) cũng tự tính lại lãi Actual/365 cho #15 và #16
+  const shiftedPaid: MortgageContract = {
+    ...base,
+    periodOverrides: [{ period: 15, paidAt: "2026-11-13" }],
+  };
+  const shiftedPaidSched = generateMortgageSchedule(shiftedPaid, "2026-11-14");
+  const newP15 = shiftedPaidSched.rows.find((r) => r.period === 15)!;
+  const afterP15 = shiftedPaidSched.rows.find((r) => r.period === 16)!;
+  assert.equal(newP15.dueDate, "2026-11-13");
+  assert.equal(newP15.dayCountUsed, 32); // 2026-10-12 -> 2026-11-13 = 32 ngày
+  assert.equal(
+    newP15.interest,
+    Math.round((newP15.openingBalance * 0.055 * 32) / 365)
+  );
+  assert.equal(afterP15.dayCountUsed, 27); // 2026-11-13 -> 2026-12-10 = 27 ngày
+
+  // Kiểm tra hàm thuần isValidIsoDate & calculateActual365Interest (gồm năm nhuận và ngày ngược thứ tự)
+  assert.equal(isValidIsoDate("2028-02-29"), true);
+  assert.equal(isValidIsoDate("2026-02-29"), false);
+  assert.equal(isValidIsoDate("2026-02-30"), false);
+
+  const leapFeb = calculateActual365Interest(662_226_194, 5.5, "2028-02-10", "2028-03-10");
+  assert.equal(leapFeb.isDateOrderInvalid, false);
+  assert.equal(leapFeb.dayCount, 29);
+  assert.equal(leapFeb.interest, Math.round((662_226_194 * 0.055 * 29) / 365));
+
+  const reverseDate = calculateActual365Interest(662_226_194, 5.5, "2026-11-10", "2026-11-05");
+  assert.equal(reverseDate.isDateOrderInvalid, true);
+  assert.equal(reverseDate.dayCount, 0);
+  assert.equal(reverseDate.interest, 0);
+
+  // Phát hiện lỗi thứ tự ngày trong schedule khi nhập ngày trả <= ngày kỳ trước
+  const invalidOrderSched = generateMortgageSchedule(
+    { ...base, periodOverrides: [{ period: 16, paidAt: "2026-11-08" }] },
+    "2026-11-14"
+  );
+  const badP16 = invalidOrderSched.rows.find((r) => r.period === 16)!;
+  assert.equal(badP16.isDateOrderInvalid, true);
+  assert.equal(badP16.interestStartDate, "2026-11-10");
+  assert.equal(badP16.dayCountUsed, 0);
+  assert.equal(badP16.interest, 0);
+
+  // applyActualPaymentDateOverrides tự xóa lãi sửa tay cũ ở kỳ #16 & #17 và ép tính Actual/365 ngay cả khi hợp đồng để THIRTY_360
+  const withStaleInterest: MortgageContract = {
+    ...base,
+    interestBasis: "THIRTY_360",
+    periodOverrides: [
+      { period: 16, interest: 1_111_111, principal: 3_056_000 },
+      { period: 17, interest: 2_222_222 },
+    ],
+  };
+  const syncedConfirmContract = applyActualPaymentDateOverrides(
+    withStaleInterest,
+    [16],
+    "2026-12-14"
+  );
+  const syncedConfirmSched = generateMortgageSchedule(syncedConfirmContract, "2026-11-14");
+  const confirmedP16 = syncedConfirmSched.rows.find((r) => r.period === 16)!;
+  const confirmedP17 = syncedConfirmSched.rows.find((r) => r.period === 17)!;
+
+  assert.equal(confirmedP16.dueDate, "2026-12-14");
+  assert.equal(confirmedP16.dayCountUsed, 34); // 2026-11-10 -> 2026-12-14
+  assert.equal(
+    confirmedP16.interest,
+    Math.round((confirmedP16.openingBalance * 0.055 * 34) / 365)
+  );
+  assert.equal(confirmedP17.dayCountUsed, 27); // 2026-12-14 -> 2027-01-10
+  assert.equal(
+    confirmedP17.interest,
+    Math.round((confirmedP17.openingBalance * 0.055 * 27) / 365)
+  );
 });
 
 test("simulateTermReductionStrategy mô phỏng giảm số năm vay từ trần 30 năm và chuyển động Lãi/Gốc trong dải chuyển", () => {

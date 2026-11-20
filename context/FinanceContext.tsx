@@ -90,6 +90,7 @@ import {
 } from "@/lib/authSecurity";
 import {
   MAX_MORTGAGE_TERM_MONTHS,
+  applyActualPaymentDateOverrides,
   createDefaultSkyOneLoan,
   generateMortgageSchedule,
   getTodayIsoDate,
@@ -2402,13 +2403,19 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     ): number => {
       if (periods.length === 0) return 0;
       const periodSet = new Set(periods);
-      const schedule = generateMortgageSchedule(skyoneLoan);
+      const paidDate = options?.paidAt || getTodayIsoDate();
+      // Tái lập lịch với Ngày trả thực tế để đảm bảo tiền lãi Actual/365 khớp tuyệt đối 100%
+      const effectiveContract = applyActualPaymentDateOverrides(
+        skyoneLoan,
+        periods,
+        paidDate
+      );
+      const schedule = generateMortgageSchedule(effectiveContract);
       const targets = schedule.rows.filter(
         (r) => periodSet.has(r.period) && r.status !== "PAID"
       );
       if (targets.length === 0) return 0;
 
-      const paidDate = options?.paidAt || getTodayIsoDate();
       let createdTxs: Transaction[] = [];
 
       if (options?.linkAccountId) {
@@ -2417,7 +2424,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           srcAcc?.owner && srcAcc.owner !== "SHARED" ? srcAcc.owner : "HUSBAND";
         const txInputs: TransactionInput[] = targets.map((row) => ({
           amount: row.totalPayment,
-          date: paidDate,
+          date: row.dueDate,
           type: "EXPENSE",
           categoryId: "cat_expense_rent",
           accountId: options.linkAccountId!,
@@ -2426,14 +2433,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           tag: "DEBT",
           note: `${skyoneLoan.projectName} · Kỳ #${row.period} (Gốc ${row.principal.toLocaleString(
             "vi-VN"
-          )}đ + Lãi ${row.interest.toLocaleString("vi-VN")}đ)`,
+          )}đ + Lãi ${row.interest.toLocaleString("vi-VN")}đ · ${row.dayCountUsed} ngày Actual/365)`,
         }));
         createdTxs = addTransactionsBatch(txInputs);
       }
 
       const newRecords: MortgagePaidInstallmentRecord[] = targets.map((row, idx) => ({
         period: row.period,
-        paidAt: paidDate,
+        paidAt: row.dueDate,
         paidPrincipal: row.principal,
         paidInterest: row.interest,
         appliedRate: row.appliedRate,
@@ -2447,9 +2454,32 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           ...prev.paidRecords,
           ...newRecords.filter((r) => !existingPeriods.has(r.period)),
         ].sort((a, b) => a.period - b.period);
+
+        // Làm sạch override paidAt/interest thừa trên các kỳ vừa chốt (vì đã lưu cứng vào paidRecords)
+        const confirmedSet = new Set(newRecords.map((r) => r.period));
+        const cleanedOverrides = (prev.periodOverrides || [])
+          .map((ov) => {
+            if (confirmedSet.has(ov.period)) {
+              return { ...ov, paidAt: undefined, interest: undefined };
+            }
+            if (confirmedSet.has(ov.period - 1) && ov.interest !== undefined) {
+              return { ...ov, interest: undefined };
+            }
+            return ov;
+          })
+          .filter(
+            (ov) =>
+              ov.principal !== undefined ||
+              ov.interest !== undefined ||
+              ov.appliedRate !== undefined ||
+              Boolean(ov.paidAt) ||
+              Boolean(ov.note)
+          );
+
         const next: MortgageContract = {
           ...prev,
           paidRecords: merged,
+          periodOverrides: cleanedOverrides,
           updatedAt: new Date().toISOString(),
         };
         queueCloudMutation({ type: "UPSERT_SKYONE_LOAN", payload: next });

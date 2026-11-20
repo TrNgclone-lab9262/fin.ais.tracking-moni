@@ -22,6 +22,7 @@ import {
 import {
   buildSkyOneAmortizationChartData,
   generateMortgageSchedule,
+  isValidIsoDate,
   MortgageScheduleRow,
   MortgageScheduleSummary,
   SkyOneTabSpecificMetrics,
@@ -185,6 +186,13 @@ export function SkyOneScheduleTab({
     setTimeout(() => setHighlightedPeriod(null), 3500);
   };
 
+  const hasAnyOverrideField = (ov: MortgagePeriodCashflowOverride) =>
+    ov.principal !== undefined ||
+    ov.interest !== undefined ||
+    ov.appliedRate !== undefined ||
+    Boolean(ov.paidAt) ||
+    Boolean(ov.note);
+
   const upsertOverride = (
     period: number,
     patch: Partial<MortgagePeriodCashflowOverride>
@@ -192,16 +200,83 @@ export function SkyOneScheduleTab({
     setDraftOverrides((prev) => {
       const idx = prev.findIndex((ov) => ov.period === period);
       if (idx === -1) {
-        return [...prev, { period, ...patch }].sort((a, b) => a.period - b.period);
+        const created: MortgagePeriodCashflowOverride = { period, ...patch };
+        if (!hasAnyOverrideField(created)) return prev;
+        return [...prev, created].sort((a, b) => a.period - b.period);
+      }
+      const merged: MortgagePeriodCashflowOverride = { ...prev[idx], ...patch };
+      if (!hasAnyOverrideField(merged)) {
+        return prev.filter((ov) => ov.period !== period);
       }
       const next = [...prev];
-      next[idx] = { ...next[idx], ...patch };
+      next[idx] = merged;
       return next;
+    });
+  };
+
+  const handlePaidDateChange = (period: number, nextDate: string) => {
+    const validOrUndefined = isValidIsoDate(nextDate) ? nextDate : undefined;
+    if (nextDate && !validOrUndefined) return;
+
+    setDraftOverrides((prev) => {
+      const map = new Map<number, MortgagePeriodCashflowOverride>(
+        prev.map((ov) => [ov.period, { ...ov }])
+      );
+
+      // Cập nhật paidAt cho kỳ hiện tại và tự động xóa số lãi nhập tay cũ để tính lại Actual/365 ngay
+      const current = map.get(period) || { period };
+      const updatedCurrent: MortgagePeriodCashflowOverride = {
+        ...current,
+        paidAt: validOrUndefined,
+        interest: undefined,
+      };
+      if (hasAnyOverrideField(updatedCurrent)) {
+        map.set(period, updatedCurrent);
+      } else {
+        map.delete(period);
+      }
+
+      // Tự động xóa lãi nhập tay cũ ở kỳ liền sau (period + 1) vì mốc ngày bắt đầu kỳ đó vừa đổi
+      const nextPeriod = period + 1;
+      const nextOv = map.get(nextPeriod);
+      if (nextOv && nextOv.interest !== undefined) {
+        const cleanedNext: MortgagePeriodCashflowOverride = {
+          ...nextOv,
+          interest: undefined,
+        };
+        if (hasAnyOverrideField(cleanedNext)) {
+          map.set(nextPeriod, cleanedNext);
+        } else {
+          map.delete(nextPeriod);
+        }
+      }
+
+      return Array.from(map.values()).sort((a, b) => a.period - b.period);
     });
   };
 
   const clearOverride = (period: number) => {
     setDraftOverrides((prev) => prev.filter((ov) => ov.period !== period));
+  };
+
+  const invalidDateRows = useMemo(
+    () => schedule.rows.filter((r) => r.isDateOrderInvalid),
+    [schedule.rows]
+  );
+
+  const buildInterestFormulaTooltip = (row: MortgageScheduleRow): string => {
+    const startLabel = formatDateVN(row.interestStartDate);
+    const endLabel = formatDateVN(row.dueDate);
+    if (row.isDateOrderInvalid) {
+      return `Ngày trả (${endLabel}) phải lớn hơn mốc trước (${startLabel}) để tính lãi Actual/365.`;
+    }
+    const baseText = `${formatVNDMasked(row.openingBalance, isPrivacyMode, false)} × ${row.appliedRate.toFixed(
+      2
+    )}% × ${row.dayCountUsed} ngày / 365 (${startLabel} → ${endLabel})`;
+    if (row.isVerified && !row.isCashflowOverridden) {
+      return `${baseText} · Đối soát sao kê BIDV`;
+    }
+    return baseText;
   };
 
   const togglePeriodSelection = (period: number) => {
@@ -424,8 +499,12 @@ export function SkyOneScheduleTab({
                 <button
                   type="button"
                   data-testid="skyone-schedule-save-lock-btn"
-                  onClick={() => onSaveAndLockOverrides(draftOverrides)}
-                  className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  disabled={invalidDateRows.length > 0}
+                  onClick={() => {
+                    if (invalidDateRows.length > 0) return;
+                    onSaveAndLockOverrides(draftOverrides);
+                  }}
+                  className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#1E3A8A] hover:bg-blue-900 dark:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Lưu &amp; Khóa lại</span>
@@ -437,27 +516,50 @@ export function SkyOneScheduleTab({
 
         {/* Status notice for per-period lock */}
         {!isCashflowLocked ? (
-          <div className="rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-3 py-2 text-xs text-indigo-950 dark:text-indigo-100 flex flex-wrap items-center justify-between gap-2 tabular-nums">
-            <span>
-              Đang mở khóa sửa từng kỳ: nhập trực tiếp <strong>Lãi suất (%)</strong>,{" "}
-              <strong>Trả Gốc</strong>, <strong>Lãi trả nợ</strong> bên dưới (tham số gốc hợp đồng chỉnh tại tab{" "}
-              <strong>Hợp đồng</strong>).
-            </span>
-            <span className="font-bold">
-              {draftOverrides.length} kỳ chỉnh tay
-              {interestDelta !== 0 && (
-                <span
-                  className={`ml-1.5 ${
-                    interestDelta < 0
-                      ? "text-emerald-700 dark:text-emerald-300"
-                      : "text-amber-700 dark:text-amber-300"
-                  }`}
-                >
-                  · Lãi {interestDelta > 0 ? "+" : "-"}
-                  {formatVNDMasked(Math.abs(interestDelta), isPrivacyMode)}
-                </span>
-              )}
-            </span>
+          <div className="space-y-2">
+            <div className="rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-3 py-2 text-xs text-indigo-950 dark:text-indigo-100 flex flex-wrap items-center justify-between gap-2 tabular-nums">
+              <span>
+                Đang mở khóa sửa từng kỳ: chỉnh trực tiếp <strong>Ngày trả</strong> (tự tính lại lãi Actual/365 cho kỳ đó và kỳ liền kề),{" "}
+                <strong>Lãi suất (%)</strong>, <strong>Trả Gốc</strong> (mặc định 3.056.000đ),{" "}
+                <strong>Lãi trả nợ</strong> bên dưới (tham số gốc hợp đồng chỉnh tại tab{" "}
+                <strong>Hợp đồng</strong>).
+              </span>
+              <span className="font-bold">
+                {draftOverrides.length} kỳ chỉnh tay
+                {interestDelta !== 0 && (
+                  <span
+                    className={`ml-1.5 ${
+                      interestDelta < 0
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-amber-700 dark:text-amber-300"
+                    }`}
+                  >
+                    · Lãi {interestDelta > 0 ? "+" : "-"}
+                    {formatVNDMasked(Math.abs(interestDelta), isPrivacyMode)}
+                  </span>
+                )}
+              </span>
+            </div>
+            {invalidDateRows.length > 0 && (
+              <div
+                role="alert"
+                data-testid="schedule-invalid-date-alert"
+                className="rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 px-3 py-2 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2 tabular-nums"
+              >
+                <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-extrabold">Phát hiện ngày trả không hợp lệ: </span>
+                  {invalidDateRows
+                    .slice(0, 3)
+                    .map(
+                      (r) =>
+                        `Kỳ #${r.period} phải sau ${formatDateVN(r.interestStartDate)}`
+                    )
+                    .join(" · ")}
+                  {invalidDateRows.length > 3 && ` (+${invalidDateRows.length - 3} kỳ khác)`}. Vui lòng chỉnh lại ngày trước khi lưu.
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
@@ -713,7 +815,7 @@ export function SkyOneScheduleTab({
                   <tr>
                     <th className="py-3 pl-4 pr-2 w-8" />
                     <th className="py-3 px-2">Kỳ</th>
-                    <th className="py-3 px-2">Ngày hạn</th>
+                    <th className="py-3 px-2">Ngày trả</th>
                     <th className="py-3 px-2">Giai đoạn</th>
                     <th className="py-3 px-2 text-right">Lãi suất</th>
                     <th className="py-3 px-2 text-right">Dư đầu kỳ</th>
@@ -785,7 +887,32 @@ export function SkyOneScheduleTab({
                             )}
                           </td>
                           <td className="py-2.5 px-2 text-slate-700 dark:text-slate-300 tabular-nums whitespace-nowrap">
-                            {formatDateVN(row.dueDate)}
+                            {!isCashflowLocked ? (
+                              <div>
+                                <input
+                                  type="date"
+                                  aria-label={`Ngày trả kỳ ${row.period}`}
+                                  aria-invalid={row.isDateOrderInvalid}
+                                  data-testid={`schedule-paid-date-input-${row.period}`}
+                                  value={ov?.paidAt || row.dueDate}
+                                  onChange={(e) =>
+                                    handlePaidDateChange(row.period, e.target.value)
+                                  }
+                                  className={`w-[128px] h-8 px-1.5 rounded border bg-white dark:bg-slate-900 text-xs font-semibold tabular-nums ${
+                                    row.isDateOrderInvalid
+                                      ? "border-rose-500 text-rose-700 dark:text-rose-300"
+                                      : "border-indigo-300 dark:border-indigo-700 text-slate-800 dark:text-slate-100"
+                                  }`}
+                                />
+                                {row.isDateOrderInvalid && (
+                                  <span className="block text-[10px] font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                                    Sau {formatDateVN(row.interestStartDate)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              formatDateVN(row.dueDate)
+                            )}
                           </td>
                           <td className="py-2.5 px-2 whitespace-nowrap">
                             <span
@@ -859,7 +986,10 @@ export function SkyOneScheduleTab({
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-2 text-right font-semibold text-amber-700 dark:text-amber-300 tabular-nums whitespace-nowrap">
+                          <td
+                            title={buildInterestFormulaTooltip(row)}
+                            className="py-2.5 px-2 text-right font-semibold text-amber-700 dark:text-amber-300 tabular-nums whitespace-nowrap"
+                          >
                             {!isCashflowLocked ? (
                               <input
                                 type="number"
@@ -877,6 +1007,17 @@ export function SkyOneScheduleTab({
                             ) : (
                               formatVNDMasked(row.interest, isPrivacyMode, false)
                             )}
+                            <span
+                              className={`block text-[10px] font-medium mt-0.5 tabular-nums ${
+                                row.isDateOrderInvalid
+                                  ? "text-rose-600 dark:text-rose-400 font-bold"
+                                  : "text-slate-500 dark:text-slate-400"
+                              }`}
+                            >
+                              {row.isDateOrderInvalid
+                                ? "Ngày lỗi (0 ngày)"
+                                : `${row.dayCountUsed} ngày`}
+                            </span>
                           </td>
                           <td className="py-2.5 px-2 text-right font-black text-slate-900 dark:text-slate-100 tabular-nums whitespace-nowrap">
                             {formatVNDMasked(row.totalPayment, isPrivacyMode, false)}
@@ -976,7 +1117,7 @@ export function SkyOneScheduleTab({
                         )}
                         <div>
                           <span className="text-sm font-black text-slate-900 dark:text-slate-100 tabular-nums">
-                            Kỳ #{row.period} · {formatDateVN(row.dueDate)}
+                            Kỳ #{row.period} · Ngày trả {formatDateVN(row.dueDate)}
                           </span>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                             {row.stage === "FIXED" ? "Lãi cố định" : "Lãi thả nổi"} ·{" "}
@@ -991,6 +1132,39 @@ export function SkyOneScheduleTab({
                       </div>
                       {renderStatusLabel(row)}
                     </div>
+
+                    {!isCashflowLocked && (
+                      <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <label
+                            htmlFor={`mobile-paid-date-${row.period}`}
+                            className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 shrink-0"
+                          >
+                            Ngày trả
+                          </label>
+                          <input
+                            id={`mobile-paid-date-${row.period}`}
+                            type="date"
+                            aria-label={`Ngày trả kỳ ${row.period}`}
+                            aria-invalid={row.isDateOrderInvalid}
+                            value={ov?.paidAt || row.dueDate}
+                            onChange={(e) =>
+                              handlePaidDateChange(row.period, e.target.value)
+                            }
+                            className={`min-h-[38px] px-2 rounded border bg-white dark:bg-slate-900 text-xs font-semibold tabular-nums ${
+                              row.isDateOrderInvalid
+                                ? "border-rose-500 text-rose-700 dark:text-rose-300"
+                                : "border-indigo-300 dark:border-indigo-700 text-slate-800 dark:text-slate-100"
+                            }`}
+                          />
+                        </div>
+                        {row.isDateOrderInvalid && (
+                          <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 text-right tabular-nums">
+                            Ngày trả phải sau {formatDateVN(row.interestStartDate)}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {row.disbursedInPeriod > 0 && (
                       <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2.5 py-1.5 tabular-nums">
@@ -1021,8 +1195,10 @@ export function SkyOneScheduleTab({
                           </span>
                         )}
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Lãi trả nợ</span>
+                      <div title={buildInterestFormulaTooltip(row)}>
+                        <span className="text-[10px] text-slate-400 block">
+                          Trả Lãi
+                        </span>
                         {!isCashflowLocked ? (
                           <input
                             type="number"
@@ -1042,6 +1218,17 @@ export function SkyOneScheduleTab({
                             {formatVNDMasked(row.interest, isPrivacyMode)}
                           </span>
                         )}
+                        <span
+                          className={`block text-[10px] font-medium mt-0.5 tabular-nums ${
+                            row.isDateOrderInvalid
+                              ? "text-rose-600 dark:text-rose-400 font-bold"
+                              : "text-slate-500 dark:text-slate-400"
+                          }`}
+                        >
+                          {row.isDateOrderInvalid
+                            ? "Ngày lỗi (0 ngày)"
+                            : `${row.dayCountUsed} ngày`}
+                        </span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 block">Tổng đóng</span>

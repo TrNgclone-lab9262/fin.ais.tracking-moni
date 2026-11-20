@@ -34,6 +34,8 @@ export interface MortgageScheduleRow {
   status: MortgageInstallmentStatus;
   daysUntilDue: number;
   dayCountUsed: number;
+  interestStartDate: string;
+  isDateOrderInvalid: boolean;
   paidRecord?: MortgagePaidInstallmentRecord;
   isVerified: boolean;
   verifiedSource?: string;
@@ -157,12 +159,127 @@ export function addMonthsToDay(
   return `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
 }
 
+export function isValidIsoDate(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const [y, m, d] = dateStr.split("-").map((n) => parseInt(n, 10));
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  return (
+    utc.getUTCFullYear() === y &&
+    utc.getUTCMonth() === m - 1 &&
+    utc.getUTCDate() === d
+  );
+}
+
 export function diffDaysIso(fromDateStr: string, toDateStr: string): number {
   const [fy, fm, fd] = fromDateStr.split("-").map((n) => parseInt(n, 10));
   const [ty, tm, td] = toDateStr.split("-").map((n) => parseInt(n, 10));
   const fromUtc = Date.UTC(fy, (fm || 1) - 1, fd || 1);
   const toUtc = Date.UTC(ty, (tm || 1) - 1, td || 1);
   return Math.round((toUtc - fromUtc) / (1000 * 60 * 60 * 24));
+}
+
+export interface Actual365InterestResult {
+  dayCount: number;
+  interest: number;
+  isDateOrderInvalid: boolean;
+}
+
+/**
+ * Chuẩn tính lãi ngân hàng Actual/365 dựa trên mốc ngày thanh toán thực tế.
+ * Công thức: Math.round(openingBalance × (annualRatePercent / 100) × actualDays / 365).
+ */
+export function calculateActual365Interest(
+  openingBalance: number,
+  annualRatePercent: number,
+  fromDateIso: string,
+  toDateIso: string
+): Actual365InterestResult {
+  if (!isValidIsoDate(fromDateIso) || !isValidIsoDate(toDateIso)) {
+    return { dayCount: 0, interest: 0, isDateOrderInvalid: true };
+  }
+  const rawDays = diffDaysIso(fromDateIso, toDateIso);
+  if (rawDays <= 0) {
+    return { dayCount: 0, interest: 0, isDateOrderInvalid: true };
+  }
+  const safeBalance = Math.max(0, openingBalance);
+  const safeRate = Math.max(0, annualRatePercent);
+  const interest = Math.round((safeBalance * (safeRate / 100) * rawDays) / 365);
+  return {
+    dayCount: rawDays,
+    interest,
+    isDateOrderInvalid: false,
+  };
+}
+
+/**
+ * Áp dụng ngày trả thực tế (paidAt) cho kỳ mục tiêu khi xác nhận đóng hoặc xem trước,
+ * đồng thời tự động gỡ bỏ lãi sửa tay cũ ở kỳ đó và kỳ liền kề để kích hoạt tính lại Actual/365.
+ */
+export function applyActualPaymentDateOverrides(
+  contract: MortgageContract,
+  periods: number[],
+  paidAt: string
+): MortgageContract {
+  if (periods.length === 0 || !isValidIsoDate(paidAt)) return contract;
+
+  const sortedPeriods = [...new Set(periods)].sort((a, b) => a - b);
+  const existingOverrides = [...(contract.periodOverrides || [])];
+  const overrideMap = new Map<number, MortgagePeriodCashflowOverride>(
+    existingOverrides.map((ov) => [ov.period, { ...ov }])
+  );
+
+  // Với xác nhận đơn kỳ: gắn trực tiếp paidAt vào kỳ đó và xóa lãi sửa tay cũ ở kỳ P và P+1.
+  // Với xác nhận gộp nhiều kỳ: chỉ gắn paidAt vào kỳ cuối nếu hợp lệ sau kỳ kế cuối để tránh 0 ngày.
+  let targetPeriodForPaidAt: number | null = null;
+  if (sortedPeriods.length === 1) {
+    targetPeriodForPaidAt = sortedPeriods[0];
+  } else {
+    const baseSched = generateMortgageSchedule(contract);
+    const prevTargetPeriod = sortedPeriods[sortedPeriods.length - 2];
+    const lastTargetPeriod = sortedPeriods[sortedPeriods.length - 1];
+    const prevRow = baseSched.rows.find((r) => r.period === prevTargetPeriod);
+    if (prevRow && diffDaysIso(prevRow.dueDate, paidAt) > 0) {
+      targetPeriodForPaidAt = lastTargetPeriod;
+    }
+  }
+
+  if (targetPeriodForPaidAt !== null) {
+    const currentOv = overrideMap.get(targetPeriodForPaidAt) || {
+      period: targetPeriodForPaidAt,
+    };
+    const nextCurrent: MortgagePeriodCashflowOverride = {
+      ...currentOv,
+      paidAt,
+      interest: undefined,
+    };
+    overrideMap.set(targetPeriodForPaidAt, nextCurrent);
+
+    const nextPeriod = targetPeriodForPaidAt + 1;
+    const nextPeriodOv = overrideMap.get(nextPeriod);
+    if (nextPeriodOv && nextPeriodOv.interest !== undefined) {
+      const cleanedNext: MortgagePeriodCashflowOverride = {
+        ...nextPeriodOv,
+        interest: undefined,
+      };
+      const hasAnyField =
+        cleanedNext.principal !== undefined ||
+        cleanedNext.appliedRate !== undefined ||
+        Boolean(cleanedNext.paidAt) ||
+        Boolean(cleanedNext.note);
+      if (hasAnyField) {
+        overrideMap.set(nextPeriod, cleanedNext);
+      } else {
+        overrideMap.delete(nextPeriod);
+      }
+    }
+  }
+
+  return {
+    ...contract,
+    periodOverrides: Array.from(overrideMap.values()).sort(
+      (a, b) => a.period - b.period
+    ),
+  };
 }
 
 export function getPenaltyRateForYear(
@@ -246,6 +363,7 @@ export function generateMortgageSchedule(
   let overdueCount = 0;
   let dueSoonCount = 0;
   let prevDueDateForDays = contract.disbursementDate;
+  let prevDateWasOverridden = false;
 
   for (
     let period = 1;
@@ -258,14 +376,23 @@ export function generateMortgageSchedule(
       period,
       contract.paymentDayOfMonth
     );
-    const dueDate = periodOverride?.paidAt || defaultDueDate;
-    const dayCountUsed = Math.max(1, diffDaysIso(prevDueDateForDays, dueDate));
+    const paidRec = paidMap.get(period);
+    const basePaymentDate = paidRec?.paidAt || defaultDueDate;
+    const hasCustomDateOverride = Boolean(
+      periodOverride?.paidAt && isValidIsoDate(periodOverride.paidAt)
+    );
+    const isDateOverridden = Boolean(
+      hasCustomDateOverride && periodOverride?.paidAt !== basePaymentDate
+    );
+    const dueDate = hasCustomDateOverride
+      ? periodOverride!.paidAt!
+      : basePaymentDate;
+    const interestStartDate = prevDueDateForDays;
     const monthKey = dueDate.slice(0, 7);
     const yearIndex = Math.ceil(period / 12);
     const stage: MortgageStage =
       period <= effectiveFixedMonths ? "FIXED" : "FLOATING";
 
-    const paidRec = paidMap.get(period);
     const openingBalance = remainingBalance;
 
     let appliedRate =
@@ -279,30 +406,10 @@ export function generateMortgageSchedule(
     let interest = 0;
 
     if (paidRec) {
-      // Preserve historical snapshot unless explicitly overridden by unlocked cashflow edit
       appliedRate =
         periodOverride?.appliedRate !== undefined
           ? periodOverride.appliedRate
           : paidRec.appliedRate;
-      principal = Math.min(
-        openingBalance,
-        Math.max(
-          0,
-          Math.round(
-            periodOverride?.principal !== undefined
-              ? periodOverride.principal
-              : paidRec.paidPrincipal
-          )
-        )
-      );
-      interest = Math.max(
-        0,
-        Math.round(
-          periodOverride?.interest !== undefined
-            ? periodOverride.interest
-            : paidRec.paidInterest
-        )
-      );
     } else {
       const activeAdj = [...sortedAdjustments]
         .reverse()
@@ -318,13 +425,52 @@ export function generateMortgageSchedule(
         isCustomRateAdjusted = true;
         rateNote = periodOverride.note || "Điều chỉnh lãi suất thủ công";
       }
+    }
 
+    const actual365 = calculateActual365Interest(
+      openingBalance,
+      appliedRate,
+      interestStartDate,
+      dueDate
+    );
+    const dayCountUsed = actual365.dayCount;
+    const isDateOrderInvalid = actual365.isDateOrderInvalid;
+
+    if (paidRec) {
+      // Preserve historical snapshot unless explicitly overridden or payment date / rate changed
+      principal = Math.min(
+        openingBalance,
+        Math.max(
+          0,
+          Math.round(
+            periodOverride?.principal !== undefined
+              ? periodOverride.principal
+              : paidRec.paidPrincipal
+          )
+        )
+      );
       if (periodOverride?.interest !== undefined) {
         interest = Math.max(0, Math.round(periodOverride.interest));
-      } else if (contract.interestBasis === "ACTUAL_365") {
-        interest = Math.round(
-          (openingBalance * (appliedRate / 100) * dayCountUsed) / 365
-        );
+      } else if (isDateOverridden || prevDateWasOverridden) {
+        // Khi Ngày trả thay đổi (kỳ này hoặc kỳ liền trước), luôn tính theo chuẩn Actual/365 tuyệt đối
+        interest = actual365.interest;
+      } else if (periodOverride?.appliedRate !== undefined) {
+        interest =
+          contract.interestBasis === "THIRTY_360"
+            ? Math.round((openingBalance * (appliedRate / 100)) / 12)
+            : actual365.interest;
+      } else {
+        interest = Math.max(0, Math.round(paidRec.paidInterest));
+      }
+    } else {
+      if (periodOverride?.interest !== undefined) {
+        interest = Math.max(0, Math.round(periodOverride.interest));
+      } else if (
+        isDateOverridden ||
+        prevDateWasOverridden ||
+        contract.interestBasis !== "THIRTY_360"
+      ) {
+        interest = actual365.interest;
       } else {
         interest = Math.round((openingBalance * (appliedRate / 100)) / 12);
       }
@@ -426,6 +572,8 @@ export function generateMortgageSchedule(
       status,
       daysUntilDue,
       dayCountUsed,
+      interestStartDate,
+      isDateOrderInvalid,
       paidRecord: paidRec,
       isVerified: Boolean(paidRec?.isVerified),
       verifiedSource: paidRec?.verifiedSource,
@@ -434,7 +582,8 @@ export function generateMortgageSchedule(
     });
 
     remainingBalance = closingBalance;
-    prevDueDateForDays = dueDate;
+    prevDueDateForDays = isValidIsoDate(dueDate) ? dueDate : basePaymentDate;
+    prevDateWasOverridden = isDateOverridden;
   }
 
   // Aggregate by Loan Year for Recharts
@@ -947,11 +1096,11 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
   tranche2PlannedAfterPeriod: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedAfterPeriod,
   tranche2PlannedDate: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.tranche2PlannedDate,
   pinkBook5PctAmount: SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount,
-  openingBalanceBeforeDec2025: 698_898_193,
-  verifiedRemainingBalanceNov2026: 662_226_193,
-  initial3PeriodsPrincipal: 9_168_001,
+  openingBalanceBeforeDec2025: 698_898_194,
+  verifiedRemainingBalanceNov2026: 662_226_194,
+  initial3PeriodsPrincipal: 9_168_000,
   verifiedPaidPrincipal12M: 36_672_000,
-  verifiedPaidPrincipal15M: 45_840_001,
+  verifiedPaidPrincipal15M: 45_840_000,
   verifiedPaidInterest12M: 37_501_005,
   verifiedTotalCashPaid12M: 74_173_005,
   fixedInterestRate: 5.5,
@@ -968,15 +1117,15 @@ export const REAL_BIDV_SKYONE_SNAPSHOT = {
 } as const;
 
 export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
-  // 3 kỳ gốc đầu sau giải ngân Đợt 1 (708.066.194 đ - 9.168.001 đ = 698.898.193 đ đầu sao kê 10/12/2025)
+  // 3 kỳ gốc đều 3.056.000đ sau giải ngân Đợt 1 (708.066.194 đ - 9.168.000 đ = 698.898.194 đ đầu kỳ #4)
   {
     period: 1,
     paidAt: "2025-09-10",
-    paidPrincipal: 3_056_001,
+    paidPrincipal: 3_056_000,
     paidInterest: 0,
     appliedRate: 5.5,
     isVerified: false,
-    note: "Kỳ #1 sau giải ngân Đợt 1 (26/08/2025 · Gốc cố định trước sao kê 10/12/2025)",
+    note: "Kỳ #1 sau giải ngân Đợt 1 (26/08/2025 · Gốc cố định 3.056.000đ/tháng)",
   },
   {
     period: 2,
@@ -985,7 +1134,7 @@ export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
     paidInterest: 0,
     appliedRate: 5.5,
     isVerified: false,
-    note: "Kỳ #2 sau giải ngân Đợt 1 (Gốc cố định trước sao kê 10/12/2025)",
+    note: "Kỳ #2 sau giải ngân Đợt 1 (Gốc cố định 3.056.000đ/tháng)",
   },
   {
     period: 3,
@@ -994,21 +1143,21 @@ export const VERIFIED_BIDV_PAID_RECORDS: MortgagePaidInstallmentRecord[] = [
     paidInterest: 0,
     appliedRate: 5.5,
     isVerified: false,
-    note: "Kỳ #3 sau giải ngân Đợt 1 · Khớp dư nợ đầu sao kê 10/12/2025: 698.898.193 đ",
+    note: "Kỳ #3 sau giải ngân Đợt 1 · Dư nợ chuyển sang kỳ #4: 698.898.194 đ",
   },
   // 12 kỳ sao kê BIDV SmartBanking thực tế từ 10/12/2025 đến 10/11/2026
-  { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 695.842.193 đ" },
-  { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 692.786.193 đ" },
-  { period: 6, paidAt: "2026-02-10", paidPrincipal: 3_056_000, paidInterest: 3_027_381, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 689.730.193 đ" },
-  { period: 7, paidAt: "2026-03-10", paidPrincipal: 3_056_000, paidInterest: 2_910_095, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 686.674.193 đ" },
-  { period: 8, paidAt: "2026-04-11", paidPrincipal: 3_056_000, paidInterest: 3_194_351, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 683.618.193 đ" },
-  { period: 9, paidAt: "2026-05-11", paidPrincipal: 3_056_000, paidInterest: 3_193_800, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 680.562.193 đ" },
-  { period: 10, paidAt: "2026-06-10", paidPrincipal: 3_056_000, paidInterest: 3_076_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 677.506.193 đ" },
-  { period: 11, paidAt: "2026-07-10", paidPrincipal: 3_056_000, paidInterest: 3_062_699, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 674.450.193 đ" },
-  { period: 12, paidAt: "2026-08-10", paidPrincipal: 3_056_000, paidInterest: 3_150_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 671.394.193 đ" },
-  { period: 13, paidAt: "2026-09-10", paidPrincipal: 3_056_000, paidInterest: 3_136_239, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 668.338.193 đ" },
-  { period: 14, paidAt: "2026-10-12", paidPrincipal: 3_056_000, paidInterest: 3_222_671, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 665.282.193 đ" },
-  { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.193 đ" },
+  { period: 4, paidAt: "2025-12-10", paidPrincipal: 3_056_000, paidInterest: 3_159_403, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 5, paidAt: "2026-01-12", paidPrincipal: 3_056_000, paidInterest: 3_460_146, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 6, paidAt: "2026-02-10", paidPrincipal: 3_056_000, paidInterest: 3_027_381, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 7, paidAt: "2026-03-10", paidPrincipal: 3_056_000, paidInterest: 2_910_095, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 8, paidAt: "2026-04-11", paidPrincipal: 3_056_000, paidInterest: 3_194_351, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 9, paidAt: "2026-05-11", paidPrincipal: 3_056_000, paidInterest: 3_193_800, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 10, paidAt: "2026-06-10", paidPrincipal: 3_056_000, paidInterest: 3_076_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 11, paidAt: "2026-07-10", paidPrincipal: 3_056_000, paidInterest: 3_062_699, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 12, paidAt: "2026-08-10", paidPrincipal: 3_056_000, paidInterest: 3_150_514, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 13, paidAt: "2026-09-10", paidPrincipal: 3_056_000, paidInterest: 3_136_239, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 14, paidAt: "2026-10-12", paidPrincipal: 3_056_000, paidInterest: 3_222_671, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Gốc cố định 3.056.000 đ" },
+  { period: 15, paidAt: "2026-11-10", paidPrincipal: 3_056_000, paidInterest: 2_907_192, appliedRate: 5.5, isVerified: true, verifiedSource: "BIDV SmartBanking · TK 8866102943", note: "Sao kê BIDV TK 8866102943 · Dư nợ sau kỳ: 662.226.194 đ" },
 ];
 
 export function hasPinkBook5PctEnabled(contract: MortgageContract): boolean {
@@ -1141,8 +1290,13 @@ export function reconcileBidvSkyOneContract(
 
   const isLegacyZeroInitialPeriodsProfile =
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
-    contract.loanAmount === REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025 &&
+    (contract.loanAmount === 698_898_193 ||
+      contract.loanAmount === REAL_BIDV_SKYONE_SNAPSHOT.openingBalanceBeforeDec2025) &&
     contract.paidRecords.some((r) => r.period === 1 && r.paidPrincipal === 0);
+
+  const isLegacyPeriod1RoundingProfile =
+    contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
+    contract.paidRecords.some((r) => r.period === 1 && r.paidPrincipal === 3_056_001);
 
   const hasLongUnitCodeLabel =
     contract.accountNumber === REAL_BIDV_SKYONE_SNAPSHOT.accountNumber &&
@@ -1153,6 +1307,7 @@ export function reconcileBidvSkyOneContract(
     (!isRealBidvProfileSynced(contract) ||
       isLegacyEstimatedSkyOneProperty ||
       isLegacyZeroInitialPeriodsProfile ||
+      isLegacyPeriod1RoundingProfile ||
       hasLongUnitCodeLabel);
 
   if (!isLegacyMockDefault && !isBidvUnverifiedOrIncomplete) {
