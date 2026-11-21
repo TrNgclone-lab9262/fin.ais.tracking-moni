@@ -397,6 +397,27 @@ export const InteriorCatalogKeySchema = z.enum([
   "floor_plant",
   "balcony_planter",
   "wc_hafele_set",
+  "sofa_bed_smart",
+  "tatami_podium_bed",
+  "folding_dining_table",
+  "vanity_desk_mirror",
+  "mini_kitchen_island",
+  "fridge_top_cabinet",
+  "dual_monitor_arm",
+  "pc_tower_stand",
+  "desk_lamp_screenbar",
+  "rolling_file_cabinet",
+  "pendant_dining_light",
+  "floor_arc_lamp",
+  "wall_art_duo",
+  "arch_full_mirror",
+  "air_purifier",
+  "robot_vacuum_dock",
+  "dishwasher_compact",
+  "balcony_bistro_set",
+  "beanbag_lounger",
+  "loggia_drying_rack",
+  "custom_glb_model",
 ]);
 
 export const InteriorMaterialFinishSchema = z.enum([
@@ -409,6 +430,45 @@ export const InteriorMaterialFinishSchema = z.enum([
   "WHITE_MARBLE",
   "BRUSHED_TITANIUM",
 ]);
+
+export const InteriorMountTypeSchema = z.enum(["FLOOR", "WALL", "SURFACE"]);
+
+export const InteriorWallModeSchema = z.enum([
+  "SOLID",
+  "OPEN",
+  "GLASS_PARTITION",
+  "WOOD_SLAT",
+]);
+
+export const InteriorWallAccentFinishSchema = z.enum([
+  "DEFAULT",
+  "CONCRETE_EFFECT",
+  "WOOD_SLAT_PANEL",
+  "MARBLE_PVC",
+  "TINTED_MIRROR",
+  "SAGE_PAINT",
+  "WARM_BEIGE_PAINT",
+]);
+
+export const InteriorWallOverrideSchema = z.object({
+  mode: InteriorWallModeSchema.optional(),
+  accentFinish: InteriorWallAccentFinishSchema.optional(),
+});
+
+export const InteriorDoorModeSchema = z.enum([
+  "SWING_90",
+  "SLIDING_POCKET",
+  "OPEN_ARCH",
+]);
+
+export const InteriorFloorPatternSchema = z.enum(["STRAIGHT", "HERRINGBONE"]);
+
+export const InteriorLightingZonesSchema = z.object({
+  living: z.boolean(),
+  kitchen: z.boolean(),
+  master: z.boolean(),
+  room05: z.boolean(),
+});
 
 export const InteriorBoqPaymentStageSchema = z.enum([
   "DEPOSIT",
@@ -464,6 +524,10 @@ export const InteriorFurnitureItemSchema = z.object({
     height: z.number().positive(),
   }),
   materialFinish: InteriorMaterialFinishSchema,
+  mountType: InteriorMountTypeSchema.optional(),
+  elevationCm: z.number().min(0).max(300).optional(),
+  customGlbId: z.string().optional(),
+  customGlbName: z.string().optional(),
   isLocked: z.boolean().optional(),
   pricingRule: z.enum(["FIXED_UNIT", "PER_LINEAR_METER", "PER_SQUARE_METER"]),
   unitPriceVnd: z.number().nonnegative(),
@@ -508,6 +572,11 @@ export const InteriorDesignScenarioSchema = z.object({
   items: z.array(InteriorFurnitureItemSchema),
   extraBoqItems: z.array(InteriorExtraBoqItemSchema),
   mepPoints: z.array(InteriorMepPointSchema).optional(),
+  wallOverrides: z.record(z.string(), InteriorWallOverrideSchema).optional(),
+  doorOverrides: z.record(z.string(), InteriorDoorModeSchema).optional(),
+  roomFloorOverrides: z.record(z.string(), InteriorFloorPatternSchema).optional(),
+  lightingZones: InteriorLightingZonesSchema.optional(),
+  curtainOpenRatio: z.number().min(0).max(1).optional(),
   updatedAt: z.string(),
 });
 

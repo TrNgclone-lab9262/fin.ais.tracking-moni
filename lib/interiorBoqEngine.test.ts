@@ -178,11 +178,21 @@ test("resolveFinishForStylePreset preserves developer finishes and updates wood 
   assert.equal(resolveFinishForStylePreset(kitchen, "MINIMALIST_SLATE"), kitchen.materialFinish);
 });
 
-test("Zod InteriorDesignScenarioSchema validates new MEP, vendor metadata, and multi-tranche payments while staying backwards compatible", () => {
+test("Zod InteriorDesignScenarioSchema validates architecture overrides, lighting, mountType, custom GLB, MEP & payments while staying backwards compatible", () => {
   const scB = createScenarioBDualGrowthStudio();
+  scB.wallOverrides = {
+    w_room05_corridor: { mode: "GLASS_PARTITION", accentFinish: "DEFAULT" },
+    w_east_main: { accentFinish: "WOOD_SLAT_PANEL" },
+  };
+  scB.doorOverrides = { op_room05_door: "SLIDING_POCKET" };
+  scB.roomFloorOverrides = { room_master_bed: "HERRINGBONE" };
+  scB.lightingZones = { living: true, kitchen: false, master: true, room05: true };
+  scB.curtainOpenRatio = 0.5;
   scB.items[0].vendorName = "Xưởng An Cường";
   scB.items[0].leadTimeDays = 14;
   scB.items[0].warrantyMonths = 24;
+  scB.items[0].mountType = "FLOOR";
+  scB.items[0].elevationCm = 0;
   scB.items[0].payments = [
     {
       id: "pay_zod_1",
@@ -194,12 +204,57 @@ test("Zod InteriorDesignScenarioSchema validates new MEP, vendor metadata, and m
       linkedTransactionId: "tx_zod_1",
     },
   ];
+  scB.items.push({
+    ...scB.items[0],
+    id: "it_custom_glb_test",
+    catalogKey: "custom_glb_model",
+    name: "Ghế Lounge Custom",
+    mountType: "FLOOR",
+    elevationCm: 0,
+    customGlbId: "glb_123456",
+    customGlbName: "lounge.glb",
+  });
 
   const parsedModern = InteriorDesignScenarioSchema.safeParse(scB);
   assert.equal(parsedModern.success, true);
 
-  // Backwards compatibility: strip mepPoints and optional fields
-  const legacyScenario = { ...scB, mepPoints: undefined };
+  // Backwards compatibility: strip mepPoints and all new architecture/lighting optional fields
+  const legacyScenario = {
+    ...scB,
+    items: scB.items.filter((i) => i.id !== "it_custom_glb_test"),
+    mepPoints: undefined,
+    wallOverrides: undefined,
+    doorOverrides: undefined,
+    roomFloorOverrides: undefined,
+    lightingZones: undefined,
+    curtainOpenRatio: undefined,
+  };
   const parsedLegacy = InteriorDesignScenarioSchema.safeParse(legacyScenario);
   assert.equal(parsedLegacy.success, true);
 });
+
+test("Architecture customization (Glass partition, Accent Wall, Sliding door, Herringbone floor) auto-updates BOQ renovation subtotal", () => {
+  const base = createScenarioBDualGrowthStudio();
+  const baseBoq = calculateScenarioBoq(base);
+
+  const customized = createScenarioBDualGrowthStudio();
+  customized.wallOverrides = {
+    w_room05_corridor: { mode: "GLASS_PARTITION" }, // +8,500,000
+    w_east_main: { accentFinish: "WOOD_SLAT_PANEL" }, // +5,400,000
+  };
+  customized.doorOverrides = {
+    op_room05_door: "SLIDING_POCKET", // +4,500,000
+  };
+  customized.roomFloorOverrides = {
+    room_master_bed: "HERRINGBONE", // +4,800,000
+  };
+
+  const customBoq = calculateScenarioBoq(customized);
+  const expectedDeltaSubtotal = 8_500_000 + 5_400_000 + 4_500_000 + 4_800_000;
+  assert.equal(customBoq.subtotalNewPurchase - baseBoq.subtotalNewPurchase, expectedDeltaSubtotal);
+  assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_wall_mode_")));
+  assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_wall_accent_")));
+  assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_door_")));
+  assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_floor_")));
+});
+

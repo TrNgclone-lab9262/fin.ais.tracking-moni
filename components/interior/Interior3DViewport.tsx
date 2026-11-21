@@ -15,10 +15,23 @@ import {
   Layers,
   AlertTriangle,
   Zap,
+  Maximize2,
+  Minimize2,
+  Lightbulb,
+  Blinds,
+  Aperture,
+  Armchair,
+  Hammer,
 } from "lucide-react";
-import { InteriorDesignScenario } from "@/types/finance";
 import {
+  InteriorDesignScenario,
+  InteriorLightingZones,
+} from "@/types/finance";
+import { DEFAULT_LIGHTING_ZONES } from "@/lib/interiorFloorplan";
+import {
+  InteriorArchTarget,
   InteriorCameraPreset,
+  InteriorInteractionMode,
   InteriorNavMode,
   InteriorSceneController,
   InteriorTimeOfDay,
@@ -27,15 +40,24 @@ import { useFinance } from "@/context/FinanceContext";
 
 export interface Interior3DViewportHandle {
   captureSnapshotPng: () => string | null;
+  captureHighResPng: (scale?: number) => string | null;
 }
 
 interface Interior3DViewportProps {
   scenario: InteriorDesignScenario;
   selectedItemId: string | null;
+  interactionMode?: InteriorInteractionMode;
+  onChangeInteractionMode?: (mode: InteriorInteractionMode) => void;
+  selectedArchTarget?: InteriorArchTarget | null;
+  onSelectArchTarget?: (target: InteriorArchTarget | null) => void;
   showMepLayer?: boolean;
   onToggleMepLayer?: () => void;
   onSelectItem: (id: string | null) => void;
-  onItemMoved: (id: string, x: number, z: number) => void;
+  onItemMoved: (id: string, x: number, z: number, elevationCm?: number) => void;
+  onUpdateLightingZones?: (patch: Partial<InteriorLightingZones>) => void;
+  onUpdateCurtainOpenRatio?: (ratio: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onFallbackTo2D?: () => void;
   className?: string;
 }
@@ -58,6 +80,25 @@ const TIME_BUTTONS: {
   { id: "NOON_12", label: "12:00", icon: Sun },
   { id: "AFTERNOON_1630", label: "16:30", icon: Sunset },
   { id: "EVENING_20", label: "20:00", icon: Moon },
+];
+
+const LIGHTING_ZONE_BUTTONS: { key: keyof InteriorLightingZones; label: string }[] = [
+  { key: "living", label: "Khách" },
+  { key: "kitchen", label: "Bếp" },
+  { key: "master", label: "Master" },
+  { key: "room05", label: "P.05" },
+];
+
+const CURTAIN_PRESETS: { label: string; ratio: number }[] = [
+  { label: "Đóng", ratio: 0.1 },
+  { label: "50%", ratio: 0.5 },
+  { label: "Mở", ratio: 0.88 },
+];
+
+const FOV_PRESETS: { label: string; fov: number }[] = [
+  { label: "36°", fov: 36 },
+  { label: "44°", fov: 44 },
+  { label: "54°", fov: 54 },
 ];
 
 /**
@@ -150,10 +191,18 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     {
       scenario,
       selectedItemId,
+      interactionMode = "FURNITURE",
+      onChangeInteractionMode,
+      selectedArchTarget = null,
+      onSelectArchTarget,
       showMepLayer = false,
       onToggleMepLayer,
       onSelectItem,
       onItemMoved,
+      onUpdateLightingZones,
+      onUpdateCurtainOpenRatio,
+      isFullscreen = false,
+      onToggleFullscreen,
       onFallbackTo2D,
       className = "",
     },
@@ -162,18 +211,24 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     const { themeMode } = useFinance();
     const mountRef = useRef<HTMLDivElement | null>(null);
     const controllerRef = useRef<InteriorSceneController | null>(null);
-    const callbacksRef = useRef({ onSelectItem, onItemMoved });
-    callbacksRef.current = { onSelectItem, onItemMoved };
+    const callbacksRef = useRef({ onSelectItem, onItemMoved, onSelectArchTarget });
+    callbacksRef.current = { onSelectItem, onItemMoved, onSelectArchTarget };
 
     const [webglError, setWebglError] = useState<string | null>(null);
     const [activePreset, setActivePreset] = useState<InteriorCameraPreset>("DOLLHOUSE");
     const [timeOfDay, setTimeOfDay] = useState<InteriorTimeOfDay>("MORNING_08");
     const [navMode, setNavMode] = useState<InteriorNavMode>("ORBIT");
     const [autoCutaway, setAutoCutaway] = useState<boolean>(true);
+    const [cameraFov, setCameraFov] = useState<number>(44);
     const [dockExpanded, setDockExpanded] = useState<boolean>(true);
     const [snapshotFlash, setSnapshotFlash] = useState<boolean>(false);
 
     const isDarkMode = themeMode === "dark";
+    const lightingZones: InteriorLightingZones = {
+      ...DEFAULT_LIGHTING_ZONES,
+      ...(scenario.lightingZones ?? {}),
+    };
+    const curtainRatio = scenario.curtainOpenRatio ?? 0.85;
 
     useImperativeHandle(
       ref,
@@ -183,6 +238,15 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
           if (!ctrl) return null;
           try {
             return ctrl.captureSnapshotPng();
+          } catch {
+            return null;
+          }
+        },
+        captureHighResPng: (scale = 2) => {
+          const ctrl = controllerRef.current;
+          if (!ctrl) return null;
+          try {
+            return ctrl.captureHighResPng(scale);
           } catch {
             return null;
           }
@@ -202,7 +266,10 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
           scenario,
           {
             onSelectItem: (id) => callbacksRef.current.onSelectItem(id),
-            onItemMoved: (id, x, z) => callbacksRef.current.onItemMoved(id, x, z),
+            onItemMoved: (id, x, z, elevationCm) =>
+              callbacksRef.current.onItemMoved(id, x, z, elevationCm),
+            onSelectArchitecture: (target) =>
+              callbacksRef.current.onSelectArchTarget?.(target),
             onContextLost: () => {
               setWebglError(
                 "Trình duyệt tạm giải phóng ngữ cảnh WebGL 3D. Bạn có thể chuyển sang Bản vẽ 2D CAD."
@@ -212,6 +279,9 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
           isDarkMode
         );
         ctrl.setShowMepLayer(showMepLayer);
+        ctrl.setInteractionMode(interactionMode);
+        ctrl.setSelectedArchTarget(selectedArchTarget);
+        ctrl.setCameraFov(cameraFov);
         controllerRef.current = ctrl;
         setWebglError(null);
 
@@ -237,12 +307,24 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     }, [selectedItemId]);
 
     useEffect(() => {
+      controllerRef.current?.setInteractionMode(interactionMode);
+    }, [interactionMode]);
+
+    useEffect(() => {
+      controllerRef.current?.setSelectedArchTarget(selectedArchTarget);
+    }, [selectedArchTarget]);
+
+    useEffect(() => {
       controllerRef.current?.setDarkMode(isDarkMode);
     }, [isDarkMode]);
 
     useEffect(() => {
       controllerRef.current?.setShowMepLayer(showMepLayer);
     }, [showMepLayer]);
+
+    useEffect(() => {
+      controllerRef.current?.resize();
+    }, [isFullscreen]);
 
     const handleSelectCamera = (preset: InteriorCameraPreset) => {
       setActivePreset(preset);
@@ -265,14 +347,19 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
       controllerRef.current?.setAutoCutaway(next);
     };
 
-    const handleSnapshot = () => {
+    const handleSelectFov = (fov: number) => {
+      setCameraFov(fov);
+      controllerRef.current?.setCameraFov(fov);
+    };
+
+    const handleSnapshotHD = () => {
       const ctrl = controllerRef.current;
       if (!ctrl) return;
       try {
-        const dataUrl = ctrl.captureSnapshotPng();
+        const dataUrl = ctrl.captureHighResPng(2);
         const link = document.createElement("a");
         link.href = dataUrl;
-        link.download = `skyone_a12a07_3d_${scenario.code.toLowerCase()}_${Date.now()}.png`;
+        link.download = `skyone_a12a07_3d_hd_${scenario.code.toLowerCase()}_${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -285,44 +372,111 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
 
     return (
       <div
-        className={`relative rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-[#EFECE6] dark:bg-[#171A21] ${className}`}
+        className={`relative overflow-hidden bg-[#EFECE6] dark:bg-[#171A21] ${
+          isFullscreen
+            ? "w-full h-full rounded-none border-0"
+            : "rounded-xl border border-slate-200 dark:border-slate-800"
+        } ${className}`}
       >
         {/* WebGL Canvas Mount */}
-        <div ref={mountRef} className="w-full h-full min-h-[420px] sm:min-h-[540px]" />
+        <div
+          ref={mountRef}
+          className={`w-full h-full ${isFullscreen ? "min-h-0" : "min-h-[420px] sm:min-h-[540px]"}`}
+        />
 
         {/* Minimal Top-Left Apartment Tag (Solid surface, no backdrop-filter over WebGL) */}
-        <div className="pointer-events-none absolute top-3 left-3 flex flex-col gap-1">
+        <div className="pointer-events-none absolute top-3 left-3 flex flex-col gap-1 max-w-[65%]">
           <div className="bg-slate-900 text-white px-3 py-1.5 rounded-lg border border-slate-700/80 shadow-sm">
             <p className="text-[11px] font-black tracking-tight leading-tight">
               A.12A.07 · Loại A2 (51.0 m²)
             </p>
             <p className="text-[10px] text-teal-300 font-semibold leading-tight mt-0.5">
-              {scenario.shortLabel} · Ban công Đông Nam
+              {scenario.shortLabel} · Ban công Đông Nam · Tầng 12A
             </p>
           </div>
           {navMode === "WALKTHROUGH" && (
             <div className="bg-teal-900 text-teal-100 px-2.5 py-1 rounded-md text-[10px] font-bold border border-teal-700">
-              Đi bộ 1.60m (Chống xuyên tường) · Xoay bằng kéo tay · WASD / Joystick
+              Đi bộ 1.60m · Tự hiện trần LED & bầu trời tầng 12A · Kéo tay xoay góc nhìn
+            </div>
+          )}
+          {interactionMode === "ARCHITECTURE" && navMode === "ORBIT" && (
+            <div className="bg-amber-950 text-amber-100 px-2.5 py-1 rounded-md text-[10px] font-bold border border-amber-700">
+              Chế độ Kết cấu · Chạm vào tường hoặc cửa để đổi vách kính, lam gỗ, Accent Wall hoặc cửa lùa
             </div>
           )}
         </div>
 
-        {/* Top-Right Compact Snapshot + Dock Collapse */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+        {/* Top-Right Compact Mode + HD Snapshot + Fullscreen + Dock Collapse */}
+        <div className="absolute top-3 right-3 flex flex-wrap items-center justify-end gap-1.5">
+          {onChangeInteractionMode && (
+            <div className="inline-flex rounded-lg bg-white dark:bg-slate-900 p-0.5 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <button
+                type="button"
+                onClick={() => onChangeInteractionMode("FURNITURE")}
+                title="Chọn & di chuyển đồ nội thất"
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                  interactionMode === "FURNITURE"
+                    ? "bg-teal-600 text-white"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <Armchair className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Nội thất</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeInteractionMode("ARCHITECTURE")}
+                title="Chỉnh sửa vách ngăn, Accent Wall & cửa lùa"
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                  interactionMode === "ARCHITECTURE"
+                    ? "bg-amber-500 text-stone-950"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <Hammer className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Tường & Cửa</span>
+              </button>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={handleSnapshot}
-            title="Chụp phối cảnh 3D (PNG)"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer"
+            onClick={handleSnapshotHD}
+            title="Xuất ảnh Render 3D HD (2× PNG)"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm whitespace-nowrap cursor-pointer"
           >
             <Camera className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span className="hidden sm:inline">{snapshotFlash ? "Đã lưu PNG" : "Chụp ảnh"}</span>
+            <span className="hidden sm:inline">{snapshotFlash ? "Đã lưu HD" : "Ảnh HD"}</span>
           </button>
+
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Thu gọn toàn màn hình (Esc)" : "Xem toàn màn hình 3D"}
+              aria-label={isFullscreen ? "Thu gọn toàn màn hình" : "Xem toàn màn hình"}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border shadow-sm whitespace-nowrap cursor-pointer ${
+                isFullscreen
+                  ? "bg-teal-600 border-teal-600 text-white hover:bg-teal-700"
+                  : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              }`}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+              )}
+              <span className="hidden sm:inline">
+                {isFullscreen ? "Thu gọn" : "Toàn màn hình"}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setDockExpanded((v) => !v)}
             aria-label={dockExpanded ? "Thu gọn thanh điều khiển 3D" : "Mở thanh điều khiển 3D"}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             {dockExpanded ? (
@@ -336,7 +490,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
         {/* Mobile / Touch Walkthrough Joystick (Bottom-left above dock, solid surface) */}
         {navMode === "WALKTHROUGH" && !webglError && (
           <div
-            className={`absolute left-3 z-20 ${dockExpanded ? "bottom-32 sm:bottom-28" : "bottom-4"}`}
+            className={`absolute left-3 z-20 ${dockExpanded ? "bottom-44 sm:bottom-36" : "bottom-4"}`}
           >
             <WalkthroughTouchJoystick
               onMove={(vx, vz) => controllerRef.current?.setWalkthroughJoystickVector(vx, vz)}
@@ -357,7 +511,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                   key={btn.id}
                   type="button"
                   onClick={() => handleSelectCamera(btn.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap transition-colors cursor-pointer ${
                     activePreset === btn.id
                       ? "bg-teal-600 text-white"
                       : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -368,11 +522,11 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               ))}
             </div>
 
-            {/* Row 2: Lighting Time + Nav Mode + Cutaway + MEP */}
+            {/* Row 2: Sun Time + Nav Mode + Cutaway + MEP */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 hidden sm:inline">
-                  Ánh nắng
+                  Nắng
                 </span>
                 {TIME_BUTTONS.map((tb) => {
                   const Icon = tb.icon;
@@ -382,7 +536,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                       key={tb.id}
                       type="button"
                       onClick={() => handleSelectTime(tb.id)}
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold tabular-nums transition-colors cursor-pointer ${
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold tabular-nums whitespace-nowrap transition-colors cursor-pointer ${
                         active
                           ? "bg-amber-500 text-stone-950"
                           : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -400,7 +554,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                   <button
                     type="button"
                     onClick={() => handleToggleNavMode("ORBIT")}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer ${
                       navMode === "ORBIT"
                         ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
                         : "text-slate-500 dark:text-slate-400"
@@ -412,7 +566,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                   <button
                     type="button"
                     onClick={() => handleToggleNavMode("WALKTHROUGH")}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer ${
                       navMode === "WALKTHROUGH"
                         ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
                         : "text-slate-500 dark:text-slate-400"
@@ -427,7 +581,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                   <button
                     type="button"
                     onClick={handleToggleCutaway}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
                       autoCutaway
                         ? "bg-teal-50 dark:bg-teal-950/50 border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200"
                         : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -442,7 +596,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                   <button
                     type="button"
                     onClick={onToggleMepLayer}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
                       showMepLayer
                         ? "bg-orange-500 border-orange-500 text-white"
                         : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -452,6 +606,88 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
                     <span>MEP</span>
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Row 3: 4-Zone Smart Lights + Curtains + Camera Lens FOV */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+              {onUpdateLightingZones && (
+                <div className="flex items-center gap-1 overflow-x-auto">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 shrink-0">
+                    <Lightbulb className="w-3 h-3 text-amber-500" />
+                    <span>Đèn</span>
+                  </span>
+                  {LIGHTING_ZONE_BUTTONS.map((z) => {
+                    const isOn = lightingZones[z.key];
+                    return (
+                      <button
+                        key={z.key}
+                        type="button"
+                        onClick={() => onUpdateLightingZones({ [z.key]: !isOn })}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
+                          isOn
+                            ? "bg-amber-100 dark:bg-amber-950/60 border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-200"
+                            : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 line-through"
+                        }`}
+                      >
+                        {z.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                {onUpdateCurtainOpenRatio && (
+                  <div className="inline-flex items-center gap-1">
+                    <Blinds className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:inline">
+                      Rèm
+                    </span>
+                    <div className="inline-flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5">
+                      {CURTAIN_PRESETS.map((cp) => {
+                        const active = Math.abs(curtainRatio - cp.ratio) < 0.2;
+                        return (
+                          <button
+                            key={cp.label}
+                            type="button"
+                            onClick={() => onUpdateCurtainOpenRatio(cp.ratio)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap cursor-pointer ${
+                              active
+                                ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
+                                : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >
+                            {cp.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="inline-flex items-center gap-1">
+                  <Aperture className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:inline">
+                    FOV
+                  </span>
+                  <div className="inline-flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5">
+                    {FOV_PRESETS.map((fp) => (
+                      <button
+                        key={fp.fov}
+                        type="button"
+                        onClick={() => handleSelectFov(fp.fov)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold tabular-nums whitespace-nowrap cursor-pointer ${
+                          cameraFov === fp.fov
+                            ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs"
+                            : "text-slate-500 dark:text-slate-400"
+                        }`}
+                      >
+                        {fp.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

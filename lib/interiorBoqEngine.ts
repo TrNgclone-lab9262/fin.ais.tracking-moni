@@ -5,11 +5,21 @@ import {
   InteriorFurnitureItem,
   InteriorPricingRule,
 } from "@/types/finance";
-import { SKYONE_A2_BOUNDS } from "./interiorFloorplan";
+import {
+  DOOR_MODE_META,
+  FLOOR_PATTERN_META,
+  SKYONE_A2_BOUNDS,
+  SKYONE_A2_OPENINGS,
+  SKYONE_A2_ROOMS,
+  SKYONE_A2_WALLS,
+  WALL_ACCENT_META,
+  WALL_MODE_META,
+} from "./interiorFloorplan";
 import {
   checkDoorSwingCollision,
   detectItemWallOverlap,
   getFootprintBounds,
+  isWallOrSurfaceMounted,
 } from "./interiorCadEngine";
 import { SKYONE_A12A07_VERIFIED_FACTS } from "@/system_context";
 
@@ -222,6 +232,129 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
     };
   });
 
+  // Hạng mục cải tạo kiến trúc tự động sinh khi người dùng tùy biến Vách / Accent Wall / Cửa lùa / Sàn xương cá
+  const archRenovationRows: BoqUnifiedRow[] = [];
+
+  if (scenario.wallOverrides) {
+    for (const wall of SKYONE_A2_WALLS) {
+      const ov = scenario.wallOverrides[wall.id];
+      if (!ov) continue;
+
+      if (!wall.structural && ov.mode && ov.mode !== "SOLID") {
+        const meta = WALL_MODE_META[ov.mode];
+        if (meta && meta.estimatedCostVnd > 0) {
+          byGroup.FINISHING_DECOR += meta.estimatedCostVnd;
+          archRenovationRows.push({
+            id: `arch_wall_mode_${wall.id}`,
+            origin: "EXTRA_LINE",
+            name: `Cải tạo ${wall.label}: ${meta.label}`,
+            roomId: wall.id === "w_kitchen_shield" ? "room_kitchen" : "room_05",
+            boqGroup: "FINISHING_DECOR",
+            source: "NEW_PURCHASE",
+            specLabel: "1 hệ vách (tự động từ 3D)",
+            unitPriceVnd: meta.estimatedCostVnd,
+            quantity: 1,
+            unit: "hệ",
+            totalPriceVnd: meta.estimatedCostVnd,
+            paidAmountVnd: 0,
+            remainingAmountVnd: meta.estimatedCostVnd,
+            payments: [],
+            procurementStatus: "PLANNED",
+            note: meta.description,
+          });
+        }
+      }
+
+      if (ov.accentFinish && ov.accentFinish !== "DEFAULT" && ov.mode !== "OPEN") {
+        const acc = WALL_ACCENT_META[ov.accentFinish];
+        if (acc && acc.estimatedCostVnd > 0) {
+          byGroup.FINISHING_DECOR += acc.estimatedCostVnd;
+          archRenovationRows.push({
+            id: `arch_wall_accent_${wall.id}`,
+            origin: "EXTRA_LINE",
+            name: `Ốp điểm nhấn ${wall.label}: ${acc.label}`,
+            roomId: "room_living_dining",
+            boqGroup: "FINISHING_DECOR",
+            source: "NEW_PURCHASE",
+            specLabel: "1 mảng tường (tự động từ 3D)",
+            unitPriceVnd: acc.estimatedCostVnd,
+            quantity: 1,
+            unit: "mảng",
+            totalPriceVnd: acc.estimatedCostVnd,
+            paidAmountVnd: 0,
+            remainingAmountVnd: acc.estimatedCostVnd,
+            payments: [],
+            procurementStatus: "PLANNED",
+            note: "Tự động đồng bộ từ tùy biến Accent Wall trong Studio",
+          });
+        }
+      }
+    }
+  }
+
+  if (scenario.doorOverrides) {
+    for (const op of SKYONE_A2_OPENINGS) {
+      const mode = scenario.doorOverrides[op.id];
+      if (!mode || mode === "SWING_90") continue;
+      const meta = DOOR_MODE_META[mode];
+      if (meta && meta.estimatedCostVnd > 0) {
+        byGroup.FINISHING_DECOR += meta.estimatedCostVnd;
+        archRenovationRows.push({
+          id: `arch_door_${op.id}`,
+          origin: "EXTRA_LINE",
+          name: `Đổi ${op.label} → ${meta.shortLabel}`,
+          roomId:
+            op.id === "op_master_door"
+              ? "room_master"
+              : op.id === "op_wc_door"
+                ? "room_wc"
+                : "room_05",
+          boqGroup: "FINISHING_DECOR",
+          source: "NEW_PURCHASE",
+          specLabel: "1 bộ cửa (tự động từ 3D)",
+          unitPriceVnd: meta.estimatedCostVnd,
+          quantity: 1,
+          unit: "bộ",
+          totalPriceVnd: meta.estimatedCostVnd,
+          paidAmountVnd: 0,
+          remainingAmountVnd: meta.estimatedCostVnd,
+          payments: [],
+          procurementStatus: "PLANNED",
+          note: meta.description,
+        });
+      }
+    }
+  }
+
+  if (scenario.roomFloorOverrides) {
+    for (const [roomId, pattern] of Object.entries(scenario.roomFloorOverrides)) {
+      if (pattern !== "HERRINGBONE") continue;
+      const meta = FLOOR_PATTERN_META[pattern];
+      const room = SKYONE_A2_ROOMS.find((r) => r.id === roomId);
+      if (meta && meta.estimatedCostVnd > 0) {
+        byGroup.FINISHING_DECOR += meta.estimatedCostVnd;
+        archRenovationRows.push({
+          id: `arch_floor_${roomId}`,
+          origin: "EXTRA_LINE",
+          name: `Nâng cấp sàn ${room?.shortName ?? roomId}: ${meta.label}`,
+          roomId,
+          boqGroup: "FINISHING_DECOR",
+          source: "NEW_PURCHASE",
+          specLabel: "1 phòng (tự động từ 3D)",
+          unitPriceVnd: meta.estimatedCostVnd,
+          quantity: 1,
+          unit: "phòng",
+          totalPriceVnd: meta.estimatedCostVnd,
+          paidAmountVnd: 0,
+          remainingAmountVnd: meta.estimatedCostVnd,
+          payments: [],
+          procurementStatus: "PLANNED",
+          note: "Lót sàn gỗ xương cá nâng chiều sâu thẩm mỹ căn hộ",
+        });
+      }
+    }
+  }
+
   const subtotalNewPurchase =
     byGroup.WOOD_FURNITURE + byGroup.APPLIANCES + byGroup.FINISHING_DECOR;
   const contingencyAmount = Math.round(
@@ -238,7 +371,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
 
   return {
     scenarioId: scenario.id,
-    rows: [...itemRows, ...extraRows],
+    rows: [...itemRows, ...extraRows, ...archRenovationRows],
     byGroup,
     woodFurnitureTotal: byGroup.WOOD_FURNITURE,
     appliancesTotal: byGroup.APPLIANCES,
@@ -371,13 +504,21 @@ const NON_COLLIDING_KEYS = new Set([
   "ac_inverter",
   "smart_tv",
   "pegboard_goal_wall",
+  "wall_art_duo",
+  "pendant_dining_light",
+  "loggia_drying_rack",
+  "fridge_top_cabinet",
+  "dual_monitor_arm",
+  "desk_lamp_screenbar",
 ]);
 
 export function evaluateErgonomicClearances(
   scenario: InteriorDesignScenario
 ): ErgonomicWarning[] {
   const warnings: ErgonomicWarning[] = [];
-  const floorItems = scenario.items.filter((i) => !NON_COLLIDING_KEYS.has(i.catalogKey));
+  const floorItems = scenario.items.filter(
+    (i) => !NON_COLLIDING_KEYS.has(i.catalogKey) && !isWallOrSurfaceMounted(i)
+  );
 
   for (const item of floorItems) {
     const b = getFootprintBounds(item);
@@ -399,7 +540,7 @@ export function evaluateErgonomicClearances(
     }
 
     // 2. Đè lên vách ngăn phòng / tường nội bộ (Cảnh báo đỏ theo quyết định thiết kế)
-    const wallHit = detectItemWallOverlap(item);
+    const wallHit = detectItemWallOverlap(item, scenario.wallOverrides);
     if (wallHit) {
       warnings.push({
         id: `wall_overlap_${item.id}`,
@@ -411,7 +552,7 @@ export function evaluateErgonomicClearances(
     }
 
     // 3. Cản trở cung mở cửa 90° (Cửa chính Lecmax, Master, Phòng 05, WC, Lô gia)
-    const doorHit = checkDoorSwingCollision(item);
+    const doorHit = checkDoorSwingCollision(item, scenario.doorOverrides);
     if (doorHit) {
       warnings.push({
         id: `door_swing_${doorHit.openingId}_${item.id}`,

@@ -438,7 +438,29 @@ export type InteriorCatalogKey =
   | 'smart_tv'
   | 'floor_plant'
   | 'balcony_planter'
-  | 'wc_hafele_set';
+  | 'wc_hafele_set'
+  // Ưu tiên 3: ~20 mẫu thông minh, Studio Phòng 05, Decor & Tiện ích + Cổng nạp GLB
+  | 'sofa_bed_smart'
+  | 'tatami_podium_bed'
+  | 'folding_dining_table'
+  | 'vanity_desk_mirror'
+  | 'mini_kitchen_island'
+  | 'fridge_top_cabinet'
+  | 'dual_monitor_arm'
+  | 'pc_tower_stand'
+  | 'desk_lamp_screenbar'
+  | 'rolling_file_cabinet'
+  | 'pendant_dining_light'
+  | 'floor_arc_lamp'
+  | 'wall_art_duo'
+  | 'arch_full_mirror'
+  | 'air_purifier'
+  | 'robot_vacuum_dock'
+  | 'dishwasher_compact'
+  | 'balcony_bistro_set'
+  | 'beanbag_lounger'
+  | 'loggia_drying_rack'
+  | 'custom_glb_model';
 
 export type InteriorMaterialFinish =
   | 'WARM_OAK'
@@ -449,6 +471,35 @@ export type InteriorMaterialFinish =
   | 'CHARCOAL_SLATE'
   | 'WHITE_MARBLE'
   | 'BRUSHED_TITANIUM';
+
+export type InteriorMountType = 'FLOOR' | 'WALL' | 'SURFACE';
+
+export type InteriorWallMode = 'SOLID' | 'OPEN' | 'GLASS_PARTITION' | 'WOOD_SLAT';
+
+export type InteriorWallAccentFinish =
+  | 'DEFAULT'
+  | 'CONCRETE_EFFECT'
+  | 'WOOD_SLAT_PANEL'
+  | 'MARBLE_PVC'
+  | 'TINTED_MIRROR'
+  | 'SAGE_PAINT'
+  | 'WARM_BEIGE_PAINT';
+
+export interface InteriorWallOverride {
+  mode?: InteriorWallMode;
+  accentFinish?: InteriorWallAccentFinish;
+}
+
+export type InteriorDoorMode = 'SWING_90' | 'SLIDING_POCKET' | 'OPEN_ARCH';
+
+export type InteriorFloorPattern = 'STRAIGHT' | 'HERRINGBONE';
+
+export interface InteriorLightingZones {
+  living: boolean;
+  kitchen: boolean;
+  master: boolean;
+  room05: boolean;
+}
 
 export interface InteriorDimensionsCm {
   width: number;
@@ -497,6 +548,10 @@ export interface InteriorFurnitureItem {
   rotationDeg: number;
   dimensionsCm: InteriorDimensionsCm;
   materialFinish: InteriorMaterialFinish;
+  mountType?: InteriorMountType;
+  elevationCm?: number; // Cao độ đáy vật thể so với mặt sàn (cm)
+  customGlbId?: string; // Tham chiếu khóa file .glb lưu trong IndexedDB
+  customGlbName?: string;
   isLocked?: boolean;
   pricingRule: InteriorPricingRule;
   unitPriceVnd: number;
@@ -541,6 +596,11 @@ export interface InteriorDesignScenario {
   items: InteriorFurnitureItem[];
   extraBoqItems: InteriorExtraBoqItem[];
   mepPoints?: InteriorMepPoint[];
+  wallOverrides?: Record<string, InteriorWallOverride>;
+  doorOverrides?: Record<string, InteriorDoorMode>;
+  roomFloorOverrides?: Record<string, InteriorFloorPattern>;
+  lightingZones?: InteriorLightingZones;
+  curtainOpenRatio?: number; // 0 = đóng rèm, 1 = mở thoáng hoàn toàn
   updatedAt: string;
 }
 

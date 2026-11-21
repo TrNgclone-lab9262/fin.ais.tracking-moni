@@ -14,10 +14,13 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  ArrowUpDown,
+  Box,
 } from "lucide-react";
 import {
   InteriorFurnitureItem,
   InteriorMaterialFinish,
+  InteriorMountType,
   InteriorStudioState,
 } from "@/types/finance";
 import { MATERIAL_FINISH_META } from "@/lib/interiorFloorplan";
@@ -40,6 +43,7 @@ interface FurnitureInspectorPanelProps {
   onDuplicate: (item: InteriorFurnitureItem) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  className?: string;
 }
 
 const PRICING_RULE_SUFFIX: Record<InteriorFurnitureItem["pricingRule"], string> = {
@@ -47,6 +51,16 @@ const PRICING_RULE_SUFFIX: Record<InteriorFurnitureItem["pricingRule"], string> 
   PER_LINEAR_METER: "VNĐ / md",
   PER_SQUARE_METER: "VNĐ / m²",
 };
+
+const MOUNT_TYPE_OPTIONS: {
+  id: InteriorMountType;
+  label: string;
+  defaultElevCm: number;
+}[] = [
+  { id: "FLOOR", label: "Đặt sàn", defaultElevCm: 0 },
+  { id: "WALL", label: "Gắn tường", defaultElevCm: 130 },
+  { id: "SURFACE", label: "Đặt mặt bàn", defaultElevCm: 75 },
+];
 
 export function FurnitureInspectorPanel({
   item,
@@ -57,6 +71,7 @@ export function FurnitureInspectorPanel({
   onDuplicate,
   onDelete,
   onClose,
+  className = "xl:col-span-4",
 }: FurnitureInspectorPanelProps) {
   const sliderSnapshotRef = useRef<InteriorStudioState | null>(null);
   const [showVendorFields, setShowVendorFields] = useState<boolean>(
@@ -77,9 +92,13 @@ export function FurnitureInspectorPanel({
   };
 
   const liveCost = calculateFurnitureItemCostVnd(item);
+  const effectiveMount: InteriorMountType = item.mountType ?? "FLOOR";
+  const effectiveElevationCm = item.elevationCm ?? 0;
 
   return (
-    <aside className="xl:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-4">
+    <aside
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-4 ${className}`}
+    >
       <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
@@ -89,8 +108,15 @@ export function FurnitureInspectorPanel({
             {item.name}
           </h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums mt-0.5">
-            Tọa độ: X {item.position.x.toFixed(2)}m · Z {item.position.z.toFixed(2)}m
+            Tọa độ: X {item.position.x.toFixed(2)}m · Z {item.position.z.toFixed(2)}m · Y{" "}
+            {effectiveElevationCm}cm
           </p>
+          {item.catalogKey === "custom_glb_model" && item.customGlbName && (
+            <p className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+              <Box className="w-3 h-3 shrink-0" />
+              <span className="truncate">File 3D: {item.customGlbName}</span>
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -139,6 +165,70 @@ export function FurnitureInspectorPanel({
         )}
       </div>
 
+      {/* Mount Type + Elevation Y (cm) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-extrabold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1">
+            <ArrowUpDown className="w-3.5 h-3.5 text-teal-600" />
+            <span>Kiểu neo & Cao độ (Y)</span>
+          </span>
+          <span className="font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+            {effectiveElevationCm} cm
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {MOUNT_TYPE_OPTIONS.map((opt) => {
+            const active = effectiveMount === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                disabled={Boolean(item.isLocked)}
+                onClick={() =>
+                  onUpdateItem(item.id, {
+                    mountType: opt.id,
+                    elevationCm:
+                      opt.id === "FLOOR"
+                        ? 0
+                        : effectiveElevationCm === 0
+                          ? opt.defaultElevCm
+                          : effectiveElevationCm,
+                  })
+                }
+                className={`py-1.5 px-1.5 rounded-lg border text-[11px] font-bold transition-colors disabled:opacity-40 cursor-pointer ${
+                  active
+                    ? "bg-teal-600 border-teal-600 text-white"
+                    : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-400"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={250}
+          step={2}
+          disabled={Boolean(item.isLocked)}
+          value={effectiveElevationCm}
+          aria-label="Cao độ Y tính từ mặt sàn (cm)"
+          onPointerDown={captureSnapshotIfIdle}
+          onFocus={captureSnapshotIfIdle}
+          onChange={(e) =>
+            onUpdateItem(
+              item.id,
+              { elevationCm: Number(e.target.value) },
+              { skipUndoHistory: true }
+            )
+          }
+          onPointerUp={flushSnapshot}
+          onBlur={flushSnapshot}
+          className="w-full accent-teal-600 disabled:opacity-50"
+        />
+      </div>
+
       {/* Dimensions Sliders (cm) with batched Undo */}
       <div className="space-y-2.5">
         <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200">
@@ -146,8 +236,8 @@ export function FurnitureInspectorPanel({
         </p>
         {(
           [
-            { key: "width", label: "Chiều rộng (W)", min: 30, max: 280 },
-            { key: "depth", label: "Chiều sâu (D)", min: 15, max: 230 },
+            { key: "width", label: "Chiều rộng (W)", min: 10, max: 280 },
+            { key: "depth", label: "Chiều sâu (D)", min: 4, max: 230 },
             { key: "height", label: "Chiều cao (H)", min: 2, max: 280 },
           ] as const
         ).map((dim) => (
@@ -308,7 +398,8 @@ export function FurnitureInspectorPanel({
                     value={item.leadTimeDays ?? ""}
                     onChange={(e) =>
                       onUpdateItem(item.id, {
-                        leadTimeDays: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)),
+                        leadTimeDays:
+                          e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)),
                       })
                     }
                     placeholder="VD: 15"

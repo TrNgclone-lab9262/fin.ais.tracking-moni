@@ -16,6 +16,10 @@ import {
   Trash2,
   X,
   Scan,
+  Maximize2,
+  Minimize2,
+  Armchair,
+  Hammer,
 } from "lucide-react";
 import {
   InteriorDesignScenario,
@@ -29,7 +33,9 @@ import {
   SKYONE_A2_BOUNDS,
   SKYONE_A2_OPENINGS,
   SKYONE_A2_ROOMS,
+  SKYONE_A2_SHAFTS,
   SKYONE_A2_WALLS,
+  WALL_ACCENT_META,
   createDefaultSkyOneA2MepPoints,
 } from "@/lib/interiorFloorplan";
 import { ErgonomicWarning } from "@/lib/interiorBoqEngine";
@@ -38,6 +44,10 @@ import {
   computeSmartGuides,
   snapPositionToWalls,
 } from "@/lib/interiorCadEngine";
+import {
+  InteriorArchTarget,
+  InteriorInteractionMode,
+} from "@/lib/three/interiorSceneController";
 
 interface Interior2DBlueprintProps {
   scenario: InteriorDesignScenario;
@@ -45,6 +55,10 @@ interface Interior2DBlueprintProps {
   warnings: ErgonomicWarning[];
   showMepLayer: boolean;
   onToggleMepLayer: () => void;
+  interactionMode?: InteriorInteractionMode;
+  onChangeInteractionMode?: (mode: InteriorInteractionMode) => void;
+  selectedArchTarget?: InteriorArchTarget | null;
+  onSelectArchTarget?: (target: InteriorArchTarget | null) => void;
   onSelectItem: (id: string | null) => void;
   onItemMoved: (id: string, x: number, z: number) => void;
   onAddMepPoint?: (point: Omit<InteriorMepPoint, "id">) => InteriorMepPoint;
@@ -54,6 +68,8 @@ interface Interior2DBlueprintProps {
     options?: { skipUndoHistory?: boolean }
   ) => void;
   onDeleteMepPoint?: (id: string) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   className?: string;
 }
 
@@ -120,11 +136,17 @@ export function Interior2DBlueprint({
   warnings,
   showMepLayer,
   onToggleMepLayer,
+  interactionMode = "FURNITURE",
+  onChangeInteractionMode,
+  selectedArchTarget = null,
+  onSelectArchTarget,
   onSelectItem,
   onItemMoved,
   onAddMepPoint,
   onUpdateMepPoint,
   onDeleteMepPoint,
+  isFullscreen = false,
+  onToggleFullscreen,
   className = "",
 }: Interior2DBlueprintProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -217,14 +239,18 @@ export function Interior2DBlueprint({
 
   const smartGuides = useMemo(() => {
     if (!dragging) return [];
-    return computeSmartGuides(dragging.item, { x: dragging.curX, z: dragging.curZ });
-  }, [dragging]);
+    return computeSmartGuides(
+      dragging.item,
+      { x: dragging.curX, z: dragging.curZ },
+      scenario.wallOverrides
+    );
+  }, [dragging, scenario.wallOverrides]);
 
   const handleItemPointerDown = (
     e: React.PointerEvent<SVGGElement>,
     item: InteriorFurnitureItem
   ) => {
-    if (toolMode !== "SELECT") return;
+    if (toolMode !== "SELECT" || interactionMode === "ARCHITECTURE") return;
     e.stopPropagation();
     setSelectedMepId(null);
     onSelectItem(item.id);
@@ -313,6 +339,9 @@ export function Interior2DBlueprint({
     } else {
       onSelectItem(null);
       setSelectedMepId(null);
+      if (interactionMode === "ARCHITECTURE") {
+        onSelectArchTarget?.(null);
+      }
     }
   };
 
@@ -321,7 +350,10 @@ export function Interior2DBlueprint({
       const { x, y } = clientToSvgCoords(e.clientX, e.clientY);
       const rawX = svgToWorldX(x) + dragging.offsetX;
       const rawZ = svgToWorldZ(y) + dragging.offsetZ;
-      const snapped = snapPositionToWalls(dragging.item, rawX, rawZ, { snapToWall });
+      const snapped = snapPositionToWalls(dragging.item, rawX, rawZ, {
+        snapToWall,
+        wallOverrides: scenario.wallOverrides,
+      });
       setDragging((prev) =>
         prev
           ? {
@@ -397,10 +429,11 @@ export function Interior2DBlueprint({
     }
   };
 
-  const roomFill = (mat: string) => {
+  const roomFill = (mat: string, roomId: string) => {
+    const isHerringbone = scenario.roomFloorOverrides?.[roomId] === "HERRINGBONE";
     switch (mat) {
       case "WOOD_TILE":
-        return "#F3E4D2";
+        return isHerringbone ? "url(#herringboneWood)" : "#F3E4D2";
       case "BATH_MARBLE":
         return "#EEF2F6";
       case "LOGGIA_GREY":
@@ -419,7 +452,11 @@ export function Interior2DBlueprint({
 
   return (
     <div
-      className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden flex flex-col ${className}`}
+      className={`bg-white dark:bg-slate-900 overflow-hidden flex flex-col ${
+        isFullscreen
+          ? "w-full h-full rounded-none border-0"
+          : "rounded-xl border border-slate-200 dark:border-slate-800"
+      } ${className}`}
     >
       {/* Top 2D CAD Toolbar */}
       <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/80 dark:bg-slate-900">
@@ -431,11 +468,40 @@ export function Interior2DBlueprint({
             </span>
           </div>
 
+          {onChangeInteractionMode && (
+            <div className="inline-flex rounded-lg bg-slate-200/70 dark:bg-slate-800 p-0.5">
+              <button
+                type="button"
+                onClick={() => onChangeInteractionMode("FURNITURE")}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                  interactionMode === "FURNITURE"
+                    ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                <Armchair className="w-3 h-3" />
+                <span>Nội thất</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeInteractionMode("ARCHITECTURE")}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                  interactionMode === "ARCHITECTURE"
+                    ? "bg-amber-500 text-stone-950 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                <Hammer className="w-3 h-3" />
+                <span>Tường & Cửa</span>
+              </button>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setSnapToWall((v) => !v)}
             title="Tự động hít sát tường (<= 12 cm)"
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               snapToWall
                 ? "bg-teal-600 border-teal-600 text-white"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -452,7 +518,7 @@ export function Interior2DBlueprint({
               setToolMode(next);
               setMeasurePts({ p1: null, p2: null });
             }}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               toolMode === "MEASURE"
                 ? "bg-amber-500 border-amber-500 text-stone-950"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -466,7 +532,7 @@ export function Interior2DBlueprint({
             type="button"
             onClick={() => setShowClearances((v) => !v)}
             title="Hiển thị cung cửa 90°, vùng mở cánh tủ 60cm & lùi ghế 80cm"
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               showClearances
                 ? "bg-slate-900 dark:bg-slate-200 border-slate-900 dark:border-slate-200 text-white dark:text-slate-950"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -479,7 +545,7 @@ export function Interior2DBlueprint({
           <button
             type="button"
             onClick={onToggleMepLayer}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               showMepLayer
                 ? "bg-orange-500 border-orange-500 text-white"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -500,7 +566,7 @@ export function Interior2DBlueprint({
                   setToolMode("ADD_MEP");
                 }
               }}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
                 toolMode === "ADD_MEP"
                   ? "bg-blue-600 border-blue-600 text-white"
                   : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -512,7 +578,7 @@ export function Interior2DBlueprint({
           )}
         </div>
 
-        {/* Right: Zoom & Underlay controls */}
+        {/* Right: Zoom, Underlay & Fullscreen controls */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
             <button
@@ -552,7 +618,7 @@ export function Interior2DBlueprint({
           <button
             type="button"
             onClick={() => setUnderlay(underlay === "CAD_A2" ? "NONE" : "CAD_A2")}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               underlay === "CAD_A2"
                 ? "bg-teal-600 border-teal-600 text-white"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -564,7 +630,7 @@ export function Interior2DBlueprint({
           <button
             type="button"
             onClick={() => setUnderlay(underlay === "TOP_RENDER" ? "NONE" : "TOP_RENDER")}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
               underlay === "TOP_RENDER"
                 ? "bg-teal-600 border-teal-600 text-white"
                 : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
@@ -585,8 +651,49 @@ export function Interior2DBlueprint({
               className="w-16 accent-teal-600"
             />
           )}
+
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "Thu gọn toàn màn hình (Esc)" : "Xem toàn màn hình bản vẽ 2D CAD"}
+              aria-label={isFullscreen ? "Thu gọn toàn màn hình 2D" : "Toàn màn hình 2D"}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap cursor-pointer ${
+                isFullscreen
+                  ? "bg-teal-600 border-teal-600 text-white hover:bg-teal-700"
+                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+              }`}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+              )}
+              <span className="hidden md:inline">
+                {isFullscreen ? "Thu gọn" : "Toàn màn hình"}
+              </span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Contextual Sub-Bar: Architecture Mode Hint */}
+      {interactionMode === "ARCHITECTURE" && toolMode === "SELECT" && (
+        <div className="px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="font-bold text-amber-900 dark:text-amber-200">
+            Chế độ Tường & Cửa · Chạm vào bất kỳ mảng tường hoặc cửa đi nào trên bản vẽ 2D để tùy biến kết cấu, Accent Wall hoặc cửa lùa.
+          </span>
+          {onChangeInteractionMode && (
+            <button
+              type="button"
+              onClick={() => onChangeInteractionMode("FURNITURE")}
+              className="text-[11px] font-bold text-amber-800 dark:text-amber-300 underline cursor-pointer"
+            >
+              Về chế độ Nội thất
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Contextual Sub-Bar: Tape Measure OR Add MEP Picker */}
       {toolMode === "MEASURE" && (
@@ -706,11 +813,13 @@ export function Interior2DBlueprint({
       )}
 
       {/* Interactive SVG Canvas */}
-      <div className="relative flex-1 bg-slate-100/80 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden">
+      <div className="relative flex-1 min-h-0 bg-slate-100/80 dark:bg-slate-950 p-2 flex items-center justify-center overflow-hidden">
         <svg
           ref={svgRef}
           viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-          className={`w-full h-auto max-h-[540px] select-none touch-none ${
+          className={`w-full select-none touch-none ${
+            isFullscreen ? "h-full max-h-full" : "h-auto max-h-[540px]"
+          } ${
             toolMode === "MEASURE" || toolMode === "ADD_MEP"
               ? "cursor-crosshair"
               : zoom > 1.02
@@ -737,6 +846,31 @@ export function Interior2DBlueprint({
                 strokeOpacity="0.45"
               />
             </pattern>
+            <pattern
+              id="shaftHatch"
+              width="8"
+              height="8"
+              patternTransform="rotate(45 0 0)"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="8" height="8" fill="#CBD5E1" />
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#475569" strokeWidth="2.2" />
+            </pattern>
+            <pattern
+              id="herringboneWood"
+              width="14"
+              height="14"
+              patternUnits="userSpaceOnUse"
+            >
+              <rect width="14" height="14" fill="#EBD3B9" />
+              <path
+                d="M 0 7 L 7 0 L 14 7 M 0 14 L 7 7 L 14 14"
+                fill="none"
+                stroke="#C99E72"
+                strokeWidth="0.9"
+                strokeOpacity="0.65"
+              />
+            </pattern>
           </defs>
           <rect x="0" y="0" width={VIEW_W} height={VIEW_H} fill="url(#grid50cm)" />
 
@@ -753,7 +887,7 @@ export function Interior2DBlueprint({
                   y={ry}
                   width={rw}
                   height={rh}
-                  fill={roomFill(room.floorMaterial)}
+                  fill={roomFill(room.floorMaterial, room.id)}
                   stroke="#CBD5E1"
                   strokeWidth="1"
                 />
@@ -789,6 +923,28 @@ export function Interior2DBlueprint({
               pointerEvents="none"
             />
           )}
+
+          {/* Structural MEP Technical Shafts (Hộp gen kỹ thuật CĐT) */}
+          {SKYONE_A2_SHAFTS.map((shaft) => {
+            const sx = worldToSvgX(shaft.x - shaft.width / 2);
+            const sy = worldToSvgY(shaft.z - shaft.depth / 2);
+            const sw = shaft.width * SCALE;
+            const sh = shaft.depth * SCALE;
+            return (
+              <g key={shaft.id} pointerEvents="none">
+                <rect
+                  x={sx}
+                  y={sy}
+                  width={sw}
+                  height={sh}
+                  fill="url(#shaftHatch)"
+                  stroke="#334155"
+                  strokeWidth="1.4"
+                />
+                <title>{shaft.label}</title>
+              </g>
+            );
+          })}
 
           {/* Ergonomic Clearance Zones (Wardrobe 60cm & Desk chair pull-back 80cm) */}
           {showClearances &&
@@ -830,9 +986,13 @@ export function Interior2DBlueprint({
               );
             })}
 
-          {/* Door 90° Swing Arcs */}
+          {/* Door 90° Swing Arcs (only for SWING_90 mode) */}
           {showClearances &&
-            SKYONE_A2_OPENINGS.filter((op) => op.swingArc).map((op) => {
+            SKYONE_A2_OPENINGS.filter((op) => {
+              if (!op.swingArc) return false;
+              const mode = scenario.doorOverrides?.[op.id] ?? "SWING_90";
+              return mode === "SWING_90";
+            }).map((op) => {
               const sa = op.swingArc!;
               return (
                 <path
@@ -854,46 +1014,183 @@ export function Interior2DBlueprint({
               );
             })}
 
-          {/* Walls */}
-          {SKYONE_A2_WALLS.map((w) => (
-            <line
-              key={w.id}
-              x1={worldToSvgX(w.x1)}
-              y1={worldToSvgY(w.z1)}
-              x2={worldToSvgX(w.x2)}
-              y2={worldToSvgY(w.z2)}
-              stroke={w.id === "w_north_balcony_rail" ? "#0F766E" : "#334155"}
-              strokeWidth={Math.max(3, w.thickness * SCALE)}
-              strokeLinecap="round"
-              strokeDasharray={w.id === "w_north_balcony_rail" ? "6 4" : undefined}
-              pointerEvents="none"
-            />
-          ))}
+          {/* Walls (Dynamic modes + Accent Finish + Architecture Clickable) */}
+          {SKYONE_A2_WALLS.map((w) => {
+            const x1 = worldToSvgX(w.x1);
+            const y1 = worldToSvgY(w.z1);
+            const x2 = worldToSvgX(w.x2);
+            const y2 = worldToSvgY(w.z2);
+            const ov = scenario.wallOverrides?.[w.id];
+            const effectiveMode = !w.structural && ov?.mode ? ov.mode : "SOLID";
+            const accentMeta =
+              ov?.accentFinish && ov.accentFinish !== "DEFAULT"
+                ? WALL_ACCENT_META[ov.accentFinish]
+                : null;
+            const isSelectedWall =
+              interactionMode === "ARCHITECTURE" &&
+              selectedArchTarget?.kind === "WALL" &&
+              selectedArchTarget.id === w.id;
 
-          {/* Openings */}
+            let strokeColor =
+              w.id === "w_north_balcony_rail"
+                ? "#0F766E"
+                : w.isLouverWall
+                  ? "#475569"
+                  : "#334155";
+            let strokeWidth = Math.max(3, w.thickness * SCALE);
+            let strokeDasharray: string | undefined =
+              w.id === "w_north_balcony_rail"
+                ? "6 4"
+                : w.isLouverWall
+                  ? "3 3"
+                  : undefined;
+            let strokeOpacity = 1;
+
+            if (effectiveMode === "OPEN") {
+              strokeColor = "#94A3B8";
+              strokeWidth = 2;
+              strokeDasharray = "4 4";
+              strokeOpacity = 0.55;
+            } else if (effectiveMode === "GLASS_PARTITION") {
+              strokeColor = "#0891B2";
+              strokeWidth = 4.5;
+              strokeDasharray = undefined;
+            } else if (effectiveMode === "WOOD_SLAT") {
+              strokeColor = "#B45309";
+              strokeWidth = 5;
+              strokeDasharray = "5 4";
+            }
+
+            if (isSelectedWall) {
+              strokeColor = "#0D9488";
+              strokeWidth = Math.max(strokeWidth + 3, 9);
+            }
+
+            return (
+              <g key={w.id}>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                  strokeDasharray={strokeDasharray}
+                  strokeOpacity={strokeOpacity}
+                  pointerEvents="none"
+                />
+                {accentMeta && effectiveMode === "SOLID" && (
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke={accentMeta.hex}
+                    strokeWidth={3.2}
+                    strokeLinecap="round"
+                    pointerEvents="none"
+                  />
+                )}
+                {interactionMode === "ARCHITECTURE" && (
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="transparent"
+                    strokeWidth={18}
+                    strokeLinecap="round"
+                    style={{ cursor: "pointer" }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onSelectItem(null);
+                      onSelectArchTarget?.({ kind: "WALL", id: w.id });
+                    }}
+                  >
+                    <title>{w.label}</title>
+                  </line>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Openings (Respecting SLIDING_POCKET / OPEN_ARCH + Clickable in Architecture mode) */}
           {SKYONE_A2_OPENINGS.map((op) => {
             const cx = worldToSvgX(op.x);
             const cy = worldToSvgY(op.z);
             const len = op.width * SCALE;
             const isVertical = Math.abs(op.rotationY) > 0.5;
-            const strokeColor =
-              op.kind === "MAIN_DOOR"
+            const doorMode = op.customizableDoor
+              ? scenario.doorOverrides?.[op.id] ?? "SWING_90"
+              : "SWING_90";
+            const isSelectedDoor =
+              interactionMode === "ARCHITECTURE" &&
+              selectedArchTarget?.kind === "DOOR" &&
+              selectedArchTarget.id === op.id;
+
+            const x1 = isVertical ? cx : cx - len / 2;
+            const y1 = isVertical ? cy - len / 2 : cy;
+            const x2 = isVertical ? cx : cx + len / 2;
+            const y2 = isVertical ? cy + len / 2 : cy;
+
+            const baseColor = isSelectedDoor
+              ? "#0D9488"
+              : op.kind === "MAIN_DOOR"
                 ? "#B45309"
                 : op.kind === "INTERIOR_DOOR"
-                  ? "#92400E"
+                  ? doorMode === "SLIDING_POCKET"
+                    ? "#0284C7"
+                    : doorMode === "OPEN_ARCH"
+                      ? "#94A3B8"
+                      : "#92400E"
                   : "#0284C7";
+
             return (
-              <line
-                key={op.id}
-                x1={isVertical ? cx : cx - len / 2}
-                y1={isVertical ? cy - len / 2 : cy}
-                x2={isVertical ? cx : cx + len / 2}
-                y2={isVertical ? cy + len / 2 : cy}
-                stroke={strokeColor}
-                strokeWidth={op.kind === "INTERIOR_DOOR" ? 4.5 : 6}
-                strokeLinecap="round"
-                pointerEvents="none"
-              />
+              <g key={op.id}>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={baseColor}
+                  strokeWidth={isSelectedDoor ? 8 : op.kind === "INTERIOR_DOOR" ? 4.5 : 6}
+                  strokeLinecap="round"
+                  strokeDasharray={doorMode === "OPEN_ARCH" ? "4 4" : undefined}
+                  pointerEvents="none"
+                />
+                {doorMode === "SLIDING_POCKET" && (
+                  <line
+                    x1={isVertical ? cx + 5 : cx - len * 0.4}
+                    y1={isVertical ? cy - len * 0.4 : cy + 5}
+                    x2={isVertical ? cx + 5 : cx + len * 0.4}
+                    y2={isVertical ? cy + len * 0.4 : cy + 5}
+                    stroke="#0369A1"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    pointerEvents="none"
+                  />
+                )}
+                {interactionMode === "ARCHITECTURE" && op.customizableDoor && (
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="transparent"
+                    strokeWidth={20}
+                    strokeLinecap="round"
+                    style={{ cursor: "pointer" }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onSelectItem(null);
+                      onSelectArchTarget?.({ kind: "DOOR", id: op.id });
+                    }}
+                  >
+                    <title>{op.label}</title>
+                  </line>
+                )}
+              </g>
             );
           })}
 
@@ -907,6 +1204,7 @@ export function Interior2DBlueprint({
             const isSelected = selectedItemId === item.id;
             const warnSeverity = warningSeverityByItem.get(item.id);
             const finishHex = MATERIAL_FINISH_META[item.materialFinish]?.hex || "#BA8756";
+            const isElevated = item.mountType === "WALL" || item.mountType === "SURFACE";
 
             return (
               <g
@@ -914,18 +1212,21 @@ export function Interior2DBlueprint({
                 transform={`translate(${cx}, ${cy}) rotate(${-item.rotationDeg})`}
                 onPointerDown={(e) => handleItemPointerDown(e, item)}
                 onClick={(e) => {
-                  if (toolMode !== "SELECT") return;
+                  if (toolMode !== "SELECT" || interactionMode === "ARCHITECTURE") return;
                   e.stopPropagation();
                   setSelectedMepId(null);
                   onSelectItem(item.id);
                 }}
                 style={{
                   cursor:
-                    toolMode !== "SELECT"
-                      ? "crosshair"
-                      : item.isLocked
-                        ? "pointer"
-                        : "grab",
+                    interactionMode === "ARCHITECTURE"
+                      ? "default"
+                      : toolMode !== "SELECT"
+                        ? "crosshair"
+                        : item.isLocked
+                          ? "pointer"
+                          : "grab",
+                  opacity: interactionMode === "ARCHITECTURE" ? 0.55 : 1,
                 }}
               >
                 <rect
@@ -935,7 +1236,9 @@ export function Interior2DBlueprint({
                   height={rh}
                   rx={4}
                   fill={warnSeverity === "DANGER" ? "#FDA4AF" : finishHex}
-                  fillOpacity={item.catalogKey === "area_rug" ? 0.32 : 0.88}
+                  fillOpacity={
+                    item.catalogKey === "area_rug" ? 0.32 : isElevated ? 0.72 : 0.88
+                  }
                   stroke={
                     warnSeverity === "DANGER"
                       ? "#E11D48"
@@ -946,6 +1249,7 @@ export function Interior2DBlueprint({
                           : "#1E293B"
                   }
                   strokeWidth={isSelected || warnSeverity ? 3 : 1.2}
+                  strokeDasharray={isElevated ? "4 2" : undefined}
                 />
                 {/* Front facing direction marker */}
                 <line
@@ -1131,7 +1435,7 @@ export function Interior2DBlueprint({
             fontWeight="800"
             pointerEvents="none"
           >
-            ▲ CỬA CHÍNH LECMAX 1.2M
+            ▲ CỬA CHÍNH LECMAX 1.2M (BẢN LỀ TRÁI)
           </text>
         </svg>
       </div>
@@ -1139,12 +1443,14 @@ export function Interior2DBlueprint({
       {/* Bottom Hint */}
       <div className="px-3.5 py-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
         <span>
-          {snapToWall
-            ? "Đang bật Hít tường (<=12cm) & Smart Guides · Kéo đồ hoặc điểm MEP để dời vị trí"
-            : "Lưới tự do 5cm · Phím R xoay 90°, Mũi tên nhích 5cm"}
+          {interactionMode === "ARCHITECTURE"
+            ? "Đang ở chế độ Tường & Cửa · Chạm tường/cửa để đổi kết cấu & vật liệu"
+            : snapToWall
+              ? "Đang bật Hít tường (<=12cm) & Smart Guides · Kéo đồ hoặc điểm MEP để dời vị trí"
+              : "Lưới tự do 5cm · Phím R xoay 90°, Mũi tên nhích 5cm"}
         </span>
         <span className="inline-flex items-center gap-1 font-semibold">
-          <Lock className="w-3 h-3" /> Bếp & WC CĐT khóa cố định
+          <Lock className="w-3 h-3" /> Hộp gen kỹ thuật, Bếp & WC CĐT khóa cố định
         </span>
       </div>
     </div>

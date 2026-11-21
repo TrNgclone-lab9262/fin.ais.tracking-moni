@@ -2,12 +2,18 @@ import {
   HandoverChecklistItem,
   InteriorCatalogKey,
   InteriorDesignScenario,
+  InteriorDoorMode,
+  InteriorFloorPattern,
   InteriorFurnitureItem,
+  InteriorLightingZones,
   InteriorMaterialFinish,
   InteriorMepPoint,
   InteriorMepPointKind,
+  InteriorMountType,
   InteriorStudioState,
   InteriorStylePreset,
+  InteriorWallAccentFinish,
+  InteriorWallMode,
 } from "@/types/finance";
 
 export interface RoomZoneSpec {
@@ -26,14 +32,28 @@ export interface RoomZoneSpec {
 
 export interface WallSegmentSpec {
   id: string;
+  label: string;
   x1: number;
   z1: number;
   x2: number;
   z2: number;
   thickness: number;
   height: number;
+  structural: boolean; // true = tường chịu lực/bao che (chỉ đổi bề mặt), false = vách ngăn phi kết cấu
   cutawaySide?: "SOUTH" | "EAST" | "WEST" | "NORTH" | "INTERIOR";
   isCurvedCorner?: boolean;
+  roomSide?: "WC" | "LOGGIA" | "STANDARD";
+  isLouverWall?: boolean;
+}
+
+export interface StructuralShaftSpec {
+  id: string;
+  label: string;
+  x: number; // center X
+  z: number; // center Z
+  width: number;
+  depth: number;
+  height: number;
 }
 
 export interface DoorSwingArcSpec {
@@ -55,6 +75,7 @@ export interface OpeningSpec {
   height: number;
   sillHeight: number;
   rotationY: number;
+  customizableDoor?: boolean;
   swingArc?: DoorSwingArcSpec;
 }
 
@@ -205,6 +226,131 @@ export const STYLE_PRESET_FURNITURE_PALETTES: Record<
   },
 };
 
+export const WALL_MODE_META: Record<
+  InteriorWallMode,
+  { label: string; shortLabel: string; description: string; estimatedCostVnd: number }
+> = {
+  SOLID: {
+    label: "Tường kín (Chuẩn CĐT)",
+    shortLabel: "Tường kín",
+    description: "Giữ nguyên vách tường xây chuẩn bàn giao Phú Đông",
+    estimatedCostVnd: 0,
+  },
+  OPEN: {
+    label: "Mở thông không gian",
+    shortLabel: "Mở thông",
+    description: "Tháo dỡ vách phi kết cấu, giữ dầm trần — tăng độ thoáng tối đa",
+    estimatedCostVnd: 2_200_000,
+  },
+  GLASS_PARTITION: {
+    label: "Vách kính khung nhôm đen",
+    shortLabel: "Vách kính",
+    description: "Kính cường lực 10mm khung nhôm slim đen lấy sáng xuyên phòng",
+    estimatedCostVnd: 8_500_000,
+  },
+  WOOD_SLAT: {
+    label: "Vách lam gỗ sồi hở",
+    shortLabel: "Lam gỗ",
+    description: "Hệ thanh lam gỗ sồi dọc tạo sự riêng tư nhẹ nhàng & thoáng khí",
+    estimatedCostVnd: 5_200_000,
+  },
+};
+
+export const WALL_ACCENT_META: Record<
+  InteriorWallAccentFinish,
+  { label: string; shortLabel: string; hex: string; estimatedCostVnd: number }
+> = {
+  DEFAULT: {
+    label: "Sơn chuẩn Phong cách",
+    shortLabel: "Mặc định",
+    hex: "#F5F1EA",
+    estimatedCostVnd: 0,
+  },
+  CONCRETE_EFFECT: {
+    label: "Sơn hiệu ứng xi măng",
+    shortLabel: "Xi măng",
+    hex: "#A8A59F",
+    estimatedCostVnd: 3_400_000,
+  },
+  WOOD_SLAT_PANEL: {
+    label: "Ốp lam sóng gỗ sồi",
+    shortLabel: "Lam sóng gỗ",
+    hex: "#B58352",
+    estimatedCostVnd: 5_400_000,
+  },
+  MARBLE_PVC: {
+    label: "Ốp PVC vân đá Marble",
+    shortLabel: "Vân đá PVC",
+    hex: "#ECEFF2",
+    estimatedCostVnd: 4_800_000,
+  },
+  TINTED_MIRROR: {
+    label: "Kính thủy trà mở rộng",
+    shortLabel: "Gương trà",
+    hex: "#8E7B6A",
+    estimatedCostVnd: 5_800_000,
+  },
+  SAGE_PAINT: {
+    label: "Sơn điểm nhấn Xanh xô thơm",
+    shortLabel: "Xanh xô thơm",
+    hex: "#9BAE98",
+    estimatedCostVnd: 2_200_000,
+  },
+  WARM_BEIGE_PAINT: {
+    label: "Sơn điểm nhấn Kem cát ấm",
+    shortLabel: "Kem cát ấm",
+    hex: "#DFD0BE",
+    estimatedCostVnd: 2_200_000,
+  },
+};
+
+export const DOOR_MODE_META: Record<
+  InteriorDoorMode,
+  { label: string; shortLabel: string; description: string; estimatedCostVnd: number }
+> = {
+  SWING_90: {
+    label: "Cửa mở cánh 90° (CĐT)",
+    shortLabel: "Mở 90°",
+    description: "Cửa gỗ công nghiệp mở xoay 90° theo tiêu chuẩn bàn giao",
+    estimatedCostVnd: 0,
+  },
+  SLIDING_POCKET: {
+    label: "Cửa lùa ray trượt tiết kiệm diện tích",
+    shortLabel: "Cửa lùa",
+    description: "Giải phóng hoàn toàn bán kính quét 90° cho phòng nhỏ",
+    estimatedCostVnd: 4_500_000,
+  },
+  OPEN_ARCH: {
+    label: "Cổng vòm mở không cánh",
+    shortLabel: "Vòm mở",
+    description: "Loại bỏ cánh cửa tạo luồng di chuyển liền mạch",
+    estimatedCostVnd: 2_800_000,
+  },
+};
+
+export const FLOOR_PATTERN_META: Record<
+  InteriorFloorPattern,
+  { label: string; shortLabel: string; estimatedCostVnd: number }
+> = {
+  STRAIGHT: {
+    label: "Lát thẳng chuẩn CĐT",
+    shortLabel: "Lát thẳng",
+    estimatedCostVnd: 0,
+  },
+  HERRINGBONE: {
+    label: "Sàn gỗ xương cá Herringbone",
+    shortLabel: "Xương cá",
+    estimatedCostVnd: 4_800_000,
+  },
+};
+
+export const DEFAULT_LIGHTING_ZONES: InteriorLightingZones = {
+  living: true,
+  kitchen: true,
+  master: true,
+  room05: true,
+};
+
 export function resolveFinishForStylePreset(
   item: InteriorFurnitureItem,
   preset: InteriorStylePreset
@@ -213,9 +359,11 @@ export function resolveFinishForStylePreset(
   const pal = STYLE_PRESET_FURNITURE_PALETTES[preset];
   switch (item.catalogKey) {
     case "sofa_3seat":
+    case "sofa_bed_smart":
     case "accent_armchair":
       return pal.fabricPrimary;
     case "reading_lounge_chair":
+    case "beanbag_lounger":
     case "area_rug":
       return pal.fabricAccent;
     case "ergonomic_chair":
@@ -223,18 +371,25 @@ export function resolveFinishForStylePreset(
     case "wardrobe_tall":
     case "wardrobe_compact":
     case "shoe_cabinet_tall":
+    case "fridge_top_cabinet":
+    case "rolling_file_cabinet":
     case "pegboard_goal_wall":
       return pal.cabinet;
     case "coffee_table":
+    case "mini_kitchen_island":
       return pal.tableTop;
     case "tv_console_slat":
     case "dining_set_4":
+    case "folding_dining_table":
     case "bed_master_160":
     case "bed_compact_140":
+    case "tatami_podium_bed":
     case "nightstand":
+    case "vanity_desk_mirror":
     case "dual_workstation_desk":
     case "single_desk":
     case "tall_bookshelf_led":
+    case "balcony_bistro_set":
       return pal.wood;
     default:
       return item.materialFinish;
@@ -558,67 +713,123 @@ export const SKYONE_A2_ROOMS: readonly RoomZoneSpec[] = [
   },
 ];
 
-export const SKYONE_A2_WALLS: readonly WallSegmentSpec[] = [
-  // Bao ngoài phía Bắc (Ban công + Master + Lô gia)
-  { id: "w_north_master", x1: -2.55, z1: -3.6, x2: 0.65, z2: -3.6, thickness: 0.2, height: 2.7, cutawaySide: "NORTH" },
-  { id: "w_north_balcony_rail", x1: 0.85, z1: -3.62, x2: 3.65, z2: -3.62, thickness: 0.08, height: 1.4, cutawaySide: "NORTH" },
-  { id: "w_north_loggia", x1: -3.72, z1: -2.85, x2: -2.55, z2: -2.85, thickness: 0.12, height: 2.7, cutawaySide: "NORTH" },
+/**
+ * Đa giác sàn giật cấp thực tế 99% của căn hộ Loại A2 (khớp chính xác mặt bằng 2D Phú Đông SkyOne):
+ * - Phía Bắc giật 3 cấp: Master (-3.60) > Ban công (-3.45) > Lô gia (-2.85)
+ * - Phía Nam giật thụt nhẹ khu cửa chính (3.48) giữa Phòng 05 (3.60) và Bếp (3.60)
+ */
+export const SKYONE_A2_PLINTH_POLYGON: readonly { x: number; z: number }[] = [
+  { x: -3.72, z: -2.85 },
+  { x: -2.55, z: -2.85 },
+  { x: -2.55, z: -3.60 },
+  { x: 0.65, z: -3.60 },
+  { x: 0.65, z: -3.45 },
+  { x: 3.65, z: -3.45 },
+  { x: 3.65, z: 3.60 },
+  { x: 1.15, z: 3.60 },
+  { x: 1.15, z: 3.48 },
+  { x: -0.05, z: 3.48 },
+  { x: -0.05, z: 3.60 },
+  { x: -3.72, z: 3.60 },
+];
 
-  // Bao ngoài phía Đông (Tường phải dài từ Ban công -> Phòng khách -> Bếp)
-  { id: "w_east_main", x1: 3.65, z1: -3.62, x2: 3.65, z2: 3.6, thickness: 0.2, height: 2.85, cutawaySide: "EAST" },
+/**
+ * 3 hộp kỹ thuật / cột kết cấu MEP chuẩn theo bản vẽ A2:
+ * - 2 hộp kỹ thuật ống nước trong WC 06 (góc trên-trái cạnh bồn cầu & góc dưới-trái buồng tắm)
+ * - 1 hộp kỹ thuật góc nối giữa vách TV & cửa lùa Ban công 03
+ */
+export const SKYONE_A2_SHAFTS: readonly StructuralShaftSpec[] = [
+  {
+    id: "shaft_wc_top_left",
+    label: "Hộp kỹ thuật MEP WC (trên)",
+    x: -2.30,
+    z: -0.36,
+    width: 0.36,
+    depth: 0.36,
+    height: 2.55,
+  },
+  {
+    id: "shaft_wc_bot_left",
+    label: "Hộp kỹ thuật thoát sàn WC (dưới)",
+    x: -2.35,
+    z: 0.94,
+    width: 0.26,
+    depth: 0.26,
+    height: 2.55,
+  },
+  {
+    id: "shaft_balcony_corner",
+    label: "Hộp kỹ thuật góc Ban công",
+    x: 0.82,
+    z: -2.84,
+    width: 0.36,
+    depth: 0.38,
+    height: 2.85,
+  },
+];
+
+export const SKYONE_A2_WALLS: readonly WallSegmentSpec[] = [
+  // Bao ngoài phía Bắc (Master -3.60, Ban công -3.45, Lô gia -2.85 có lam nhôm thông gió)
+  { id: "w_north_master", label: "Tường cửa sổ PN Master", x1: -2.55, z1: -3.6, x2: 0.65, z2: -3.6, thickness: 0.2, height: 2.7, structural: true, cutawaySide: "NORTH" },
+  { id: "w_north_balcony_rail", label: "Lan can Ban công Đông Nam", x1: 0.65, z1: -3.45, x2: 3.65, z2: -3.45, thickness: 0.08, height: 1.4, structural: true, cutawaySide: "NORTH" },
+  { id: "w_north_loggia", label: "Lam nhôm thông gió Lô gia 08", x1: -3.72, z1: -2.85, x2: -2.55, z2: -2.85, thickness: 0.12, height: 2.7, structural: true, cutawaySide: "NORTH", roomSide: "LOGGIA", isLouverWall: true },
+
+  // Bao ngoài phía Đông (Tường phải dài từ Ban công -> Phòng khách -> Bếp — tường đặt Sofa)
+  { id: "w_east_main", label: "Tường chính sau Sofa & Bếp", x1: 3.65, z1: -3.45, x2: 3.65, z2: 3.6, thickness: 0.2, height: 2.85, structural: true, cutawaySide: "EAST" },
 
   // Bao ngoài phía Nam (Bếp + Cửa chính + Phòng 05)
-  { id: "w_south_kitchen", x1: 1.15, z1: 3.6, x2: 3.65, z2: 3.6, thickness: 0.2, height: 2.85, cutawaySide: "SOUTH" },
-  { id: "w_south_room05", x1: -3.72, z1: 3.6, x2: -0.05, z2: 3.6, thickness: 0.2, height: 2.7, cutawaySide: "SOUTH" },
+  { id: "w_south_kitchen", label: "Tường sau Bếp chữ L", x1: 1.15, z1: 3.6, x2: 3.65, z2: 3.6, thickness: 0.2, height: 2.85, structural: true, cutawaySide: "SOUTH" },
+  { id: "w_south_room05", label: "Tường bàn làm việc Phòng 05", x1: -3.72, z1: 3.6, x2: -0.05, z2: 3.6, thickness: 0.2, height: 2.7, structural: true, cutawaySide: "SOUTH" },
 
   // Bao ngoài phía Tây (Lô gia + Phòng 05)
-  { id: "w_west_loggia", x1: -3.72, z1: -2.85, x2: -3.72, z2: 3.6, thickness: 0.2, height: 2.7, cutawaySide: "WEST" },
+  { id: "w_west_loggia", label: "Tường biên Tây (Lô gia & P.05)", x1: -3.72, z1: -2.85, x2: -3.72, z2: 3.6, thickness: 0.2, height: 2.7, structural: true, cutawaySide: "WEST", roomSide: "LOGGIA" },
 
   // Vách ngăn trong căn hộ
-  // Giữa Master & Phòng khách (tường đặt Kệ TV)
-  { id: "w_master_living", x1: 0.6, z1: -3.6, x2: 0.6, z2: -0.6, thickness: 0.16, height: 2.75, cutawaySide: "INTERIOR" },
+  // Giữa Master & Phòng khách (tường đặt Kệ TV — cho phép ốp Accent Wall)
+  { id: "w_master_living", label: "Vách TV (Master ↔ Phòng khách)", x1: 0.6, z1: -3.6, x2: 0.6, z2: -0.6, thickness: 0.16, height: 2.75, structural: true, cutawaySide: "INTERIOR" },
   // Giữa Master & Lô gia
-  { id: "w_master_loggia", x1: -2.55, z1: -3.6, x2: -2.55, z2: -0.6, thickness: 0.14, height: 2.7, cutawaySide: "INTERIOR" },
+  { id: "w_master_loggia", label: "Tường đầu giường Master ↔ Lô gia", x1: -2.55, z1: -3.6, x2: -2.55, z2: -0.6, thickness: 0.14, height: 2.7, structural: true, cutawaySide: "INTERIOR" },
   // Giữa Master & WC (áp tủ quần áo Master)
-  { id: "w_master_wc", x1: -2.55, z1: -0.6, x2: -0.2, z2: -0.6, thickness: 0.12, height: 2.7, cutawaySide: "INTERIOR" },
+  { id: "w_master_wc", label: "Vách Tủ áo Master ↔ WC", x1: -2.55, z1: -0.6, x2: -0.2, z2: -0.6, thickness: 0.12, height: 2.7, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
 
-  // Bao khu WC 3 phân khu (bên trái giáp Lô gia, bên phải giáp hành lang, dưới bo cong giáp Phòng 05)
-  { id: "w_wc_loggia", x1: -2.55, z1: -0.6, x2: -2.55, z2: 1.1, thickness: 0.12, height: 2.55, cutawaySide: "INTERIOR" },
-  { id: "w_wc_corridor_top", x1: -0.2, z1: -0.6, x2: -0.2, z2: 0.15, thickness: 0.1, height: 2.55, cutawaySide: "INTERIOR" },
-  { id: "w_wc_corridor_bot", x1: -0.2, z1: 0.95, x2: -0.2, z2: 1.4, thickness: 0.1, height: 2.55, cutawaySide: "INTERIOR" },
-  { id: "w_wc_south", x1: -2.2, z1: 1.4, x2: -0.2, z2: 1.4, thickness: 0.12, height: 2.55, cutawaySide: "INTERIOR", isCurvedCorner: true },
+  // Bao khu WC 3 phân khu (ốp gạch đá vân mây sáng bên trong)
+  { id: "w_wc_loggia", label: "Tường WC ↔ Lô gia (có cửa sổ)", x1: -2.55, z1: -0.6, x2: -2.55, z2: 1.1, thickness: 0.12, height: 2.55, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
+  { id: "w_wc_corridor_top", label: "Vách WC ↔ Hành lang (trên)", x1: -0.2, z1: -0.6, x2: -0.2, z2: 0.15, thickness: 0.1, height: 2.55, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
+  { id: "w_wc_corridor_bot", label: "Vách Lavabo ↔ Hành lang (dưới)", x1: -0.2, z1: 0.95, x2: -0.2, z2: 1.4, thickness: 0.1, height: 2.55, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
+  { id: "w_wc_south", label: "Tường bo cong WC + Hộc giày âm", x1: -2.2, z1: 1.4, x2: -0.2, z2: 1.4, thickness: 0.12, height: 2.55, structural: true, cutawaySide: "INTERIOR", isCurvedCorner: true, roomSide: "WC" },
   // Vách chia nội bộ WC 3 phân khu (ngăn buồng WC trên và phòng tắm đứng dưới)
-  { id: "w_wc_inner_mid", x1: -2.55, z1: 0.25, x2: -1.35, z2: 0.25, thickness: 0.08, height: 2.4, cutawaySide: "INTERIOR" },
-  { id: "w_wc_inner_lavabo", x1: -1.3, z1: 0.75, x2: -1.3, z2: 1.4, thickness: 0.08, height: 2.4, cutawaySide: "INTERIOR" },
+  { id: "w_wc_inner_mid", label: "Vách ngăn buồng WC & Tắm đứng", x1: -2.55, z1: 0.25, x2: -1.35, z2: 0.25, thickness: 0.08, height: 2.4, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
+  { id: "w_wc_inner_lavabo", label: "Vách ngăn Tắm đứng & Lavabo", x1: -1.3, z1: 0.75, x2: -1.3, z2: 1.4, thickness: 0.08, height: 2.4, structural: true, cutawaySide: "INTERIOR", roomSide: "WC" },
 
-  // Vách ngăn Phòng 05 & Hành lang cửa chính (có cửa vào phòng 05 ở trên)
-  { id: "w_room05_corridor", x1: -0.15, z1: 2.35, x2: -0.15, z2: 3.6, thickness: 0.12, height: 2.7, cutawaySide: "INTERIOR" },
+  // Vách phi kết cấu 1: Phòng 05 ↔ Hành lang (cho phép mở thông / vách kính / lam gỗ)
+  { id: "w_room05_corridor", label: "Vách Phòng 05 ↔ Sảnh hành lang", x1: -0.15, z1: 2.35, x2: -0.15, z2: 3.6, thickness: 0.12, height: 2.7, structural: false, cutawaySide: "INTERIOR" },
 
-  // Vách ngăn kín đáo giữa Cửa chính & Tủ lạnh / Bếp chữ L
-  { id: "w_kitchen_shield", x1: 1.25, z1: 2.55, x2: 1.25, z2: 3.6, thickness: 0.12, height: 2.4, cutawaySide: "INTERIOR" },
+  // Vách phi kết cấu 2: Vách che Bếp & Tủ lạnh ↔ Sảnh cửa chính (cho phép mở thông / kính / lam gỗ)
+  { id: "w_kitchen_shield", label: "Vách ngăn Sảnh vào ↔ Bếp & Tủ lạnh", x1: 1.25, z1: 2.55, x2: 1.25, z2: 3.6, thickness: 0.12, height: 2.4, structural: false, cutawaySide: "INTERIOR" },
 
   // Vách cửa lùa Ban công (hai trụ biên trái & phải)
-  { id: "w_balcony_left_pillar", x1: 0.6, z1: -2.65, x2: 1.05, z2: -2.65, thickness: 0.18, height: 2.85, cutawaySide: "NORTH" },
-  { id: "w_balcony_right_pillar", x1: 3.35, z1: -2.65, x2: 3.65, z2: -2.65, thickness: 0.18, height: 2.85, cutawaySide: "NORTH" },
+  { id: "w_balcony_left_pillar", label: "Trụ trái cửa lùa Ban công", x1: 0.6, z1: -2.65, x2: 1.05, z2: -2.65, thickness: 0.18, height: 2.85, structural: true, cutawaySide: "NORTH" },
+  { id: "w_balcony_right_pillar", label: "Trụ phải cửa lùa Ban công", x1: 3.35, z1: -2.65, x2: 3.65, z2: -2.65, thickness: 0.18, height: 2.85, structural: true, cutawaySide: "NORTH" },
 ];
 
 export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
   {
     id: "op_main_door",
     kind: "MAIN_DOOR",
-    label: "Cửa chính Lecmax 1.2m",
+    label: "Cửa chính Lecmax 1.2m (Mở trái)",
     x: 0.55,
-    z: 3.6,
+    z: 3.52,
     width: 1.2,
     height: 2.25,
     sillHeight: 0,
     rotationY: 0,
+    // Khớp 100% ảnh mặt bằng 2D: Cánh rộng bản lề bên TRÁI mở áp vào vách Phòng 05, cánh phụ cố định bên PHẢI
     swingArc: {
-      hingeX: 1.05,
-      hingeZ: 3.52,
-      radius: 0.82,
-      startAngleDeg: 180,
-      endAngleDeg: 270,
+      hingeX: 0.02,
+      hingeZ: 3.48,
+      radius: 0.78,
+      startAngleDeg: 270,
+      endAngleDeg: 360,
     },
   },
   {
@@ -654,6 +865,7 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     height: 2.15,
     sillHeight: 0,
     rotationY: 0,
+    customizableDoor: true,
     swingArc: {
       hingeX: 0.54,
       hingeZ: -0.66,
@@ -672,6 +884,7 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     height: 2.1,
     sillHeight: 0,
     rotationY: Math.PI / 2,
+    customizableDoor: true,
     swingArc: {
       hingeX: -0.25,
       hingeZ: 0.18,
@@ -690,6 +903,7 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     height: 2.15,
     sillHeight: 0,
     rotationY: Math.PI / 2,
+    customizableDoor: true,
     swingArc: {
       hingeX: -0.2,
       hingeZ: 1.46,
@@ -709,11 +923,11 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     sillHeight: 0,
     rotationY: 0,
     swingArc: {
-      hingeX: -2.28,
+      hingeX: -3.02,
       hingeZ: 1.35,
       radius: 0.74,
-      startAngleDeg: 180,
-      endAngleDeg: 270,
+      startAngleDeg: 270,
+      endAngleDeg: 360,
     },
   },
   {
@@ -737,6 +951,8 @@ export interface CatalogItemTemplate {
   defaultRoomId: string;
   defaultDimensionsCm: { width: number; depth: number; height: number };
   defaultFinish: InteriorMaterialFinish;
+  defaultMountType?: InteriorMountType;
+  defaultElevationCm?: number;
   pricingRule: InteriorFurnitureItem["pricingRule"];
   unitPriceVnd: number;
   boqGroup: InteriorFurnitureItem["boqGroup"];
@@ -1089,6 +1305,283 @@ export const INTERIOR_CATALOG: readonly CatalogItemTemplate[] = [
     source: "DEVELOPER_INCLUDED",
     note: "Bàn giao sẵn bồn cầu, vách tắm kính vòi sen đứng, lavabo sứ Hafele",
   },
+  // === 20 MẪU MỞ RỘNG (ƯU TIÊN 3) ===
+  // 1. Nội thất thông minh (6 món)
+  {
+    catalogKey: "sofa_bed_smart",
+    name: "Sofa-Bed thông minh kéo giường 1m4",
+    categoryLabel: "Thông minh",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 175, depth: 92, height: 82 },
+    defaultFinish: "CREAM_BOUCLE",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 8_900_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Ban ngày làm sofa đọc sách Studio, tối kéo phẳng thành giường khách",
+  },
+  {
+    catalogKey: "tatami_podium_bed",
+    name: "Giường phản Tatami hộc kéo kín sàn",
+    categoryLabel: "Thông minh",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 180, depth: 200, height: 42 },
+    defaultFinish: "WARM_OAK",
+    pricingRule: "PER_LINEAR_METER",
+    unitPriceVnd: 6_200_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Bục nâng Tatami có 4 ngăn kéo vali lớn bên dưới, chuẩn Japandi",
+  },
+  {
+    catalogKey: "folding_dining_table",
+    name: "Bàn ăn gấp gọn thông minh 2↔6 chỗ",
+    categoryLabel: "Thông minh",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 110, depth: 70, height: 75 },
+    defaultFinish: "WARM_OAK",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 5_600_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Bình thường xếp gọn 70cm, mở rộng hai cánh khi đón gia đình ăn tiệc",
+  },
+  {
+    catalogKey: "vanity_desk_mirror",
+    name: "Bàn trang điểm gương tròn LED cảm ứng",
+    categoryLabel: "Phòng ngủ Master",
+    defaultRoomId: "room_master",
+    defaultDimensionsCm: { width: 85, depth: 42, height: 132 },
+    defaultFinish: "WARM_OAK",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 3_400_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Kèm đôn bọc vải Bouclé & gương LED 3 màu cho góc trang điểm Bé Mèo",
+  },
+  {
+    catalogKey: "mini_kitchen_island",
+    name: "Đảo bếp mini / Quầy bar mặt đá ngăn bếp",
+    categoryLabel: "Bếp & Ăn",
+    defaultRoomId: "room_kitchen",
+    defaultDimensionsCm: { width: 120, depth: 52, height: 88 },
+    defaultFinish: "WHITE_MARBLE",
+    pricingRule: "PER_LINEAR_METER",
+    unitPriceVnd: 5_400_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Tăng mặt sơ chế + hộc chứa đồ khô, kèm 2 ghế bar cao hiện đại",
+  },
+  {
+    catalogKey: "fridge_top_cabinet",
+    name: "Hệ tủ kho trên tủ lạnh kịch trần",
+    categoryLabel: "Bếp & Ăn",
+    defaultRoomId: "room_kitchen",
+    defaultDimensionsCm: { width: 70, depth: 62, height: 65 },
+    defaultFinish: "MATTE_CREAM",
+    defaultMountType: "WALL",
+    defaultElevationCm: 185,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 2_600_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Tận dụng tối đa khoảng trống phía trên tủ lạnh Inverter",
+  },
+  // 2. Studio Phòng 05 (5 món)
+  {
+    catalogKey: "dual_monitor_arm",
+    name: "Tay đỡ Dual Monitor 27\" + Màn hình cong",
+    categoryLabel: "Dual Studio (PA-B)",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 112, depth: 26, height: 52 },
+    defaultFinish: "CHARCOAL_SLATE",
+    defaultMountType: "SURFACE",
+    defaultElevationCm: 75,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_850_000,
+    boqGroup: "APPLIANCES",
+    source: "NEW_PURCHASE",
+    note: "Tự động đặt lên mặt bàn làm việc, giải phóng không gian mặt gỗ",
+  },
+  {
+    catalogKey: "pc_tower_stand",
+    name: "Case PC kính cường lực + Kệ bánh xe",
+    categoryLabel: "Dual Studio (PA-B)",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 24, depth: 46, height: 50 },
+    defaultFinish: "CHARCOAL_SLATE",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 650_000,
+    boqGroup: "APPLIANCES",
+    source: "NEW_PURCHASE",
+    note: "Đặt gọn gàng dưới chân bàn đôi, cách ẩm sàn và dễ vệ sinh",
+  },
+  {
+    catalogKey: "desk_lamp_screenbar",
+    name: "Đèn bàn kiến trúc / LED ScreenBar ấm",
+    categoryLabel: "Dual Studio (PA-B)",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 46, depth: 18, height: 42 },
+    defaultFinish: "BRUSHED_TITANIUM",
+    defaultMountType: "SURFACE",
+    defaultElevationCm: 75,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 950_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Ánh sáng 3000K-5000K chống chói màn hình khi làm việc đêm",
+  },
+  {
+    catalogKey: "rolling_file_cabinet",
+    name: "Hộc tủ tài liệu 3 ngăn kéo có bánh xe",
+    categoryLabel: "Dual Studio (PA-B)",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 42, depth: 48, height: 60 },
+    defaultFinish: "MATTE_CREAM",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_650_000,
+    boqGroup: "WOOD_FURNITURE",
+    source: "NEW_PURCHASE",
+    note: "Lọt gầm bàn 75cm, có khóa cất hồ sơ căn hộ & giấy tờ quan trọng",
+  },
+  {
+    catalogKey: "beanbag_lounger",
+    name: "Ghế lười Beanbag vải nhung đọc sách",
+    categoryLabel: "Dual Studio (PA-B)",
+    defaultRoomId: "room_05",
+    defaultDimensionsCm: { width: 82, depth: 82, height: 68 },
+    defaultFinish: "SAGE_LINEN",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_350_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Siêu nhẹ dễ di chuyển từ góc lô gia ra phòng khách xem phim",
+  },
+  // 3. Đèn & Decor (5 món)
+  {
+    catalogKey: "pendant_dining_light",
+    name: "Đèn thả bàn ăn Linear LED tối giản",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 105, depth: 12, height: 55 },
+    defaultFinish: "BRUSHED_TITANIUM",
+    defaultMountType: "WALL",
+    defaultElevationCm: 195,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_900_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Treo thẳng tâm bàn ăn 4 ghế, ánh sáng vàng ấm 3000K tôn màu đồ ăn",
+  },
+  {
+    catalogKey: "floor_arc_lamp",
+    name: "Đèn đứng góc Sofa cần cong Nordic",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 42, depth: 56, height: 172 },
+    defaultFinish: "BRUSHED_TITANIUM",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_850_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Điểm nhấn ánh sáng chill buổi tối góc phòng khách",
+  },
+  {
+    catalogKey: "wall_art_duo",
+    name: "Bộ 2 tranh nghệ thuật khung gỗ sau Sofa",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 132, depth: 4, height: 66 },
+    defaultFinish: "WARM_OAK",
+    defaultMountType: "WALL",
+    defaultElevationCm: 132,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_200_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Cân bằng mảng tường dài phía sau sofa như phối cảnh mẫu A2",
+  },
+  {
+    catalogKey: "arch_full_mirror",
+    name: "Gương toàn thân vòm đứng LED hắt",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_master",
+    defaultDimensionsCm: { width: 58, depth: 8, height: 175 },
+    defaultFinish: "WARM_OAK",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_650_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Mở rộng chiều sâu thị giác sảnh vào hoặc góc phòng ngủ Master",
+  },
+  {
+    catalogKey: "loggia_drying_rack",
+    name: "Giàn phơi xếp gọn gắn tường Lô gia",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_loggia",
+    defaultDimensionsCm: { width: 100, depth: 24, height: 35 },
+    defaultFinish: "BRUSHED_TITANIUM",
+    defaultMountType: "WALL",
+    defaultElevationCm: 155,
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 1_450_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Gắn tường Tây Lô gia 08 đón gió tự nhiên qua hệ lam nhôm",
+  },
+  // 4. Tiện ích chung cư hiện đại (4 món)
+  {
+    catalogKey: "air_purifier",
+    name: "Máy lọc không khí HEPA phòng khách/ngủ",
+    categoryLabel: "Điện máy",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 28, depth: 28, height: 56 },
+    defaultFinish: "MATTE_CREAM",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 3_600_000,
+    boqGroup: "APPLIANCES",
+    source: "NEW_PURCHASE",
+    note: "Lọc bụi mịn PM2.5 cho tầng 12A gần trục đường lớn",
+  },
+  {
+    catalogKey: "robot_vacuum_dock",
+    name: "Trạm sạc Robot hút bụi lau nhà tự đổ rác",
+    categoryLabel: "Điện máy",
+    defaultRoomId: "room_living_dining",
+    defaultDimensionsCm: { width: 40, depth: 44, height: 48 },
+    defaultFinish: "MATTE_CREAM",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 8_900_000,
+    boqGroup: "APPLIANCES",
+    source: "NEW_PURCHASE",
+    note: "Đặt gọn cạnh chân kệ TV hoặc chân tủ giày có ổ cắm chờ",
+  },
+  {
+    catalogKey: "dishwasher_compact",
+    name: "Máy rửa chén bán âm / 8 bộ gọn bếp",
+    categoryLabel: "Điện máy",
+    defaultRoomId: "room_kitchen",
+    defaultDimensionsCm: { width: 55, depth: 52, height: 60 },
+    defaultFinish: "BRUSHED_TITANIUM",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 9_400_000,
+    boqGroup: "APPLIANCES",
+    source: "NEW_PURCHASE",
+    note: "Giải phóng việc nhà mỗi tối cho hai vợ chồng trẻ",
+  },
+  {
+    catalogKey: "balcony_bistro_set",
+    name: "Bộ bàn trà cà phê sáng Ban công 2 ghế",
+    categoryLabel: "Trang trí",
+    defaultRoomId: "room_balcony",
+    defaultDimensionsCm: { width: 120, depth: 56, height: 72 },
+    defaultFinish: "WARM_OAK",
+    pricingRule: "FIXED_UNIT",
+    unitPriceVnd: 2_350_000,
+    boqGroup: "FINISHING_DECOR",
+    source: "NEW_PURCHASE",
+    note: "Bàn tròn gấp gọn + 2 ghế gỗ teak chịu nắng mưa Ban công Đông Nam",
+  },
 ];
 
 function createCommonBaseItems(): InteriorFurnitureItem[] {
@@ -1220,14 +1713,31 @@ function createCommonBaseItems(): InteriorFurnitureItem[] {
       procurementStatus: "PLANNED",
     },
     {
+      id: "it_wall_art_sofa",
+      catalogKey: "wall_art_duo",
+      name: "Bộ 2 tranh nghệ thuật khung gỗ sau Sofa",
+      roomId: "room_living_dining",
+      source: "NEW_PURCHASE",
+      position: { x: 3.51, z: -1.25 },
+      rotationDeg: -90,
+      dimensionsCm: { width: 132, depth: 4, height: 66 },
+      materialFinish: "WARM_OAK",
+      mountType: "WALL",
+      elevationCm: 132,
+      pricingRule: "FIXED_UNIT",
+      unitPriceVnd: 850_000,
+      boqGroup: "FINISHING_DECOR",
+      procurementStatus: "PLANNED",
+    },
+    {
       id: "it_shoe_cabinet",
       catalogKey: "shoe_cabinet_tall",
       name: "Tủ giày kịch trần + Hộc chìa khóa",
       roomId: "room_corridor",
       source: "NEW_PURCHASE",
-      position: { x: 0.08, z: 2.86 },
-      rotationDeg: 90,
-      dimensionsCm: { width: 92, depth: 30, height: 260 },
+      position: { x: 1.0, z: 3.0 },
+      rotationDeg: -90,
+      dimensionsCm: { width: 90, depth: 30, height: 240 },
       materialFinish: "MATTE_CREAM",
       pricingRule: "PER_LINEAR_METER",
       unitPriceVnd: 4_200_000,
@@ -1363,7 +1873,7 @@ function createCommonBaseItems(): InteriorFurnitureItem[] {
       name: "Tiểu cảnh chậu cây Ban công 2.4m²",
       roomId: "room_balcony",
       source: "NEW_PURCHASE",
-      position: { x: 3.12, z: -3.25 },
+      position: { x: 3.12, z: -3.2 },
       rotationDeg: 0,
       dimensionsCm: { width: 82, depth: 32, height: 65 },
       materialFinish: "SAGE_LINEN",
@@ -1641,7 +2151,7 @@ export function createScenarioBDualGrowthStudio(): InteriorDesignScenario {
         source: "NEW_PURCHASE",
         unit: "gói",
         quantity: 1,
-        unitPriceVnd: 4_500_000,
+        unitPriceVnd: 3_800_000,
         procurementStatus: "PLANNED",
       },
       {

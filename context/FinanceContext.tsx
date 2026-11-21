@@ -59,12 +59,16 @@ import {
   InteriorBoqPaymentRecord,
   InteriorBoqPaymentStage,
   InteriorDesignScenario,
+  InteriorDoorMode,
   InteriorExtraBoqItem,
+  InteriorFloorPattern,
   InteriorFurnitureItem,
+  InteriorLightingZones,
   InteriorMepPoint,
   InteriorProcurementStatus,
   InteriorStudioState,
   InteriorStylePreset,
+  InteriorWallOverride,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -129,6 +133,7 @@ import {
   createDefaultGoldPortfolio,
 } from "@/lib/goldEngine";
 import {
+  DEFAULT_LIGHTING_ZONES,
   createDefaultInteriorStudio,
   createDefaultSkyOneA2MepPoints,
   resolveFinishForStylePreset,
@@ -526,6 +531,11 @@ interface FinanceContextType {
   ) => void;
   deleteInteriorMepPoint: (id: string) => void;
   resetInteriorMepPoints: () => void;
+  updateInteriorWallOverride: (wallId: string, patch: Partial<InteriorWallOverride>) => void;
+  updateInteriorDoorOverride: (openingId: string, mode: InteriorDoorMode) => void;
+  updateInteriorFloorPattern: (roomId: string, pattern: InteriorFloorPattern) => void;
+  updateInteriorLightingZones: (patch: Partial<InteriorLightingZones>) => void;
+  updateInteriorCurtainOpenRatio: (ratio: number) => void;
   commitInteriorUndoSnapshot: (snapshot: InteriorStudioState) => void;
   toggleHandoverChecklistItem: (id: string) => void;
   updateHandoverChecklistNote: (id: string, note: string) => void;
@@ -3467,6 +3477,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           payments: ex.payments ? ex.payments.map((p) => ({ ...p })) : undefined,
         })),
         mepPoints: (source.mepPoints ?? createDefaultSkyOneA2MepPoints()).map((m) => ({ ...m })),
+        wallOverrides: source.wallOverrides
+          ? Object.fromEntries(
+              Object.entries(source.wallOverrides).map(([k, v]) => [k, { ...v }])
+            )
+          : undefined,
+        doorOverrides: source.doorOverrides ? { ...source.doorOverrides } : undefined,
+        roomFloorOverrides: source.roomFloorOverrides ? { ...source.roomFloorOverrides } : undefined,
+        lightingZones: source.lightingZones ? { ...source.lightingZones } : undefined,
+        curtainOpenRatio: source.curtainOpenRatio,
         updatedAt: nowIso,
       };
       updateInteriorState((prev) => ({
@@ -3815,6 +3834,122 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       ),
     }));
   }, [updateInteriorState]);
+
+  const updateInteriorWallOverride = useCallback(
+    (wallId: string, patch: Partial<InteriorWallOverride>) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          const currentMap = sc.wallOverrides ?? {};
+          const existing = currentMap[wallId] ?? { mode: "SOLID" as const, accentFinish: "DEFAULT" as const };
+          const nextEntry: InteriorWallOverride = {
+            mode: patch.mode ?? existing.mode,
+            accentFinish: patch.accentFinish ?? existing.accentFinish,
+          };
+          const nextMap = { ...currentMap };
+          if (nextEntry.mode === "SOLID" && (!nextEntry.accentFinish || nextEntry.accentFinish === "DEFAULT")) {
+            delete nextMap[wallId];
+          } else {
+            nextMap[wallId] = nextEntry;
+          }
+          return {
+            ...sc,
+            wallOverrides: Object.keys(nextMap).length > 0 ? nextMap : undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorDoorOverride = useCallback(
+    (openingId: string, mode: InteriorDoorMode) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          const nextMap = { ...(sc.doorOverrides ?? {}) };
+          if (mode === "SWING_90") {
+            delete nextMap[openingId];
+          } else {
+            nextMap[openingId] = mode;
+          }
+          return {
+            ...sc,
+            doorOverrides: Object.keys(nextMap).length > 0 ? nextMap : undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorFloorPattern = useCallback(
+    (roomId: string, pattern: InteriorFloorPattern) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          const nextMap = { ...(sc.roomFloorOverrides ?? {}) };
+          if (pattern === "STRAIGHT") {
+            delete nextMap[roomId];
+          } else {
+            nextMap[roomId] = pattern;
+          }
+          return {
+            ...sc,
+            roomFloorOverrides: Object.keys(nextMap).length > 0 ? nextMap : undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorLightingZones = useCallback(
+    (patch: Partial<InteriorLightingZones>) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) => {
+            if (sc.id !== prev.activeScenarioId) return sc;
+            return {
+              ...sc,
+              lightingZones: {
+                ...(sc.lightingZones ?? DEFAULT_LIGHTING_ZONES),
+                ...patch,
+              },
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorCurtainOpenRatio = useCallback(
+    (ratio: number) => {
+      const clamped = Math.max(0, Math.min(1, Number(ratio.toFixed(2))));
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) =>
+            sc.id === prev.activeScenarioId
+              ? { ...sc, curtainOpenRatio: clamped, updatedAt: new Date().toISOString() }
+              : sc
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
 
   const commitInteriorUndoSnapshot = useCallback((snapshot: InteriorStudioState) => {
     setInteriorUndoStack((stack) => [...stack.slice(-24), snapshot]);
@@ -4917,6 +5052,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateInteriorMepPoint,
     deleteInteriorMepPoint,
     resetInteriorMepPoints,
+    updateInteriorWallOverride,
+    updateInteriorDoorOverride,
+    updateInteriorFloorPattern,
+    updateInteriorLightingZones,
+    updateInteriorCurtainOpenRatio,
     commitInteriorUndoSnapshot,
     toggleHandoverChecklistItem,
     updateHandoverChecklistNote,

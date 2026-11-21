@@ -3,12 +3,16 @@ import {
   InteriorMaterialFinish,
   InteriorMepPointKind,
   InteriorStylePreset,
+  InteriorWallAccentFinish,
 } from "@/types/finance";
 import {
   INTERIOR_STYLE_PRESETS,
   MATERIAL_FINISH_META,
   MEP_KIND_META,
+  WALL_ACCENT_META,
 } from "@/lib/interiorFloorplan";
+
+export type SkyDomeTimeKey = "MORNING_08" | "NOON_12" | "AFTERNOON_1630" | "EVENING_20";
 
 function createCanvas(
   width: number,
@@ -69,14 +73,14 @@ function makeChangyihTileMaps(
       const y = (i * 137) % 512;
       const r = 36 + (i % 40);
       const grad = ctx.createRadialGradient(x, y, 4, x, y, r);
-      grad.addColorStop(0, i % 2 === 0 ? "rgba(255,255,255,0.14)" : "rgba(180,170,155,0.08)");
+      grad.addColorStop(0, i % 2 === 0 ? "rgba(255,255,255,0.16)" : "rgba(180,170,155,0.08)");
       grad.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = grad;
       ctx.fillRect(x - r, y - r, r * 2, r * 2);
     }
 
-    ctx.strokeStyle = "rgba(148, 140, 128, 0.28)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(148, 140, 128, 0.26)";
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(512, 0);
@@ -89,13 +93,12 @@ function makeChangyihTileMaps(
     ctx.stroke();
   }
 
-  // Bump map: bright flat tile surface, recessed dark grout seams
   const [bumpCanvas, bCtx] = createCanvas(512, 512);
   if (bCtx) {
     bCtx.fillStyle = "#E8E8E8";
     bCtx.fillRect(0, 0, 512, 512);
     bCtx.strokeStyle = "#505050";
-    bCtx.lineWidth = 4;
+    bCtx.lineWidth = 3.5;
     bCtx.beginPath();
     bCtx.moveTo(0, 0);
     bCtx.lineTo(512, 0);
@@ -108,19 +111,19 @@ function makeChangyihTileMaps(
     bCtx.stroke();
   }
 
-  // Roughness map: smooth glossy porcelain (low value ~0.28 -> #48), rough matte grout (~0.88 -> #E0)
+  // Polished porcelain tile (~0.24 roughness) with matte grout seams (~0.88) to catch diagonal sunbeams
   const [roughCanvas, rCtx] = createCanvas(512, 512);
   if (rCtx) {
-    rCtx.fillStyle = "#525252";
+    rCtx.fillStyle = "#424242";
     rCtx.fillRect(0, 0, 512, 512);
     for (let i = 0; i < 36; i++) {
       const x = (i * 89) % 512;
       const y = (i * 151) % 512;
-      rCtx.fillStyle = i % 2 === 0 ? "rgba(105,105,105,0.22)" : "rgba(65,65,65,0.2)";
+      rCtx.fillStyle = i % 2 === 0 ? "rgba(85,85,85,0.22)" : "rgba(50,50,50,0.2)";
       rCtx.fillRect(x, y, 42, 42);
     }
     rCtx.strokeStyle = "#DEDEDE";
-    rCtx.lineWidth = 4;
+    rCtx.lineWidth = 3.5;
     rCtx.beginPath();
     rCtx.moveTo(0, 0);
     rCtx.lineTo(512, 0);
@@ -157,14 +160,14 @@ function makeWoodPlankMaps(
     bCtx.fillRect(0, 0, 512, 512);
   }
   if (rCtx) {
-    rCtx.fillStyle = "#949494";
+    rCtx.fillStyle = "#8C8C8C";
     rCtx.fillRect(0, 0, 512, 512);
   }
 
   const plankH = 64;
   for (let row = 0; row < 8; row++) {
     const y = row * plankH;
-    const shade = (row % 3 - 1) * 8;
+    const shade = ((row % 3) - 1) * 8;
     if (ctx) {
       ctx.fillStyle =
         shade >= 0 ? `rgba(255,245,230,${0.03 * shade})` : `rgba(45,25,10,${-0.025 * shade})`;
@@ -178,7 +181,7 @@ function makeWoodPlankMaps(
         ctx.moveTo(0, gy);
         ctx.bezierCurveTo(
           170,
-          gy + ((row + g) % 3 - 1) * 3,
+          gy + (((row + g) % 3) - 1) * 3,
           340,
           gy - ((row + g) % 2) * 2.5,
           512,
@@ -206,7 +209,7 @@ function makeWoodPlankMaps(
         bCtx.moveTo(0, gy);
         bCtx.bezierCurveTo(
           170,
-          gy + ((row + g) % 3 - 1) * 3,
+          gy + (((row + g) % 3) - 1) * 3,
           340,
           gy - ((row + g) % 2) * 2.5,
           512,
@@ -226,7 +229,7 @@ function makeWoodPlankMaps(
     }
 
     if (rCtx) {
-      rCtx.fillStyle = row % 2 === 0 ? "#8B8B8B" : "#9E9E9E";
+      rCtx.fillStyle = row % 2 === 0 ? "#828282" : "#969696";
       rCtx.fillRect(0, y, 512, plankH);
       rCtx.strokeStyle = "#DCDCDC";
       rCtx.lineWidth = 2.5;
@@ -244,24 +247,101 @@ function makeWoodPlankMaps(
   };
 }
 
-function makeBathMarbleMaps(
+/**
+ * Procedural Herringbone (sàn gỗ xương cá) maps for Master & Room 05 customization.
+ */
+function makeHerringboneWoodMaps(
+  baseHex: string,
   maxAnisotropy: number
 ): { map: THREE.CanvasTexture; bumpMap: THREE.CanvasTexture } {
   const [canvas, ctx] = createCanvas(512, 512);
   const [bumpCanvas, bCtx] = createCanvas(512, 512);
+
   if (ctx) {
-    ctx.fillStyle = "#EFF1F4";
+    ctx.fillStyle = baseHex;
     ctx.fillRect(0, 0, 512, 512);
-    ctx.strokeStyle = "rgba(130, 142, 158, 0.24)";
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 6; i++) {
+  }
+  if (bCtx) {
+    bCtx.fillStyle = "#D8D8D8";
+    bCtx.fillRect(0, 0, 512, 512);
+  }
+
+  const colW = 64;
+  const rowH = 32;
+  for (let col = -1; col < 10; col++) {
+    const dir = col % 2 === 0 ? 1 : -1;
+    for (let row = -2; row < 18; row++) {
+      const x = col * colW;
+      const y = row * rowH;
+      const tone = ((col * 7 + row * 3) % 3) - 1;
+
+      const drawChevron = (target: CanvasRenderingContext2D | null, isBump: boolean) => {
+        if (!target) return;
+        target.beginPath();
+        if (dir > 0) {
+          target.moveTo(x, y);
+          target.lineTo(x + colW, y + rowH);
+          target.lineTo(x + colW, y + rowH * 2);
+          target.lineTo(x, y + rowH);
+        } else {
+          target.moveTo(x, y + rowH);
+          target.lineTo(x + colW, y);
+          target.lineTo(x + colW, y + rowH);
+          target.lineTo(x, y + rowH * 2);
+        }
+        target.closePath();
+
+        if (!isBump) {
+          target.fillStyle =
+            tone > 0
+              ? "rgba(255,244,225,0.08)"
+              : tone < 0
+                ? "rgba(52,30,14,0.09)"
+                : "rgba(255,255,255,0.01)";
+          target.fill();
+          target.strokeStyle = "rgba(62, 38, 18, 0.34)";
+          target.lineWidth = 1.6;
+          target.stroke();
+        } else {
+          target.fillStyle = tone > 0 ? "#E4E4E4" : tone < 0 ? "#C8C8C8" : "#D8D8D8";
+          target.fill();
+          target.strokeStyle = "#484848";
+          target.lineWidth = 2;
+          target.stroke();
+        }
+      };
+
+      drawChevron(ctx, false);
+      drawChevron(bCtx, true);
+    }
+  }
+
+  return {
+    map: finalizeColorTexture(canvas, 2.8, 2.8, maxAnisotropy),
+    bumpMap: finalizeLinearTexture(bumpCanvas, 2.8, 2.8, maxAnisotropy),
+  };
+}
+
+function makeBathMarbleMaps(
+  maxAnisotropy: number,
+  repeatX = 2.2,
+  repeatY = 2.2
+): { map: THREE.CanvasTexture; bumpMap: THREE.CanvasTexture } {
+  const [canvas, ctx] = createCanvas(512, 512);
+  const [bumpCanvas, bCtx] = createCanvas(512, 512);
+  if (ctx) {
+    ctx.fillStyle = "#F3F5F7";
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = "rgba(130, 142, 158, 0.22)";
+    ctx.lineWidth = 2.8;
+    for (let i = 0; i < 7; i++) {
       ctx.beginPath();
-      const startY = i * 90 + 20;
+      const startY = i * 82 + 16;
       ctx.moveTo(0, startY);
-      ctx.bezierCurveTo(140, startY + 35, 310, startY - 40, 512, startY + 18);
+      ctx.bezierCurveTo(140, startY + 34, 310, startY - 38, 512, startY + 18);
       ctx.stroke();
     }
-    ctx.strokeStyle = "rgba(160, 170, 185, 0.3)";
+    ctx.strokeStyle = "rgba(160, 170, 185, 0.28)";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, 255, 255);
     ctx.strokeRect(256, 256, 255, 255);
@@ -275,8 +355,47 @@ function makeBathMarbleMaps(
     bCtx.strokeRect(256, 256, 255, 255);
   }
   return {
-    map: finalizeColorTexture(canvas, 2.2, 2.2, maxAnisotropy),
-    bumpMap: finalizeLinearTexture(bumpCanvas, 2.2, 2.2, maxAnisotropy),
+    map: finalizeColorTexture(canvas, repeatX, repeatY, maxAnisotropy),
+    bumpMap: finalizeLinearTexture(bumpCanvas, repeatX, repeatY, maxAnisotropy),
+  };
+}
+
+function makeConcreteEffectMaps(
+  maxAnisotropy: number
+): { map: THREE.CanvasTexture; bumpMap: THREE.CanvasTexture } {
+  const [canvas, ctx] = createCanvas(512, 512);
+  const [bumpCanvas, bCtx] = createCanvas(512, 512);
+
+  if (ctx) {
+    ctx.fillStyle = WALL_ACCENT_META.CONCRETE_EFFECT.hex;
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 95; i++) {
+      const x = (i * 67) % 512;
+      const y = (i * 123) % 512;
+      const r = 24 + (i % 55);
+      const grad = ctx.createRadialGradient(x, y, 2, x, y, r);
+      grad.addColorStop(
+        0,
+        i % 2 === 0 ? "rgba(255,255,255,0.12)" : "rgba(58,56,52,0.11)"
+      );
+      grad.addColorStop(1, "rgba(128,128,128,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+  if (bCtx) {
+    bCtx.fillStyle = "#C8C8C8";
+    bCtx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 120; i++) {
+      const x = (i * 53) % 512;
+      const y = (i * 107) % 512;
+      bCtx.fillStyle = i % 2 === 0 ? "rgba(230,230,230,0.3)" : "rgba(95,95,95,0.28)";
+      bCtx.fillRect(x, y, 28, 12);
+    }
+  }
+  return {
+    map: finalizeColorTexture(canvas, 2, 1.5, maxAnisotropy),
+    bumpMap: finalizeLinearTexture(bumpCanvas, 2, 1.5, maxAnisotropy),
   };
 }
 
@@ -318,7 +437,7 @@ function makeWoodGrainMaps(
       const y = i * 7.5;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.bezierCurveTo(85, y + (i % 3 - 1) * 3, 175, y - (i % 2) * 2.5, 256, y);
+      ctx.bezierCurveTo(85, y + ((i % 3) - 1) * 3, 175, y - (i % 2) * 2.5, 256, y);
       ctx.stroke();
     }
   }
@@ -331,7 +450,7 @@ function makeWoodGrainMaps(
       const y = i * 7.5;
       bCtx.beginPath();
       bCtx.moveTo(0, y);
-      bCtx.bezierCurveTo(85, y + (i % 3 - 1) * 3, 175, y - (i % 2) * 2.5, 256, y);
+      bCtx.bezierCurveTo(85, y + ((i % 3) - 1) * 3, 175, y - (i % 2) * 2.5, 256, y);
       bCtx.stroke();
     }
   }
@@ -438,9 +557,6 @@ function makeDarkGraniteTexture(maxAnisotropy: number): THREE.CanvasTexture {
   return finalizeColorTexture(canvas, 2, 2, maxAnisotropy);
 }
 
-/**
- * Soft radial Contact Shadow / AO texture placed gently under floor-standing furniture.
- */
 function makeContactShadowTexture(): THREE.CanvasTexture {
   const [canvas, ctx] = createCanvas(128, 128);
   if (ctx) {
@@ -459,19 +575,89 @@ function makeContactShadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Procedural 12A-floor panoramic sky dome texture with soft distant urban horizon glow.
+ */
+function makeSkyDomeTexture(timeKey: SkyDomeTimeKey): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(512, 256);
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    if (timeKey === "MORNING_08") {
+      grad.addColorStop(0.0, "#5B9BD5");
+      grad.addColorStop(0.36, "#A6D1F2");
+      grad.addColorStop(0.52, "#FDECD0");
+      grad.addColorStop(0.62, "#E5DED4");
+      grad.addColorStop(1.0, "#BDB8B0");
+    } else if (timeKey === "NOON_12") {
+      grad.addColorStop(0.0, "#3A82C8");
+      grad.addColorStop(0.38, "#93C5EE");
+      grad.addColorStop(0.53, "#EBF4FB");
+      grad.addColorStop(0.64, "#D7DCE2");
+      grad.addColorStop(1.0, "#B2B8C0");
+    } else if (timeKey === "AFTERNOON_1630") {
+      grad.addColorStop(0.0, "#4E6A96");
+      grad.addColorStop(0.34, "#D69E7A");
+      grad.addColorStop(0.52, "#F9CBA0");
+      grad.addColorStop(0.62, "#C8B6A8");
+      grad.addColorStop(1.0, "#9E948C");
+    } else {
+      grad.addColorStop(0.0, "#0A1224");
+      grad.addColorStop(0.38, "#182742");
+      grad.addColorStop(0.52, "#2D3C58");
+      grad.addColorStop(0.62, "#1C2434");
+      grad.addColorStop(1.0, "#101520");
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Subtle distant Dĩ An / Thủ Đức high-rise skyline band right on horizon (y ~ 132)
+    const horizonY = 136;
+    ctx.fillStyle =
+      timeKey === "EVENING_20" ? "rgba(14, 20, 34, 0.85)" : "rgba(120, 134, 152, 0.22)";
+    for (let i = 0; i < 42; i++) {
+      const bx = i * 13;
+      const bw = 7 + (i % 5) * 2;
+      const bh = 6 + ((i * 19) % 18);
+      ctx.fillRect(bx, horizonY - bh, bw, bh + 4);
+      // Warm evening city lights on distant towers
+      if (timeKey === "EVENING_20") {
+        ctx.fillStyle = "rgba(253, 211, 132, 0.55)";
+        for (let wy = horizonY - bh + 2; wy < horizonY - 2; wy += 4) {
+          if ((i + wy) % 3 === 0) {
+            ctx.fillRect(bx + 2, wy, 2, 1.5);
+          }
+        }
+        ctx.fillStyle = "rgba(14, 20, 34, 0.85)";
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export interface InteriorMaterialLibrary {
   stylePreset: InteriorStylePreset;
   textures: THREE.Texture[];
   materials: THREE.Material[];
   wallMain: THREE.MeshStandardMaterial;
   wallCutawayCap: THREE.MeshStandardMaterial;
+  wallSectionCap: THREE.MeshStandardMaterial;
+  wcMarbleWall: THREE.MeshStandardMaterial;
+  skirtingMat: THREE.MeshStandardMaterial;
+  floorTrimMetal: THREE.MeshStandardMaterial;
   ceilingMat: THREE.MeshStandardMaterial;
   coveLedMat: THREE.MeshStandardMaterial;
+  downlightOnMat: THREE.MeshStandardMaterial;
+  downlightOffMat: THREE.MeshStandardMaterial;
   floorLivingTile: THREE.MeshStandardMaterial;
   floorWoodTile: THREE.MeshStandardMaterial;
+  floorWoodHerringbone: THREE.MeshStandardMaterial;
   floorBathMarble: THREE.MeshStandardMaterial;
   floorLoggiaGrey: THREE.MeshStandardMaterial;
   glassClear: THREE.Material;
+  glassPartitionMat: THREE.Material;
   darkFrameMetal: THREE.MeshStandardMaterial;
   lecmaxWoodDoor: THREE.MeshStandardMaterial;
   interiorWoodDoor: THREE.MeshStandardMaterial;
@@ -479,6 +665,7 @@ export interface InteriorMaterialLibrary {
   kitchenGranite: THREE.MeshStandardMaterial;
   pegboardMat: THREE.MeshStandardMaterial;
   chromeMetal: THREE.MeshStandardMaterial;
+  mirrorGlass: THREE.MeshStandardMaterial;
   screenDark: THREE.MeshStandardMaterial;
   screenGlow: THREE.MeshStandardMaterial;
   plantLeaf: THREE.MeshStandardMaterial;
@@ -486,7 +673,10 @@ export interface InteriorMaterialLibrary {
   beddingLight: THREE.MeshStandardMaterial;
   warmLedStrip: THREE.MeshStandardMaterial;
   curtainFabric: THREE.MeshStandardMaterial;
+  curtainVoileMat: THREE.MeshStandardMaterial;
   contactShadowMat: THREE.MeshBasicMaterial;
+  accentWallMaterials: Record<InteriorWallAccentFinish, THREE.MeshStandardMaterial>;
+  skyDomeTextures: Record<SkyDomeTimeKey, THREE.CanvasTexture>;
   mepMaterials: Record<InteriorMepPointKind, THREE.MeshStandardMaterial>;
   finishes: Record<InteriorMaterialFinish, THREE.MeshStandardMaterial>;
   dispose: () => void;
@@ -520,9 +710,21 @@ export function createInteriorMaterialLibrary(
   trackTex(woodFloorMaps.bumpMap);
   trackTex(woodFloorMaps.roughnessMap);
 
-  const bathMarbleMaps = makeBathMarbleMaps(maxAnisotropy);
+  const herringboneMaps = makeHerringboneWoodMaps(palette.woodFloorColor, maxAnisotropy);
+  trackTex(herringboneMaps.map);
+  trackTex(herringboneMaps.bumpMap);
+
+  const bathMarbleMaps = makeBathMarbleMaps(maxAnisotropy, 2.2, 2.2);
   trackTex(bathMarbleMaps.map);
   trackTex(bathMarbleMaps.bumpMap);
+
+  const wcWallMarbleMaps = makeBathMarbleMaps(maxAnisotropy, 1.6, 1.8);
+  trackTex(wcWallMarbleMaps.map);
+  trackTex(wcWallMarbleMaps.bumpMap);
+
+  const concreteMaps = makeConcreteEffectMaps(maxAnisotropy);
+  trackTex(concreteMaps.map);
+  trackTex(concreteMaps.bumpMap);
 
   const loggiaTileTex = trackTex(makeLoggiaTileTexture(maxAnisotropy));
 
@@ -550,6 +752,13 @@ export function createInteriorMaterialLibrary(
   const graniteTex = trackTex(makeDarkGraniteTexture(maxAnisotropy));
   const contactShadowTex = trackTex(makeContactShadowTexture());
 
+  const skyDomeTextures: Record<SkyDomeTimeKey, THREE.CanvasTexture> = {
+    MORNING_08: trackTex(makeSkyDomeTexture("MORNING_08")),
+    NOON_12: trackTex(makeSkyDomeTexture("NOON_12")),
+    AFTERNOON_1630: trackTex(makeSkyDomeTexture("AFTERNOON_1630")),
+    EVENING_20: trackTex(makeSkyDomeTexture("EVENING_20")),
+  };
+
   const wallMain = trackMat(
     new THREE.MeshStandardMaterial({
       color: palette.wallColor,
@@ -561,8 +770,42 @@ export function createInteriorMaterialLibrary(
   const wallCutawayCap = trackMat(
     new THREE.MeshStandardMaterial({
       color: "#D8D2C8",
-      roughness: 0.9,
+      roughness: 0.88,
       metalness: 0.0,
+    })
+  );
+
+  const wallSectionCap = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#3F454F",
+      roughness: 0.78,
+      metalness: 0.08,
+    })
+  );
+
+  const wcMarbleWall = trackMat(
+    new THREE.MeshStandardMaterial({
+      map: wcWallMarbleMaps.map,
+      bumpMap: wcWallMarbleMaps.bumpMap,
+      bumpScale: 0.005,
+      roughness: 0.24,
+      metalness: 0.06,
+    })
+  );
+
+  const skirtingMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#EDE8DF",
+      roughness: 0.48,
+      metalness: 0.04,
+    })
+  );
+
+  const floorTrimMetal = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#C5A87A",
+      roughness: 0.28,
+      metalness: 0.85,
     })
   );
 
@@ -578,8 +821,25 @@ export function createInteriorMaterialLibrary(
     new THREE.MeshStandardMaterial({
       color: "#FFF4DC",
       emissive: new THREE.Color("#FFE0A3"),
-      emissiveIntensity: 0.85,
+      emissiveIntensity: 0.9,
+      roughness: 0.35,
+    })
+  );
+
+  const downlightOnMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#FFF8E7",
+      emissive: new THREE.Color("#FFE6B0"),
+      emissiveIntensity: 1.25,
+      roughness: 0.25,
+    })
+  );
+
+  const downlightOffMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#CBD5E1",
       roughness: 0.4,
+      metalness: 0.2,
     })
   );
 
@@ -587,10 +847,10 @@ export function createInteriorMaterialLibrary(
     new THREE.MeshStandardMaterial({
       map: livingTileMaps.map,
       bumpMap: livingTileMaps.bumpMap,
-      bumpScale: 0.008,
+      bumpScale: 0.007,
       roughnessMap: livingTileMaps.roughnessMap,
-      roughness: 0.95,
-      metalness: 0.04,
+      roughness: 0.72,
+      metalness: 0.06,
     })
   );
 
@@ -600,8 +860,18 @@ export function createInteriorMaterialLibrary(
       bumpMap: woodFloorMaps.bumpMap,
       bumpScale: 0.014,
       roughnessMap: woodFloorMaps.roughnessMap,
-      roughness: 0.9,
+      roughness: 0.86,
       metalness: 0.04,
+    })
+  );
+
+  const floorWoodHerringbone = trackMat(
+    new THREE.MeshStandardMaterial({
+      map: herringboneMaps.map,
+      bumpMap: herringboneMaps.bumpMap,
+      bumpScale: 0.015,
+      roughness: 0.56,
+      metalness: 0.05,
     })
   );
 
@@ -610,7 +880,7 @@ export function createInteriorMaterialLibrary(
       map: bathMarbleMaps.map,
       bumpMap: bathMarbleMaps.bumpMap,
       bumpScale: 0.006,
-      roughness: 0.25,
+      roughness: 0.24,
       metalness: 0.06,
     })
   );
@@ -623,7 +893,6 @@ export function createInteriorMaterialLibrary(
     })
   );
 
-  // Skip expensive multi-pass transmission on Software WebGL while keeping crisp transparent glass
   const glassClear = trackMat(
     isSoftwareGl
       ? new THREE.MeshStandardMaterial({
@@ -643,6 +912,18 @@ export function createInteriorMaterialLibrary(
           transmission: 0.32,
           depthWrite: false,
         })
+  );
+
+  const glassPartitionMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#D8EBF4",
+      transparent: true,
+      opacity: 0.34,
+      roughness: 0.12,
+      metalness: 0.14,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
   );
 
   const darkFrameMetal = trackMat(
@@ -709,6 +990,14 @@ export function createInteriorMaterialLibrary(
     })
   );
 
+  const mirrorGlass = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#E4EDF5",
+      roughness: 0.06,
+      metalness: 0.92,
+    })
+  );
+
   const screenDark = trackMat(
     new THREE.MeshStandardMaterial({
       color: "#111827",
@@ -721,7 +1010,7 @@ export function createInteriorMaterialLibrary(
     new THREE.MeshStandardMaterial({
       color: "#1E293B",
       emissive: new THREE.Color("#38BDF8"),
-      emissiveIntensity: 0.32,
+      emissiveIntensity: 0.34,
       roughness: 0.18,
       metalness: 0.12,
     })
@@ -758,7 +1047,7 @@ export function createInteriorMaterialLibrary(
     new THREE.MeshStandardMaterial({
       color: "#FFF1CE",
       emissive: new THREE.Color("#FBBF24"),
-      emissiveIntensity: 0.75,
+      emissiveIntensity: 0.78,
       roughness: 0.35,
     })
   );
@@ -768,9 +1057,22 @@ export function createInteriorMaterialLibrary(
       map: creamBoucleMaps.map,
       bumpMap: creamBoucleMaps.bumpMap,
       bumpScale: 0.014,
-      color: "#ECE6DC",
+      color: "#E8E0D4",
       roughness: 0.92,
       metalness: 0.0,
+      side: THREE.DoubleSide,
+    })
+  );
+
+  const curtainVoileMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: "#FAF9F6",
+      transparent: true,
+      opacity: 0.38,
+      roughness: 0.95,
+      metalness: 0.0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
     })
   );
 
@@ -784,6 +1086,42 @@ export function createInteriorMaterialLibrary(
       polygonOffsetFactor: -1,
     })
   );
+
+  const accentWallMaterials: Record<InteriorWallAccentFinish, THREE.MeshStandardMaterial> = {
+    DEFAULT: wallMain,
+    CONCRETE_EFFECT: trackMat(
+      new THREE.MeshStandardMaterial({
+        map: concreteMaps.map,
+        bumpMap: concreteMaps.bumpMap,
+        bumpScale: 0.018,
+        roughness: 0.84,
+        metalness: 0.04,
+      })
+    ),
+    WOOD_SLAT_PANEL: slattedWood,
+    MARBLE_PVC: wcMarbleWall,
+    TINTED_MIRROR: trackMat(
+      new THREE.MeshStandardMaterial({
+        color: "#7F6C5D",
+        roughness: 0.08,
+        metalness: 0.88,
+      })
+    ),
+    SAGE_PAINT: trackMat(
+      new THREE.MeshStandardMaterial({
+        color: WALL_ACCENT_META.SAGE_PAINT.hex,
+        roughness: 0.85,
+        metalness: 0.02,
+      })
+    ),
+    WARM_BEIGE_PAINT: trackMat(
+      new THREE.MeshStandardMaterial({
+        color: WALL_ACCENT_META.WARM_BEIGE_PAINT.hex,
+        roughness: 0.85,
+        metalness: 0.02,
+      })
+    ),
+  };
 
   const mepMaterials: Record<InteriorMepPointKind, THREE.MeshStandardMaterial> = {
     OUTLET_DOUBLE: trackMat(
@@ -903,13 +1241,21 @@ export function createInteriorMaterialLibrary(
     materials,
     wallMain,
     wallCutawayCap,
+    wallSectionCap,
+    wcMarbleWall,
+    skirtingMat,
+    floorTrimMetal,
     ceilingMat,
     coveLedMat,
+    downlightOnMat,
+    downlightOffMat,
     floorLivingTile,
     floorWoodTile,
+    floorWoodHerringbone,
     floorBathMarble,
     floorLoggiaGrey,
     glassClear,
+    glassPartitionMat,
     darkFrameMetal,
     lecmaxWoodDoor,
     interiorWoodDoor,
@@ -917,6 +1263,7 @@ export function createInteriorMaterialLibrary(
     kitchenGranite,
     pegboardMat,
     chromeMetal,
+    mirrorGlass,
     screenDark,
     screenGlow,
     plantLeaf,
@@ -924,7 +1271,10 @@ export function createInteriorMaterialLibrary(
     beddingLight,
     warmLedStrip,
     curtainFabric,
+    curtainVoileMat,
     contactShadowMat,
+    accentWallMaterials,
+    skyDomeTextures,
     mepMaterials,
     finishes,
     dispose: () => {

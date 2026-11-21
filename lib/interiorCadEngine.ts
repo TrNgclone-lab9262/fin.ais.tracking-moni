@@ -1,10 +1,30 @@
-import { InteriorDesignScenario, InteriorFurnitureItem } from "@/types/finance";
+import {
+  InteriorDesignScenario,
+  InteriorDoorMode,
+  InteriorFurnitureItem,
+  InteriorWallOverride,
+} from "@/types/finance";
 import {
   SKYONE_A2_BOUNDS,
   SKYONE_A2_OPENINGS,
+  SKYONE_A2_SHAFTS,
   SKYONE_A2_WALLS,
   WallSegmentSpec,
 } from "./interiorFloorplan";
+
+/**
+ * Trả về danh sách các bức tường còn tồn tại vật lý (loại bỏ các vách phi kết cấu đã đổi sang chế độ OPEN).
+ */
+export function getActiveWalls(
+  wallOverrides?: Record<string, InteriorWallOverride>
+): WallSegmentSpec[] {
+  if (!wallOverrides) return [...SKYONE_A2_WALLS];
+  return SKYONE_A2_WALLS.filter((wall) => {
+    if (wall.structural) return true;
+    const ov = wallOverrides[wall.id];
+    return ov?.mode !== "OPEN";
+  });
+}
 
 export interface FootprintBounds {
   minX: number;
@@ -79,7 +99,12 @@ export function snapPositionToWalls(
   item: Pick<InteriorFurnitureItem, "position" | "rotationDeg" | "dimensionsCm">,
   rawX: number,
   rawZ: number,
-  options?: { snapToWall?: boolean; thresholdM?: number; gridM?: number }
+  options?: {
+    snapToWall?: boolean;
+    thresholdM?: number;
+    gridM?: number;
+    wallOverrides?: Record<string, InteriorWallOverride>;
+  }
 ): SnapToWallResult {
   const snapToWall = options?.snapToWall ?? true;
   const thresholdM = options?.thresholdM ?? 0.12;
@@ -100,8 +125,9 @@ export function snapPositionToWalls(
   if (snapToWall) {
     let minDistX = thresholdM;
     let minDistZ = thresholdM;
+    const activeWalls = getActiveWalls(options?.wallOverrides);
 
-    for (const wall of SKYONE_A2_WALLS) {
+    for (const wall of activeWalls) {
       const wa = getWallAabb(wall);
 
       // Vertical wall -> snap X if item overlaps wall along Z span
@@ -191,7 +217,8 @@ export interface SmartGuideLine {
  */
 export function computeSmartGuides(
   item: Pick<InteriorFurnitureItem, "position" | "rotationDeg" | "dimensionsCm">,
-  overridePos?: { x: number; z: number }
+  overridePos?: { x: number; z: number },
+  wallOverrides?: Record<string, InteriorWallOverride>
 ): SmartGuideLine[] {
   const b = getFootprintBounds(item, overridePos);
   const midX = (b.minX + b.maxX) / 2;
@@ -202,7 +229,7 @@ export function computeSmartGuides(
   let nearestTop: { dist: number; wallEdge: number } | null = null;
   let nearestBottom: { dist: number; wallEdge: number } | null = null;
 
-  for (const wall of SKYONE_A2_WALLS) {
+  for (const wall of getActiveWalls(wallOverrides)) {
     const wa = getWallAabb(wall);
 
     if (wa.isVertical) {
@@ -297,29 +324,102 @@ const WALL_OVERLAP_EXEMPT_KEYS = new Set([
   "ac_inverter",
   "smart_tv",
   "pegboard_goal_wall",
+  "wall_art_duo",
+  "pendant_dining_light",
+  "loggia_drying_rack",
+  "fridge_top_cabinet",
+  "dual_monitor_arm",
+  "desk_lamp_screenbar",
   "kitchen_l_hafele",
   "wc_hafele_set",
 ]);
 
+const SURFACE_SUPPORT_KEYS = new Set([
+  "dual_workstation_desk",
+  "single_desk",
+  "coffee_table",
+  "dining_set_4",
+  "folding_dining_table",
+  "nightstand",
+  "vanity_desk_mirror",
+  "tv_console_slat",
+  "mini_kitchen_island",
+]);
+
+export function isWallOrSurfaceMounted(item: InteriorFurnitureItem): boolean {
+  if (item.mountType === "WALL" || item.mountType === "SURFACE") return true;
+  return WALL_OVERLAP_EXEMPT_KEYS.has(item.catalogKey);
+}
+
 /**
- * Kiểm tra vật thể đặt sàn có đang đè cắt xuyên qua bất kỳ đoạn vách ngăn / tường nào không.
+ * Tự động tìm cao độ mặt bàn/tủ bên dưới (cm) khi đặt hoặc kéo vật thể kiểu SURFACE (màn hình, đèn bàn...).
+ */
+export function computeSurfaceElevationCm(
+  item: InteriorFurnitureItem,
+  allItems: readonly InteriorFurnitureItem[],
+  x = item.position.x,
+  z = item.position.z
+): number {
+  const isSurface =
+    item.mountType === "SURFACE" ||
+    item.catalogKey === "dual_monitor_arm" ||
+    item.catalogKey === "desk_lamp_screenbar";
+
+  if (!isSurface) {
+    return item.elevationCm ?? 0;
+  }
+
+  let bestHeightCm: number | null = null;
+  for (const other of allItems) {
+    if (other.id === item.id) continue;
+    if (!SURFACE_SUPPORT_KEYS.has(other.catalogKey)) continue;
+    const ob = getFootprintBounds(other);
+    const pad = 0.06;
+    if (x >= ob.minX - pad && x <= ob.maxX + pad && z >= ob.minZ - pad && z <= ob.maxZ + pad) {
+      if (bestHeightCm === null || other.dimensionsCm.height > bestHeightCm) {
+        bestHeightCm = other.dimensionsCm.height;
+      }
+    }
+  }
+
+  return bestHeightCm ?? item.elevationCm ?? 75;
+}
+
+/**
+ * Kiểm tra vật thể đặt sàn có đang đè cắt xuyên qua bất kỳ đoạn vách ngăn / tường / hộp kỹ thuật nào không.
  * Cho phép dung sai mép 4cm để đồ hít sát tường không bị báo lỗi giả.
  */
 export function detectItemWallOverlap(
-  item: InteriorFurnitureItem
+  item: InteriorFurnitureItem,
+  wallOverrides?: Record<string, InteriorWallOverride>
 ): { wallId: string; overlapCm: number } | null {
-  if (WALL_OVERLAP_EXEMPT_KEYS.has(item.catalogKey)) return null;
+  if (isWallOrSurfaceMounted(item)) return null;
 
   const b = getFootprintBounds(item);
   const tolerance = 0.04;
 
-  for (const wall of SKYONE_A2_WALLS) {
+  for (const wall of getActiveWalls(wallOverrides)) {
     const wa = getWallAabb(wall);
     const ox = Math.min(b.maxX, wa.maxX) - Math.max(b.minX, wa.minX);
     const oz = Math.min(b.maxZ, wa.maxZ) - Math.max(b.minZ, wa.minZ);
     if (ox > tolerance && oz > tolerance) {
       return {
         wallId: wall.id,
+        overlapCm: Math.round(Math.min(ox, oz) * 100),
+      };
+    }
+  }
+
+  for (const shaft of SKYONE_A2_SHAFTS) {
+    const sMinX = shaft.x - shaft.width / 2;
+    const sMaxX = shaft.x + shaft.width / 2;
+    const sMinZ = shaft.z - shaft.depth / 2;
+    const sMaxZ = shaft.z + shaft.depth / 2;
+    const ox = Math.min(b.maxX, sMaxX) - Math.max(b.minX, sMinX);
+    const oz = Math.min(b.maxZ, sMaxZ) - Math.max(b.minZ, sMinZ);
+    if (ox > tolerance && oz > tolerance) {
+      return {
+        wallId: shaft.id,
         overlapCm: Math.round(Math.min(ox, oz) * 100),
       };
     }
@@ -400,7 +500,8 @@ export function resolveWalkthroughCollision(
   prevZ: number,
   nextX: number,
   nextZ: number,
-  radius = 0.24
+  radius = 0.24,
+  wallOverrides?: Record<string, InteriorWallOverride>
 ): { x: number; z: number; collided: boolean } {
   let x = Math.max(
     SKYONE_A2_BOUNDS.minX + radius + 0.08,
@@ -411,10 +512,11 @@ export function resolveWalkthroughCollision(
     Math.min(SKYONE_A2_BOUNDS.maxZ - radius - 0.08, nextZ)
   );
   let collided = false;
+  const activeWalls = getActiveWalls(wallOverrides);
 
   // Iterative circle-vs-AABB resolution (2 passes for crisp corner sliding)
   for (let pass = 0; pass < 2; pass++) {
-    for (const wall of SKYONE_A2_WALLS) {
+    for (const wall of activeWalls) {
       const wa = getWallAabb(wall);
       const closestX = Math.max(wa.minX, Math.min(x, wa.maxX));
       const closestZ = Math.max(wa.minZ, Math.min(z, wa.maxZ));
@@ -441,6 +543,28 @@ export function resolveWalkthroughCollision(
         }
       }
     }
+
+    // Resolve against 3 structural MEP shafts
+    for (const shaft of SKYONE_A2_SHAFTS) {
+      const minX = shaft.x - shaft.width / 2;
+      const maxX = shaft.x + shaft.width / 2;
+      const minZ = shaft.z - shaft.depth / 2;
+      const maxZ = shaft.z + shaft.depth / 2;
+      const closestX = Math.max(minX, Math.min(x, maxX));
+      const closestZ = Math.max(minZ, Math.min(z, maxZ));
+      const dx = x - closestX;
+      const dz = z - closestZ;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < radius * radius) {
+        collided = true;
+        if (distSq > 1e-6) {
+          const dist = Math.sqrt(distSq);
+          const push = radius - dist;
+          x += (dx / dist) * push;
+          z += (dz / dist) * push;
+        }
+      }
+    }
   }
 
   // Clamp again after resolution
@@ -458,14 +582,13 @@ export function resolveWalkthroughCollision(
 
 /**
  * Helper kiểm tra khoảng mở cửa đi có bị vật thể chắn trong vòng cung 90° không.
+ * Tự động bỏ qua nếu người dùng đã chuyển cửa sang SLIDING_POCKET hoặc OPEN_ARCH.
  */
 export function checkDoorSwingCollision(
-  item: InteriorFurnitureItem
+  item: InteriorFurnitureItem,
+  doorOverrides?: Record<string, InteriorDoorMode>
 ): { openingId: string; openingLabel: string; isMainDoor: boolean } | null {
-  if (
-    item.source === "DEVELOPER_INCLUDED" ||
-    WALL_OVERLAP_EXEMPT_KEYS.has(item.catalogKey)
-  ) {
+  if (item.source === "DEVELOPER_INCLUDED" || isWallOrSurfaceMounted(item)) {
     return null;
   }
 
@@ -473,6 +596,9 @@ export function checkDoorSwingCollision(
 
   for (const op of SKYONE_A2_OPENINGS) {
     if (!op.swingArc) continue;
+    const doorMode = doorOverrides?.[op.id] ?? "SWING_90";
+    if (doorMode !== "SWING_90") continue;
+
     const { hingeX, hingeZ, radius, startAngleDeg, endAngleDeg } = op.swingArc;
 
     // Approximate the 90-degree door swing sector with its axis-aligned inner sweep box (inset 6cm)
