@@ -10,6 +10,7 @@ import {
   GoldPriceQuote,
   GoldPriceSnapshot,
   GoldSaleAllocation,
+  GoldSaleEvent,
   GoldStorageLocation,
   MortgageContract,
 } from "@/types/finance";
@@ -18,6 +19,7 @@ export const GRAMS_PER_LUONG = 37.5;
 export const GRAMS_PER_CHI = 3.75;
 export const CHI_PER_LUONG = 10;
 export const PHAN_PER_CHI = 10;
+export const LY_PER_CHI = 100;
 export const GRAMS_PER_TROY_OZ = 31.1034768;
 export const TROY_OZ_PER_LUONG = GRAMS_PER_LUONG / GRAMS_PER_TROY_OZ; // ~1.205653027
 
@@ -64,24 +66,127 @@ export const GOLD_STORAGE_LABELS: Record<GoldStorageLocation, string> = {
   PARENTS: "Gửi nhà nội/ngoại",
 };
 
-export function chiToLuong(chi: number): number {
-  return Number((chi / CHI_PER_LUONG).toFixed(4));
+function roundToPrecision(value: number, precision: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const safePrecision = Math.max(0, Math.min(8, Math.trunc(precision)));
+  const factor = Math.pow(10, safePrecision);
+  const rounded = Math.round((value + Number.EPSILON) * factor) / factor;
+  return Object.is(rounded, -0) ? 0 : rounded;
 }
 
-export function luongToChi(luong: number): number {
-  return Number((luong * CHI_PER_LUONG).toFixed(4));
+export type GoldWeightUnit = "CHI" | "LUONG" | "PHAN" | "LY" | "GRAM" | "TROY_OZ";
+
+/**
+ * Quy đổi nội bộ sang đơn vị Chỉ giữ nguyên độ chính xác IEEE-754 (không làm tròn sớm),
+ * loại bỏ hoàn toàn sai số làm tròn kép (Zero Double-Rounding).
+ */
+function toExactChi(value: number, from: GoldWeightUnit): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  switch (from) {
+    case "CHI":
+      return value;
+    case "LUONG":
+      return value * CHI_PER_LUONG;
+    case "PHAN":
+      return value / PHAN_PER_CHI;
+    case "LY":
+      return value / LY_PER_CHI;
+    case "GRAM":
+      return value / GRAMS_PER_CHI;
+    case "TROY_OZ":
+      return (value * GRAMS_PER_TROY_OZ) / GRAMS_PER_CHI;
+  }
 }
 
-export function chiToGrams(chi: number): number {
-  return Number((chi * GRAMS_PER_CHI).toFixed(3));
+function fromExactChi(exactChi: number, to: GoldWeightUnit): number {
+  if (!Number.isFinite(exactChi) || exactChi < 0) return 0;
+  switch (to) {
+    case "CHI":
+      return exactChi;
+    case "LUONG":
+      return exactChi / CHI_PER_LUONG;
+    case "PHAN":
+      return exactChi * PHAN_PER_CHI;
+    case "LY":
+      return exactChi * LY_PER_CHI;
+    case "GRAM":
+      return exactChi * GRAMS_PER_CHI;
+    case "TROY_OZ":
+      return (exactChi * GRAMS_PER_CHI) / GRAMS_PER_TROY_OZ;
+  }
 }
 
-export function chiToPhan(chi: number): number {
-  return Number((chi * PHAN_PER_CHI).toFixed(2));
+export function chiToLuong(chi: number, precision = 4): number {
+  return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "LUONG"), precision);
 }
 
-export function chiToTroyOz(chi: number): number {
-  return Number(((chi * GRAMS_PER_CHI) / GRAMS_PER_TROY_OZ).toFixed(4));
+export function luongToChi(luong: number, precision = 4): number {
+  return roundToPrecision(toExactChi(luong, "LUONG"), precision);
+}
+
+export function chiToGrams(chi: number, precision = 3): number {
+  return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "GRAM"), precision);
+}
+
+export function chiToPhan(chi: number, precision = 2): number {
+  return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "PHAN"), precision);
+}
+
+export function chiToTroyOz(chi: number, precision = 4): number {
+  return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "TROY_OZ"), precision);
+}
+
+export function gramsToChi(grams: number, precision = 4): number {
+  return roundToPrecision(toExactChi(grams, "GRAM"), precision);
+}
+
+export function phanToChi(phan: number, precision = 4): number {
+  return roundToPrecision(toExactChi(phan, "PHAN"), precision);
+}
+
+export function troyOzToChi(oz: number, precision = 4): number {
+  return roundToPrecision(toExactChi(oz, "TROY_OZ"), precision);
+}
+
+export function convertGoldUnit(
+  value: number,
+  from: GoldWeightUnit,
+  to: GoldWeightUnit,
+  precision?: number
+): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  const defaultPrecision =
+    to === "GRAM" ? 3 : to === "PHAN" || to === "LY" ? 2 : 4;
+  const targetPrecision = precision ?? defaultPrecision;
+  if (from === to) return roundToPrecision(value, targetPrecision);
+  const exactChi = toExactChi(value, from);
+  const exactTarget = fromExactChi(exactChi, to);
+  return roundToPrecision(exactTarget, targetPrecision);
+}
+
+export interface VietnameseGoldUnitDecomposition {
+  luong: number;
+  chi: number;
+  phan: number;
+  ly: number;
+}
+
+/**
+ * Tách trọng lượng theo Chỉ sang bộ đơn vị đo lường vật lý Việt Nam (Lượng · Chỉ · Phân · Ly)
+ * bằng số học nguyên theo đơn vị Ly (1 chỉ = 100 ly) để chống sai số dấu phẩy động.
+ */
+export function decomposeChiToVietnameseUnits(chi: number): VietnameseGoldUnitDecomposition {
+  if (!Number.isFinite(chi) || chi <= 0) {
+    return { luong: 0, chi: 0, phan: 0, ly: 0 };
+  }
+  const totalLy = Math.round(chi * LY_PER_CHI);
+  const luong = Math.floor(totalLy / (CHI_PER_LUONG * LY_PER_CHI));
+  const remAfterLuong = totalLy % (CHI_PER_LUONG * LY_PER_CHI);
+  const chiPart = Math.floor(remAfterLuong / LY_PER_CHI);
+  const remAfterChi = remAfterLuong % LY_PER_CHI;
+  const phan = Math.floor(remAfterChi / 10);
+  const ly = remAfterChi % 10;
+  return { luong, chi: chiPart, phan, ly };
 }
 
 export function formatChiWeight(chi: number, masked = false): string {
@@ -589,6 +694,566 @@ export function allocateSpecificLotSale(
     updatedLots,
     ok: true,
   };
+}
+
+/**
+ * Xuất bán theo phương pháp Bình quân gia quyền (WAC — Weighted Average Cost):
+ * Tính đơn giá vốn bình quân trên toàn bộ tồn kho đang nắm giữ của loại vàng,
+ * trừ khối lượng theo thứ tự cũ -> mới nhưng phân bổ giá vốn chính xác theo đơn giá WAC.
+ */
+export function allocateWacGoldSale(
+  lots: GoldLot[],
+  category: GoldCategory,
+  sellChi: number
+): {
+  allocations: GoldSaleAllocation[];
+  updatedLots: GoldLot[];
+  wacPerChi: number;
+  ok: boolean;
+  error?: string;
+} {
+  const candidates = lots
+    .filter((l) => l.category === category && l.remainingChi > 0 && l.status !== "SOLD")
+    .sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
+
+  const available = candidates.reduce((s, l) => s + l.remainingChi, 0);
+  if (sellChi <= 0 || sellChi > available + 0.0001) {
+    return {
+      allocations: [],
+      updatedLots: lots,
+      wacPerChi: 0,
+      ok: false,
+      error: `Số chỉ bán (${sellChi} chỉ) vượt quá tồn kho khả dụng (${available.toFixed(2)} chỉ).`,
+    };
+  }
+
+  const totalCategoryBasis = candidates.reduce(
+    (sum, lot) => sum + getLotRemainingCostBasis(lot),
+    0
+  );
+  const wacPerChi = available > 0 ? totalCategoryBasis / available : 0;
+
+  let left = sellChi;
+  const allocations: GoldSaleAllocation[] = [];
+  const updateMap = new Map<string, { remainingChi: number; status: GoldLot["status"] }>();
+
+  for (const lot of candidates) {
+    if (left <= 0.0001) break;
+    const take = Math.min(lot.remainingChi, left);
+    const allocatedBasis = Math.round(take * wacPerChi);
+    const nextRemaining = Number(Math.max(0, lot.remainingChi - take).toFixed(4));
+
+    allocations.push({
+      lotId: lot.id,
+      soldChi: Number(take.toFixed(4)),
+      costBasisAllocated: allocatedBasis,
+    });
+    updateMap.set(lot.id, {
+      remainingChi: nextRemaining,
+      status: nextRemaining <= 0.0001 ? "SOLD" : "PARTIAL_SOLD",
+    });
+
+    left = Number(Math.max(0, left - take).toFixed(4));
+  }
+
+  const nowIso = new Date().toISOString();
+  const updatedLots = lots.map((lot) => {
+    const patch = updateMap.get(lot.id);
+    if (!patch) return lot;
+    return {
+      ...lot,
+      remainingChi: patch.remainingChi,
+      status: patch.status,
+      updatedAt: nowIso,
+    };
+  });
+
+  return {
+    allocations,
+    updatedLots,
+    wacPerChi: Math.round(wacPerChi),
+    ok: true,
+  };
+}
+
+/**
+ * Thực thi bán nhiều lô 1 lượt từ danh sách bước mô phỏng thanh khoản.
+ */
+export function allocateBatchGoldSale(
+  lots: GoldLot[],
+  steps: Array<{ lotId: string; sellChi: number }>
+): { allocations: GoldSaleAllocation[]; updatedLots: GoldLot[]; ok: boolean; error?: string } {
+  if (steps.length === 0) {
+    return { allocations: [], updatedLots: lots, ok: false, error: "Chưa có lô nào trong kế hoạch bán." };
+  }
+  let workingLots = [...lots];
+  const allAllocations: GoldSaleAllocation[] = [];
+
+  for (const step of steps) {
+    const res = allocateSpecificLotSale(workingLots, step.lotId, step.sellChi);
+    if (!res.ok) {
+      return { allocations: [], updatedLots: lots, ok: false, error: res.error };
+    }
+    workingLots = res.updatedLots;
+    allAllocations.push(...res.allocations);
+  }
+
+  return { allocations: allAllocations, updatedLots: workingLots, ok: true };
+}
+
+/**
+ * Hoàn tác một sự kiện bán vàng: cộng trả chính xác remainingChi về từng lô bị trừ và cập nhật status.
+ */
+export function revertGoldSaleAllocation(
+  lots: GoldLot[],
+  saleEvent: GoldSaleEvent
+): GoldLot[] {
+  const restoreMap = new Map<string, number>();
+  for (const alloc of saleEvent.allocations) {
+    restoreMap.set(alloc.lotId, (restoreMap.get(alloc.lotId) || 0) + alloc.soldChi);
+  }
+  const nowIso = new Date().toISOString();
+  return lots.map((lot) => {
+    const restoreChi = restoreMap.get(lot.id);
+    if (!restoreChi) return lot;
+    const nextRemaining = Number(
+      Math.min(lot.quantityChi, lot.remainingChi + restoreChi).toFixed(4)
+    );
+    const nextStatus: GoldLot["status"] =
+      nextRemaining >= lot.quantityChi - 0.0001
+        ? "HOLDING"
+        : nextRemaining > 0.0001
+          ? "PARTIAL_SOLD"
+          : "SOLD";
+    return {
+      ...lot,
+      remainingChi: nextRemaining,
+      status: nextStatus,
+      updatedAt: nowIso,
+    };
+  });
+}
+
+export interface GoldIntegrityIssue {
+  code: string;
+  severity: "WARNING" | "ERROR";
+  message: string;
+  entityId?: string;
+}
+
+export interface GoldIntegrityAuditReport {
+  ok: boolean;
+  errorCount: number;
+  warningCount: number;
+  issues: GoldIntegrityIssue[];
+  summary: string;
+}
+
+/**
+ * Kiểm toán toàn vẹn kế toán kho vàng chuẩn Bank-Grade theo đủ 7 nhóm bất biến:
+ * 1. Định luật bảo toàn sổ cái: quantityChi - sum(soldAllocations) === remainingChi
+ * 2. Biên tồn kho lô: 0 <= remainingChi <= quantityChi
+ * 3. Nhất quán trạng thái lô: HOLDING / PARTIAL_SOLD / SOLD
+ * 4. Toàn vẹn sự kiện bán: tổng phân bổ, phương trình P&L, tham chiếu lô mồ côi
+ * 5. Tính duy nhất định danh: lot.id, sale.id, priceHistory.date
+ * 6. Hợp lý bảng giá & vĩ mô: Bid <= Ask, giá dương hữu hạn, tỷ giá hợp lệ
+ * 7. Chi phí & khối lượng lô hợp lệ: quantityChi > 0, unitBuyPricePerChi > 0, makingFee >= 0
+ */
+export function verifyGoldPortfolioIntegrity(
+  portfolio: GoldPortfolioState
+): GoldIntegrityAuditReport {
+  const issues: GoldIntegrityIssue[] = [];
+  const lotIds = new Set<string>();
+  const duplicateLotIds = new Set<string>();
+  const soldByLotId = new Map<string, number>();
+
+  // Thu thập ID lô & kiểm tra trùng lặp (Bất biến #5)
+  for (const lot of portfolio.lots) {
+    if (lotIds.has(lot.id)) {
+      if (!duplicateLotIds.has(lot.id)) {
+        duplicateLotIds.add(lot.id);
+        issues.push({
+          code: "DUPLICATE_LOT_ID",
+          severity: "ERROR",
+          entityId: lot.id,
+          message: `Phát hiện mã lô vàng trùng lặp (${lot.id}).`,
+        });
+      }
+    } else {
+      lotIds.add(lot.id);
+    }
+  }
+
+  // Kiểm tra sự kiện bán & tổng hợp số chỉ đã phân bổ theo từng lô (Bất biến #4 & #5)
+  const saleIds = new Set<string>();
+  const duplicateSaleIds = new Set<string>();
+  for (const sale of portfolio.sales) {
+    if (saleIds.has(sale.id)) {
+      if (!duplicateSaleIds.has(sale.id)) {
+        duplicateSaleIds.add(sale.id);
+        issues.push({
+          code: "DUPLICATE_SALE_ID",
+          severity: "ERROR",
+          entityId: sale.id,
+          message: `Phát hiện mã giao dịch bán vàng trùng lặp (${sale.id}).`,
+        });
+      }
+    } else {
+      saleIds.add(sale.id);
+    }
+
+    const sumAlloc = sale.allocations.reduce((s, a) => s + a.soldChi, 0);
+    if (Math.abs(sumAlloc - sale.totalSoldChi) > 0.0005) {
+      issues.push({
+        code: "SALE_ALLOCATION_SUM_MISMATCH",
+        severity: "ERROR",
+        entityId: sale.id,
+        message: `Giao dịch bán ${sale.saleDate} có tổng phân bổ (${roundToPrecision(sumAlloc, 4)} chỉ) khác tổng số chỉ bán (${sale.totalSoldChi} chỉ).`,
+      });
+    }
+
+    const expectedPnl = sale.totalProceeds - sale.costBasisAllocated;
+    if (Math.abs(expectedPnl - sale.realizedPnl) > 5) {
+      issues.push({
+        code: "SALE_PNL_EQUATION_MISMATCH",
+        severity: "ERROR",
+        entityId: sale.id,
+        message: `Giao dịch bán ${sale.saleDate} sai phương trình P&L (Thu về - Giá vốn lệch ${Math.round(Math.abs(expectedPnl - sale.realizedPnl)).toLocaleString("vi-VN")}đ).`,
+      });
+    }
+
+    for (const alloc of sale.allocations) {
+      if (!lotIds.has(alloc.lotId)) {
+        issues.push({
+          code: "ORPHAN_SALE_ALLOCATION",
+          severity: "WARNING",
+          entityId: sale.id,
+          message: `Giao dịch bán ${sale.saleDate} tham chiếu lô đã bị xóa (${alloc.lotId}).`,
+        });
+      } else {
+        soldByLotId.set(alloc.lotId, (soldByLotId.get(alloc.lotId) ?? 0) + alloc.soldChi);
+      }
+    }
+  }
+
+  // Kiểm tra từng lô vàng (Bất biến #1, #2, #3, #7)
+  for (const lot of portfolio.lots) {
+    if (!Number.isFinite(lot.quantityChi) || lot.quantityChi <= 0) {
+      issues.push({
+        code: "NON_POSITIVE_LOT_QUANTITY",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} có khối lượng gốc không hợp lệ (${lot.quantityChi} chỉ).`,
+      });
+    }
+    if (!Number.isFinite(lot.unitBuyPricePerChi) || lot.unitBuyPricePerChi <= 0) {
+      issues.push({
+        code: "NON_POSITIVE_UNIT_PRICE",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} có đơn giá mua không hợp lệ (${lot.unitBuyPricePerChi}).`,
+      });
+    }
+    if (!Number.isFinite(lot.makingFee) || lot.makingFee < 0) {
+      issues.push({
+        code: "NEGATIVE_MAKING_FEE",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} có tiền công âm (${lot.makingFee}).`,
+      });
+    }
+
+    if (lot.remainingChi < -0.0001) {
+      issues.push({
+        code: "NEGATIVE_REMAINING",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} có tồn kho âm (${lot.remainingChi} chỉ).`,
+      });
+    }
+    if (lot.remainingChi > lot.quantityChi + 0.0001) {
+      issues.push({
+        code: "REMAINING_EXCEEDS_ORIGINAL",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} có tồn kho (${lot.remainingChi} chỉ) lớn hơn số mua gốc (${lot.quantityChi} chỉ).`,
+      });
+    }
+
+    // Định luật bảo toàn sổ cái (#1)
+    const soldFromLot = soldByLotId.get(lot.id) ?? 0;
+    const expectedRemaining = Math.max(0, lot.quantityChi - soldFromLot);
+    if (Math.abs(expectedRemaining - lot.remainingChi) > 0.0005) {
+      issues.push({
+        code: "LEDGER_CONSERVATION_MISMATCH",
+        severity: "ERROR",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} lệch sổ cái: mua ${lot.quantityChi} - đã bán ${roundToPrecision(soldFromLot, 4)} = ${roundToPrecision(expectedRemaining, 4)} chỉ, nhưng đang lưu ${lot.remainingChi} chỉ.`,
+      });
+    }
+
+    // Nhất quán 3 trạng thái lô (#3)
+    if (lot.remainingChi <= 0.0001 && lot.status !== "SOLD") {
+      issues.push({
+        code: "STATUS_MISMATCH_SOLD",
+        severity: "WARNING",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} đã bán hết nhưng trạng thái đang là ${lot.status} (cần SOLD).`,
+      });
+    } else if (
+      lot.quantityChi > 0 &&
+      Math.abs(lot.remainingChi - lot.quantityChi) <= 0.0001 &&
+      lot.status !== "HOLDING"
+    ) {
+      issues.push({
+        code: "STATUS_MISMATCH_HOLDING",
+        severity: "WARNING",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} còn nguyên khối lượng gốc nhưng trạng thái đang là ${lot.status} (cần HOLDING).`,
+      });
+    } else if (
+      lot.remainingChi > 0.0001 &&
+      lot.remainingChi < lot.quantityChi - 0.0001 &&
+      lot.status !== "PARTIAL_SOLD"
+    ) {
+      issues.push({
+        code: "STATUS_MISMATCH_PARTIAL",
+        severity: "WARNING",
+        entityId: lot.id,
+        message: `Lô ${lot.brand} đã bán một phần nhưng trạng thái đang là ${lot.status} (cần PARTIAL_SOLD).`,
+      });
+    }
+  }
+
+  // Kiểm tra trùng ngày trong lịch sử giá (#5)
+  if (portfolio.priceHistory && portfolio.priceHistory.length > 1) {
+    const seenDates = new Set<string>();
+    const dupDates = new Set<string>();
+    for (const snap of portfolio.priceHistory) {
+      if (seenDates.has(snap.date)) {
+        if (!dupDates.has(snap.date)) {
+          dupDates.add(snap.date);
+          issues.push({
+            code: "DUPLICATE_PRICE_SNAPSHOT_DATE",
+            severity: "WARNING",
+            entityId: snap.date,
+            message: `Lịch sử giá vàng bị trùng mốc ngày ${snap.date}.`,
+          });
+        }
+      } else {
+        seenDates.add(snap.date);
+      }
+    }
+  }
+
+  // Kiểm tra bảng giá thị trường & thông số vĩ mô (#6)
+  for (const cat of Object.keys(portfolio.quotes) as GoldCategory[]) {
+    const quote = portfolio.quotes[cat];
+    if (!quote) continue;
+    if (
+      !Number.isFinite(quote.buyPricePerChi) ||
+      !Number.isFinite(quote.sellPricePerChi) ||
+      quote.buyPricePerChi <= 0 ||
+      quote.sellPricePerChi <= 0
+    ) {
+      issues.push({
+        code: "INVALID_QUOTE_PRICE",
+        severity: "ERROR",
+        entityId: cat,
+        message: `Bảng giá ${GOLD_CATEGORY_META[cat]?.shortLabel || cat} chứa giá Bid/Ask không hợp lệ.`,
+      });
+    } else if (quote.buyPricePerChi > quote.sellPricePerChi) {
+      issues.push({
+        code: "INVERTED_BID_ASK_SPREAD",
+        severity: "ERROR",
+        entityId: cat,
+        message: `Bảng giá ${GOLD_CATEGORY_META[cat]?.shortLabel || cat} bị đảo chiều (Giá mua vào Bid > Giá bán ra Ask).`,
+      });
+    }
+  }
+
+  if (
+    !portfolio.macro ||
+    !Number.isFinite(portfolio.macro.worldXauUsdPerOz) ||
+    portfolio.macro.worldXauUsdPerOz <= 0 ||
+    !Number.isFinite(portfolio.macro.usdVndRate) ||
+    portfolio.macro.usdVndRate <= 0
+  ) {
+    issues.push({
+      code: "INVALID_MACRO_RATE",
+      severity: "WARNING",
+      entityId: "macro",
+      message: "Thông số vĩ mô XAU/USD hoặc tỷ giá USD/VND không hợp lệ.",
+    });
+  }
+
+  const errorCount = issues.filter((i) => i.severity === "ERROR").length;
+  const warningCount = issues.filter((i) => i.severity === "WARNING").length;
+  const ok = errorCount === 0;
+  const summary =
+    errorCount === 0 && warningCount === 0
+      ? "Sổ cái Kho Vàng đạt chuẩn toàn vẹn tuyệt đối (0 lỗi · 0 cảnh báo)."
+      : errorCount === 0
+        ? `Sổ cái hợp lệ (0 lỗi nghiêm trọng · ${warningCount} cảnh báo cần lưu ý).`
+        : `Phát hiện ${errorCount} lỗi kế toán và ${warningCount} cảnh báo cần đối soát.`;
+
+  return {
+    ok,
+    errorCount,
+    warningCount,
+    issues,
+    summary,
+  };
+}
+
+/**
+ * Tự động đối soát an toàn (Immutable): tính lại remainingChi & status cho từng lô từ sổ phân bổ bán,
+ * khử trùng mốc ngày trong priceHistory mà không xóa bỏ lịch sử giao dịch.
+ */
+export function reconcileGoldPortfolioIntegrity(portfolio: GoldPortfolioState): {
+  reconciledPortfolio: GoldPortfolioState;
+  fixedLotIds: string[];
+  remainingIssues: GoldIntegrityIssue[];
+} {
+  const soldByLotId = new Map<string, number>();
+  for (const sale of portfolio.sales) {
+    for (const alloc of sale.allocations) {
+      soldByLotId.set(alloc.lotId, (soldByLotId.get(alloc.lotId) ?? 0) + alloc.soldChi);
+    }
+  }
+
+  const fixedLotIds: string[] = [];
+  const nextLots: GoldLot[] = portfolio.lots.map((lot) => {
+    const soldChi = soldByLotId.get(lot.id) ?? 0;
+    const expectedRemaining = roundToPrecision(Math.max(0, lot.quantityChi - soldChi), 4);
+    const expectedStatus: GoldLot["status"] =
+      expectedRemaining <= 0.0001
+        ? "SOLD"
+        : Math.abs(expectedRemaining - lot.quantityChi) <= 0.0001
+          ? "HOLDING"
+          : "PARTIAL_SOLD";
+
+    if (
+      Math.abs(lot.remainingChi - expectedRemaining) > 0.0001 ||
+      lot.status !== expectedStatus
+    ) {
+      fixedLotIds.push(lot.id);
+      return {
+        ...lot,
+        remainingChi: expectedRemaining,
+        status: expectedStatus,
+      };
+    }
+    return lot;
+  });
+
+  // Khử trùng priceHistory theo khóa ngày, ưu tiên bản ghi mới hơn
+  let nextPriceHistory = portfolio.priceHistory;
+  if (portfolio.priceHistory && portfolio.priceHistory.length > 1) {
+    const byDate = new Map<string, GoldPriceSnapshot>();
+    for (const snap of portfolio.priceHistory) {
+      const prev = byDate.get(snap.date);
+      if (!prev || snap.recordedAt.localeCompare(prev.recordedAt) > 0) {
+        byDate.set(snap.date, snap);
+      }
+    }
+    nextPriceHistory = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const reconciledPortfolio: GoldPortfolioState = {
+    ...portfolio,
+    lots: nextLots,
+    priceHistory: nextPriceHistory,
+  };
+
+  const audit = verifyGoldPortfolioIntegrity(reconciledPortfolio);
+  return {
+    reconciledPortfolio,
+    fixedLotIds,
+    remainingIssues: audit.issues,
+  };
+}
+
+export interface GoldStressTestScenario {
+  id: string;
+  label: string;
+  xauShockPct: number;
+  fxShockPct: number;
+  spreadPct: number;
+  projectedXauUsd: number;
+  projectedUsdVnd: number;
+  projectedBidValueVnd: number;
+  deltaVsCurrentBidVnd: number;
+  projectedUnrealizedPnlVnd: number;
+  projectedUnrealizedPnlPct: number;
+}
+
+/**
+ * Ma trận Stress-Test Giá Vàng: mô phỏng tác động của XAU/USD (±10%), USD/VND (±3%) và Spread (2.0%–3.5%)
+ * lên Giá trị thu mua thực (Bid) và Lãi/Lỗ ròng của Kho Vàng hiện tại.
+ */
+export function computeGoldStressTestMatrix(
+  portfolio: GoldPortfolioState,
+  metricsInput?: GoldPortfolioMetrics
+): GoldStressTestScenario[] {
+  const baseMetrics = metricsInput ?? computeGoldPortfolioMetrics(portfolio);
+  const baseXau = portfolio.macro.worldXauUsdPerOz || 2800;
+  const baseFx = portfolio.macro.usdVndRate || 25450;
+  const baseWorldPerChi = computeWorldGoldPricePerChiVnd(portfolio.macro) || 1;
+  const baseBid = baseMetrics.totalLiquidationValueBid;
+  const baseCost = baseMetrics.totalCostBasis;
+
+  const specs: Array<{
+    id: string;
+    label: string;
+    xauShockPct: number;
+    fxShockPct: number;
+    spreadPct: number;
+  }> = [
+    { id: "stress_bear_severe", label: "Sốc giảm sâu (XAU -10%, Tỷ giá -3%, Spread giãn 3,5%)", xauShockPct: -10, fxShockPct: -3, spreadPct: 3.5 },
+    { id: "stress_bear_xau", label: "Vàng thế giới điều chỉnh (XAU -10%, Tỷ giá 0%, Spread 2,5%)", xauShockPct: -10, fxShockPct: 0, spreadPct: 2.5 },
+    { id: "stress_spread_wide", label: "Biên độ Mua–Bán giãn rộng (XAU 0%, Tỷ giá 0%, Spread 3,5%)", xauShockPct: 0, fxShockPct: 0, spreadPct: 3.5 },
+    { id: "stress_base", label: "Kịch bản cơ sở hiện tại (XAU 0%, Tỷ giá 0%, Spread 2,0%)", xauShockPct: 0, fxShockPct: 0, spreadPct: 2.0 },
+    { id: "stress_fx_up", label: "USD/VND tăng nóng (XAU 0%, Tỷ giá +3%, Spread 2,0%)", xauShockPct: 0, fxShockPct: 3, spreadPct: 2.0 },
+    { id: "stress_bull_xau", label: "Vàng bứt phá (XAU +10%, Tỷ giá 0%, Spread 2,0%)", xauShockPct: 10, fxShockPct: 0, spreadPct: 2.0 },
+    { id: "stress_bull_combo", label: "Cộng hưởng tăng mạnh (XAU +10%, Tỷ giá +3%, Spread 2,0%)", xauShockPct: 10, fxShockPct: 3, spreadPct: 2.0 },
+  ];
+
+  return specs.map((sp) => {
+    const projectedXauUsd = Math.round(baseXau * (1 + sp.xauShockPct / 100) * 10) / 10;
+    const projectedUsdVnd = Math.round(baseFx * (1 + sp.fxShockPct / 100));
+    const newWorldPerChi = computeWorldGoldPricePerChiVnd({
+      worldXauUsdPerOz: projectedXauUsd,
+      usdVndRate: projectedUsdVnd,
+      updatedAt: portfolio.macro.updatedAt,
+    });
+    const priceMultiplier = newWorldPerChi / baseWorldPerChi;
+
+    let projectedBidValueVnd = 0;
+    for (const ev of baseMetrics.lotEvaluations) {
+      const shockedAskPerChi = ev.currentAskPerChi * priceMultiplier;
+      const shockedBidPerChi = Math.max(0, shockedAskPerChi * (1 - sp.spreadPct / 100));
+      projectedBidValueVnd += Math.round(ev.lot.remainingChi * shockedBidPerChi);
+    }
+
+    const projectedUnrealizedPnlVnd = projectedBidValueVnd - baseCost;
+    const projectedUnrealizedPnlPct =
+      baseCost > 0 ? Number(((projectedUnrealizedPnlVnd / baseCost) * 100).toFixed(2)) : 0;
+
+    return {
+      id: sp.id,
+      label: sp.label,
+      xauShockPct: sp.xauShockPct,
+      fxShockPct: sp.fxShockPct,
+      spreadPct: sp.spreadPct,
+      projectedXauUsd,
+      projectedUsdVnd,
+      projectedBidValueVnd,
+      deltaVsCurrentBidVnd: projectedBidValueVnd - baseBid,
+      projectedUnrealizedPnlVnd,
+      projectedUnrealizedPnlPct,
+    };
+  });
 }
 
 export function createDefaultGoldQuotes(nowIso = "2026-11-20T08:00:00.000Z"): Record<GoldCategory, GoldPriceQuote> {
@@ -1186,19 +1851,59 @@ export function computeNetWorthAllocationGuardrail(
   };
 }
 
+const CSV_FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+
+/**
+ * Bảo vệ chống CSV Formula Injection (CWE-1236) + escape RFC-4180 chuẩn Excel / Google Sheets.
+ */
 function escapeGoldCsv(val: string): string {
-  return `"${val.replace(/"/g, '""')}"`;
+  const safeVal = CSV_FORMULA_PREFIX_RE.test(val) ? `'${val}` : val;
+  return `"${safeVal.replace(/"/g, '""')}"`;
 }
 
-export function exportGoldVaultToCsv(
+export interface GoldVaultCsvOptions {
+  includeSoldLots?: boolean;
+  maskSensitive?: boolean;
+  generatedAtIso?: string;
+}
+
+/**
+ * Hàm thuần túy (zero DOM) dựng nội dung CSV kiểm kê Kho Vàng (UTF-8 BOM, chống CWE-1236)
+ * hỗ trợ tùy chọn xuất cả lô đã bán hết & che ẩn thông tin nhạy cảm khi bật Privacy Mode.
+ */
+export function buildGoldVaultCsvContent(
   portfolio: GoldPortfolioState,
-  metricsInput?: GoldPortfolioMetrics
-): void {
+  metricsInput?: GoldPortfolioMetrics,
+  options?: GoldVaultCsvOptions
+): string {
   const metrics = metricsInput ?? computeGoldPortfolioMetrics(portfolio);
+  const includeSoldLots = options?.includeSoldLots ?? false;
+  const maskSensitive = options?.maskSensitive ?? false;
+  const generatedAt = options?.generatedAtIso ?? portfolio.updatedAt ?? new Date().toISOString();
+  const worldPerChi = computeWorldGoldPricePerChiVnd(portfolio.macro);
+
+  const maskText = (text: string | undefined): string => {
+    if (!text) return "";
+    return maskSensitive ? "•••" : text;
+  };
+  const maskMoney = (amount: number): string => (maskSensitive ? "•••" : String(amount));
+
+  const metadataRows = [
+    [
+      escapeGoldCsv("BÁO CÁO KIỂM KÊ KHO TÍCH SẢN VÀNG — HOME MONI"),
+      escapeGoldCsv(`Ngày xuất: ${generatedAt.slice(0, 10)}`),
+      escapeGoldCsv(`XAU/USD: ${portfolio.macro.worldXauUsdPerOz} USD/oz`),
+      escapeGoldCsv(`USD/VND: ${portfolio.macro.usdVndRate}`),
+      escapeGoldCsv(`Quy đổi TG/chỉ: ${worldPerChi} VND`),
+    ].join(","),
+    "",
+  ];
+
   const headers = [
     "STT",
     "Phân loại",
     "Thương hiệu",
+    "Trạng thái",
     "Độ tinh khiết",
     "Số seri",
     "Mã hóa đơn/Chứng nhận",
@@ -1206,6 +1911,8 @@ export function exportGoldVaultToCsv(
     "Ngày mua",
     "Số chỉ gốc",
     "Còn nắm giữ (chỉ)",
+    "Còn nắm giữ (lượng)",
+    "Còn nắm giữ (gram)",
     "Giá mua/chỉ (VND)",
     "Tiền công (VND)",
     "Giá vốn còn lại (VND)",
@@ -1217,29 +1924,68 @@ export function exportGoldVaultToCsv(
     "Ghi chú",
   ];
 
-  const rows = metrics.lotEvaluations.map((ev, idx) =>
+  const activeRows = metrics.lotEvaluations.map((ev, idx) =>
     [
       String(idx + 1),
       escapeGoldCsv(GOLD_CATEGORY_META[ev.lot.category].label),
       escapeGoldCsv(ev.lot.brand),
+      escapeGoldCsv(ev.lot.status),
       escapeGoldCsv(ev.lot.purityLabel || ""),
-      escapeGoldCsv(ev.lot.serialNumber || ""),
-      escapeGoldCsv(ev.lot.certificateCode || ""),
-      escapeGoldCsv(ev.lot.storeName || ""),
+      escapeGoldCsv(maskText(ev.lot.serialNumber)),
+      escapeGoldCsv(maskText(ev.lot.certificateCode)),
+      escapeGoldCsv(maskText(ev.lot.storeName)),
       escapeGoldCsv(ev.lot.purchaseDate),
       String(ev.lot.quantityChi),
       String(ev.lot.remainingChi),
-      String(ev.lot.unitBuyPricePerChi),
-      String(ev.lot.makingFee || 0),
-      String(ev.remainingCostBasis),
+      String(convertGoldUnit(ev.lot.remainingChi, "CHI", "LUONG", 4)),
+      String(convertGoldUnit(ev.lot.remainingChi, "CHI", "GRAM", 3)),
+      maskMoney(ev.lot.unitBuyPricePerChi),
+      maskMoney(ev.lot.makingFee || 0),
+      maskMoney(ev.remainingCostBasis),
       String(ev.currentBidPerChi),
-      String(ev.liquidationValueBid),
-      String(ev.unrealizedPnl),
+      maskMoney(ev.liquidationValueBid),
+      maskMoney(ev.unrealizedPnl),
       `${ev.unrealizedPnlPct}%`,
       escapeGoldCsv(GOLD_STORAGE_LABELS[ev.lot.storageLocation]),
-      escapeGoldCsv(ev.lot.invoiceNote || ""),
+      escapeGoldCsv(maskText(ev.lot.invoiceNote)),
     ].join(",")
   );
+
+  const soldRows: string[] = [];
+  if (includeSoldLots) {
+    const soldLots = portfolio.lots.filter((l) => l.remainingChi <= 0.0001 || l.status === "SOLD");
+    soldLots.forEach((lot, idx) => {
+      const quote = portfolio.quotes[lot.category];
+      soldRows.push(
+        [
+          String(activeRows.length + idx + 1),
+          escapeGoldCsv(GOLD_CATEGORY_META[lot.category].label),
+          escapeGoldCsv(lot.brand),
+          escapeGoldCsv("SOLD"),
+          escapeGoldCsv(lot.purityLabel || ""),
+          escapeGoldCsv(maskText(lot.serialNumber)),
+          escapeGoldCsv(maskText(lot.certificateCode)),
+          escapeGoldCsv(maskText(lot.storeName)),
+          escapeGoldCsv(lot.purchaseDate),
+          String(lot.quantityChi),
+          "0",
+          "0",
+          "0",
+          maskMoney(lot.unitBuyPricePerChi),
+          maskMoney(lot.makingFee || 0),
+          "0",
+          String(quote?.buyPricePerChi ?? 0),
+          "0",
+          "0",
+          "0%",
+          escapeGoldCsv(GOLD_STORAGE_LABELS[lot.storageLocation]),
+          escapeGoldCsv(maskText(lot.invoiceNote)),
+        ].join(",")
+      );
+    });
+  }
+
+  const rows: string[] = [...activeRows, ...soldRows];
 
   rows.push(
     [
@@ -1252,13 +1998,16 @@ export function exportGoldVaultToCsv(
       "",
       "",
       "",
-      String(metrics.totalRemainingChi),
-      String(metrics.weightedAvgCostPerChi),
       "",
-      String(metrics.totalCostBasis),
+      String(metrics.totalRemainingChi),
+      String(convertGoldUnit(metrics.totalRemainingChi, "CHI", "LUONG", 4)),
+      String(convertGoldUnit(metrics.totalRemainingChi, "CHI", "GRAM", 3)),
+      maskMoney(metrics.weightedAvgCostPerChi),
+      "",
+      maskMoney(metrics.totalCostBasis),
       String(metrics.weightedBidPerChi),
-      String(metrics.totalLiquidationValueBid),
-      String(metrics.unrealizedPnl),
+      maskMoney(metrics.totalLiquidationValueBid),
+      maskMoney(metrics.unrealizedPnl),
       `${metrics.unrealizedPnlPct}%`,
       "",
       "",
@@ -1272,6 +2021,7 @@ export function exportGoldVaultToCsv(
       [
         "Ngày bán",
         "Loại vàng",
+        "Phương thức",
         "Số chỉ bán",
         "Giá bán Bid/chỉ (VND)",
         "Tiền thu về (VND)",
@@ -1288,19 +2038,32 @@ export function exportGoldVaultToCsv(
         [
           escapeGoldCsv(s.saleDate),
           escapeGoldCsv(GOLD_CATEGORY_META[s.category].label),
+          escapeGoldCsv(s.allocationMode || "FIFO"),
           String(s.totalSoldChi),
           String(s.unitSellPricePerChi),
-          String(s.totalProceeds),
-          String(s.costBasisAllocated),
-          String(s.realizedPnl),
+          maskMoney(s.totalProceeds),
+          maskMoney(s.costBasisAllocated),
+          maskMoney(s.realizedPnl),
           escapeGoldCsv(s.purpose),
-          escapeGoldCsv(s.note || ""),
+          escapeGoldCsv(maskText(s.note)),
         ].join(",")
       );
     }
   }
 
-  const csvContent = "\uFEFF" + [headers.map(escapeGoldCsv).join(","), ...rows].join("\r\n");
+  return (
+    "\uFEFF" +
+    [...metadataRows, headers.map(escapeGoldCsv).join(","), ...rows].join("\r\n")
+  );
+}
+
+export function exportGoldVaultToCsv(
+  portfolio: GoldPortfolioState,
+  metricsInput?: GoldPortfolioMetrics,
+  options?: GoldVaultCsvOptions
+): void {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const csvContent = buildGoldVaultCsvContent(portfolio, metricsInput, options);
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

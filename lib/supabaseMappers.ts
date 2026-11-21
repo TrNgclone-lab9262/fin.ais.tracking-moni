@@ -20,10 +20,11 @@ import {
   TransactionType,
 } from "@/types/finance";
 import {
-  GoldPortfolioStateSchema,
   InteriorStudioStateSchema,
   MortgageContractSchema,
+  parseGoldPortfolioSafely,
 } from "@/lib/validations";
+import { createDefaultGoldPortfolio } from "@/lib/goldEngine";
 
 export interface DbCategory {
   household_id: string;
@@ -420,9 +421,11 @@ export interface DbGoldPortfolio {
 }
 
 export function mapDbToGoldPortfolio(row: DbGoldPortfolio): GoldPortfolioState | null {
-  const parsed = GoldPortfolioStateSchema.safeParse(row.portfolio_data);
-  if (!parsed.success) return null;
-  return parsed.data;
+  if (!row.portfolio_data || typeof row.portfolio_data !== "object" || Array.isArray(row.portfolio_data)) {
+    return null;
+  }
+  const { data } = parseGoldPortfolioSafely(row.portfolio_data, createDefaultGoldPortfolio);
+  return data;
 }
 
 export function mapGoldPortfolioToDb(

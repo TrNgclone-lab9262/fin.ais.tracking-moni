@@ -126,6 +126,13 @@ export async function loadCustomGlbBuffer(id: string): Promise<ArrayBuffer | nul
   });
 }
 
+export async function hasCustomGlbBuffer(id: string): Promise<boolean> {
+  if (!id) return false;
+  if (memoryCache.has(id)) return true;
+  const buf = await loadCustomGlbBuffer(id);
+  return buf !== null;
+}
+
 export async function deleteCustomGlbBuffer(id: string): Promise<void> {
   memoryCache.delete(id);
   const db = await openVaultDb();

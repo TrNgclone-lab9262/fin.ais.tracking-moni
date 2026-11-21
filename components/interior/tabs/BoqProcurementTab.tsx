@@ -6,12 +6,15 @@ import {
   Download,
   FileText,
   GitCompareArrows,
+  History,
+  Lock,
   Plus,
   Trash2,
   Wallet,
   X,
   SlidersHorizontal,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useFinance } from "@/context/FinanceContext";
 import {
   FamilyMember,
@@ -65,14 +68,27 @@ export function BoqProcurementTab({
     deleteInteriorExtraBoqItem,
     updateBoqItemStatus,
     recordBoqPaymentToFinance,
+    deleteBoqPaymentRecord,
     accounts,
     goldPortfolio,
     isPrivacyMode,
   } = useFinance();
 
+  const isScenarioLocked = Boolean(activeScenario.isLockedBaseline);
   const [boqGroupFilter, setBoqGroupFilter] = useState<InteriorBoqGroup | "ALL">("ALL");
   const [phaseFilter, setPhaseFilter] = useState<InteriorExecutionPhase | "ALL">("ALL");
   const [expandedVendorRowKey, setExpandedVendorRowKey] = useState<string | null>(null);
+  const [expandedPaymentsRowKey, setExpandedPaymentsRowKey] = useState<string | null>(null);
+  const [pendingDeletePayment, setPendingDeletePayment] = useState<{
+    origin: "3D_ITEM" | "EXTRA_LINE";
+    itemId: string;
+    itemName: string;
+    paymentId: string;
+    amountVnd: number;
+    stageLabel: string;
+    hasLinkedTx: boolean;
+  } | null>(null);
+  const [deleteLinkedWalletTx, setDeleteLinkedWalletTx] = useState<boolean>(true);
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState<boolean>(false);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
   const [compareTargetId, setCompareTargetId] = useState<string>(() => {
@@ -242,6 +258,15 @@ export function BoqProcurementTab({
         </div>
       )}
 
+      {isScenarioLocked && (
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
+          <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>
+            Phương án &ldquo;{activeScenario.shortLabel}&rdquo; đã chốt thi công — Đơn giá và danh mục BOQ đang ở chế độ khóa (vẫn cho phép ghi đợt thanh toán &amp; cập nhật trạng thái mua sắm).
+          </span>
+        </div>
+      )}
+
       {/* Scenario Comparison Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {allScenarioBoqs.map(({ scenario: sc, boq }) => {
@@ -390,8 +415,9 @@ export function BoqProcurementTab({
             )}
             <button
               type="button"
+              disabled={isScenarioLocked}
               onClick={() => setIsAddExtraModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 disabled:opacity-45 text-white cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Thêm hạng mục BOQ</span>
@@ -433,6 +459,7 @@ export function BoqProcurementTab({
               {filteredRows.map((row) => {
                 const rowKey = `${row.origin}_${row.id}`;
                 const isVendorOpen = expandedVendorRowKey === rowKey;
+                const isPaymentsOpen = expandedPaymentsRowKey === rowKey;
                 return (
                   <React.Fragment key={rowKey}>
                     <tr className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
@@ -444,9 +471,10 @@ export function BoqProcurementTab({
                               {row.source !== "DEVELOPER_INCLUDED" && (
                                 <button
                                   type="button"
+                                  disabled={isScenarioLocked}
                                   onClick={() => handleToggleRowPhase(row)}
                                   title="Chuyển giữa Giai đoạn 1 (Nhận nhà) và Giai đoạn 2 (Hoãn nâng cấp)"
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border whitespace-nowrap cursor-pointer transition-colors ${
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border whitespace-nowrap disabled:opacity-45 cursor-pointer transition-colors ${
                                     row.executionPhase === "PHASE_2_UPGRADE"
                                       ? "bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300"
                                       : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-400"
@@ -489,10 +517,11 @@ export function BoqProcurementTab({
                             type="number"
                             min={0}
                             step={100_000}
+                            disabled={isScenarioLocked}
                             value={row.unitPriceVnd}
                             onChange={(e) => handleRowUnitPriceChange(row, e.target.value)}
                             aria-label={`Đơn giá ${row.name}`}
-                            className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-right text-xs font-bold text-slate-800 dark:text-slate-100 tabular-nums"
+                            className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-right text-xs font-bold text-slate-800 dark:text-slate-100 tabular-nums disabled:opacity-50"
                           />
                         )}
                       </td>
@@ -506,14 +535,28 @@ export function BoqProcurementTab({
                           <span className="text-slate-400">—</span>
                         ) : (
                           <div>
-                            <p className="font-bold text-emerald-700 dark:text-emerald-400">
-                              {formatShortVNDMasked(row.paidAmountVnd, isPrivacyMode)}
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                {formatShortVNDMasked(row.paidAmountVnd, isPrivacyMode)}
+                              </span>
                               {row.payments.length > 0 && (
-                                <span className="text-[10px] text-slate-400 ml-1">
-                                  ({row.payments.length} đợt)
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedPaymentsRowKey(isPaymentsOpen ? null : rowKey)
+                                  }
+                                  title="Xem / hủy các đợt thanh toán đã ghi"
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                                    isPaymentsOpen
+                                      ? "bg-teal-600 text-white"
+                                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-teal-50 hover:text-teal-700"
+                                  }`}
+                                >
+                                  <History className="w-2.5 h-2.5" />
+                                  <span>{row.payments.length} đợt</span>
+                                </button>
                               )}
-                            </p>
+                            </div>
                             <p className="text-[10px] text-slate-500">
                               Còn: {formatShortVNDMasked(row.remainingAmountVnd, isPrivacyMode)}
                             </p>
@@ -551,7 +594,7 @@ export function BoqProcurementTab({
                               <span>{row.payments.length > 0 ? "Ghi đợt tiếp" : "Ghi chi"}</span>
                             </button>
                           )}
-                          {row.origin === "EXTRA_LINE" && (
+                          {row.origin === "EXTRA_LINE" && !isScenarioLocked && (
                             <button
                               type="button"
                               onClick={() => deleteInteriorExtraBoqItem(row.id)}
@@ -564,6 +607,70 @@ export function BoqProcurementTab({
                         </div>
                       </td>
                     </tr>
+
+                    {isPaymentsOpen && row.payments.length > 0 && (
+                      <tr className="bg-teal-50/40 dark:bg-teal-950/20">
+                        <td colSpan={7} className="px-3 py-2.5">
+                          <div className="space-y-1.5">
+                            <p className="text-[11px] font-extrabold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                              <History className="w-3.5 h-3.5" />
+                              <span>Lịch sử {row.payments.length} đợt thanh toán cho &ldquo;{row.name}&rdquo;</span>
+                            </p>
+                            <div className="divide-y divide-slate-200/70 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                              {row.payments.map((pm) => (
+                                <div
+                                  key={pm.id}
+                                  className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                    <span className="font-mono text-[11px] text-slate-500 tabular-nums">
+                                      {pm.date}
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold">
+                                      {BOQ_PAYMENT_STAGE_META[pm.stage].label}
+                                    </span>
+                                    {pm.note && (
+                                      <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate max-w-xs">
+                                        {pm.note}
+                                      </span>
+                                    )}
+                                    {pm.linkedTransactionId && (
+                                      <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                        · Đã nối Sổ Thu Chi
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <span className="font-black text-slate-900 dark:text-white tabular-nums">
+                                      {formatVNDMasked(pm.amountVnd, isPrivacyMode)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDeleteLinkedWalletTx(Boolean(pm.linkedTransactionId));
+                                        setPendingDeletePayment({
+                                          origin: row.origin,
+                                          itemId: row.id,
+                                          itemName: row.name,
+                                          paymentId: pm.id,
+                                          amountVnd: pm.amountVnd,
+                                          stageLabel: BOQ_PAYMENT_STAGE_META[pm.stage].label,
+                                          hasLinkedTx: Boolean(pm.linkedTransactionId),
+                                        });
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 dark:border-rose-900 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      <span>Hủy đợt</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
 
                     {isVendorOpen && (
                       <tr className="bg-slate-50/80 dark:bg-slate-800/40">
@@ -630,6 +737,7 @@ export function BoqProcurementTab({
                       min={0}
                       max={30}
                       step={1}
+                      disabled={isScenarioLocked}
                       value={activeScenario.contingencyPercent}
                       onChange={(e) => {
                         const pct = Math.max(0, Math.min(30, Number(e.target.value) || 0));
@@ -638,7 +746,7 @@ export function BoqProcurementTab({
                         });
                       }}
                       aria-label="Phần trăm dự phòng phát sinh"
-                      className="w-16 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center font-extrabold text-slate-900 dark:text-white tabular-nums"
+                      className="w-16 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center font-extrabold text-slate-900 dark:text-white tabular-nums disabled:opacity-50"
                     />
                     <span>%</span>
                   </div>
@@ -1120,6 +1228,57 @@ export function BoqProcurementTab({
           </form>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(pendingDeletePayment)}
+        title="Hủy đợt thanh toán BOQ?"
+        message={
+          pendingDeletePayment
+            ? `Bạn muốn hủy đợt "${pendingDeletePayment.stageLabel}" (${formatVNDMasked(
+                pendingDeletePayment.amountVnd,
+                isPrivacyMode
+              )}) của hạng mục "${pendingDeletePayment.itemName}"? Tiến độ thanh toán BOQ sẽ được tính lại tự động.`
+            : ""
+        }
+        confirmLabel="Xác nhận hủy đợt"
+        cancelLabel="Giữ lại"
+        isDanger
+        onCancel={() => setPendingDeletePayment(null)}
+        onConfirm={() => {
+          if (!pendingDeletePayment) return;
+          const target = pendingDeletePayment;
+          const deleteWalletTx = target.hasLinkedTx && deleteLinkedWalletTx;
+          const res = deleteBoqPaymentRecord(
+            target.origin,
+            target.itemId,
+            target.paymentId,
+            { deleteLinkedFinanceTx: deleteWalletTx }
+          );
+          setPendingDeletePayment(null);
+          if (res.ok) {
+            setPayNotice(
+              deleteWalletTx
+                ? `Đã hủy đợt "${target.stageLabel}" của "${target.itemName}" và xóa kèm giao dịch ví FINANCE.`
+                : `Đã hủy đợt "${target.stageLabel}" của "${target.itemName}" (giữ nguyên giao dịch trong Sổ Thu Chi).`
+            );
+            setTimeout(() => setPayNotice(null), 5000);
+          }
+        }}
+      >
+        {pendingDeletePayment?.hasLinkedTx && (
+          <label className="mt-2 flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-[#DCE4EE] dark:border-slate-700 cursor-pointer text-left">
+            <input
+              type="checkbox"
+              checked={deleteLinkedWalletTx}
+              onChange={(e) => setDeleteLinkedWalletTx(e.target.checked)}
+              className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+            />
+            <span className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
+              <strong>Xóa kèm giao dịch chi tương ứng trong Sổ Thu Chi (FINANCE)</strong> để hoàn lại số dư ví. Bỏ chọn nếu bạn chỉ muốn chỉnh sửa lịch sử BOQ và giữ nguyên sao kê ví.
+            </span>
+          </label>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

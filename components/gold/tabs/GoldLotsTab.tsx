@@ -6,6 +6,7 @@ import {
   FileText,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
   Trash2,
@@ -14,6 +15,7 @@ import {
   GoldCategory,
   GoldLot,
   GoldPortfolioState,
+  GoldSaleEvent,
   GoldStorageLocation,
 } from "@/types/finance";
 import {
@@ -24,6 +26,7 @@ import {
   formatChiWeight,
 } from "@/lib/goldEngine";
 import { formatDateVN, formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { GOLD_CATEGORIES, SALE_PURPOSE_LABELS } from "./goldConstants";
 
 interface GoldLotsTabProps {
@@ -34,6 +37,10 @@ interface GoldLotsTabProps {
   onEditLot: (lot: GoldLot) => void;
   onSellLot: (lot: GoldLot) => void;
   onDeleteLot: (id: string) => void;
+  onUndoSale: (
+    saleId: string,
+    options?: { deleteLinkedFinanceTx?: boolean }
+  ) => { ok: boolean; error?: string };
   onPrintVaultAudit: () => void;
 }
 
@@ -47,12 +54,16 @@ export function GoldLotsTab({
   onEditLot,
   onSellLot,
   onDeleteLot,
+  onUndoSale,
   onPrintVaultAudit,
 }: GoldLotsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<GoldCategory | "ALL">("ALL");
   const [storageFilter, setStorageFilter] = useState<GoldStorageLocation | "ALL">("ALL");
   const [sortKey, setSortKey] = useState<LotSortKey>("DATE_DESC");
+  const [pendingDeleteLot, setPendingDeleteLot] = useState<GoldLot | null>(null);
+  const [pendingUndoSale, setPendingUndoSale] = useState<GoldSaleEvent | null>(null);
+  const [deleteLinkedTxOnUndo, setDeleteLinkedTxOnUndo] = useState(true);
 
   const filteredEvaluations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -282,7 +293,7 @@ export function GoldLotsTab({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDeleteLot(ev.lot.id)}
+                        onClick={() => setPendingDeleteLot(ev.lot)}
                         title="Xóa lô vàng"
                         className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 cursor-pointer"
                       >
@@ -330,25 +341,33 @@ export function GoldLotsTab({
                   <th className="py-2 px-3 text-right">Giá bán / chỉ</th>
                   <th className="py-2 px-3 text-right">Tiền thu về</th>
                   <th className="py-2 px-3 text-right">Lãi/Lỗ thực nhận</th>
-                  <th className="py-2 pl-3">Mục đích</th>
+                  <th className="py-2 px-3">Mục đích</th>
+                  <th className="py-2 pl-3 text-right">Hoàn tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {goldPortfolio.sales.map((s) => (
                   <tr key={s.id}>
-                    <td className="py-2.5 pr-3">{formatDateVN(s.saleDate)}</td>
+                    <td className="py-2.5 pr-3 whitespace-nowrap">{formatDateVN(s.saleDate)}</td>
                     <td className="py-2.5 px-3 font-bold">
                       {GOLD_CATEGORY_META[s.category].shortLabel}
+                      {s.allocationMode && (
+                        <span className="ml-1 text-[10px] font-semibold text-slate-400">
+                          ({s.allocationMode})
+                        </span>
+                      )}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold">{s.totalSoldChi} chỉ</td>
-                    <td className="py-2.5 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right font-bold whitespace-nowrap">
+                      {formatChiWeight(s.totalSoldChi, isPrivacyMode)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       {formatShortVNDMasked(s.unitSellPricePerChi, isPrivacyMode)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-extrabold">
+                    <td className="py-2.5 px-3 text-right font-extrabold whitespace-nowrap">
                       {formatVNDMasked(s.totalProceeds, isPrivacyMode)}
                     </td>
                     <td
-                      className={`py-2.5 px-3 text-right font-extrabold ${
+                      className={`py-2.5 px-3 text-right font-extrabold whitespace-nowrap ${
                         s.realizedPnl >= 0
                           ? "text-emerald-700 dark:text-emerald-400"
                           : "text-rose-600 dark:text-rose-400"
@@ -357,9 +376,23 @@ export function GoldLotsTab({
                       {s.realizedPnl >= 0 ? "+" : ""}
                       {formatVNDMasked(s.realizedPnl, isPrivacyMode)}
                     </td>
-                    <td className="py-2.5 pl-3 text-slate-600 dark:text-slate-300">
+                    <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
                       {SALE_PURPOSE_LABELS[s.purpose]}
                       {s.note ? ` · ${s.note}` : ""}
+                    </td>
+                    <td className="py-2.5 pl-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteLinkedTxOnUndo(Boolean(s.linkedTransactionId));
+                          setPendingUndoSale(s);
+                        }}
+                        title="Hoàn tác lần bán này và cộng trả tồn kho về các lô gốc"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Hoàn tác</span>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -368,6 +401,71 @@ export function GoldLotsTab({
           </div>
         )}
       </div>
+
+      {/* Confirm Delete Gold Lot */}
+      <ConfirmDialog
+        isOpen={Boolean(pendingDeleteLot)}
+        isDanger
+        title="Xác nhận xóa lô vàng?"
+        message={
+          pendingDeleteLot
+            ? `Bạn sắp xóa lô "${pendingDeleteLot.brand}" (${pendingDeleteLot.remainingChi} chỉ còn lại, mua ngày ${formatDateVN(pendingDeleteLot.purchaseDate)}). Thao tác này không thể hoàn tác.`
+            : ""
+        }
+        confirmLabel="Xóa lô vàng"
+        cancelLabel="Giữ lại"
+        onCancel={() => setPendingDeleteLot(null)}
+        onConfirm={() => {
+          if (pendingDeleteLot) {
+            onDeleteLot(pendingDeleteLot.id);
+          }
+          setPendingDeleteLot(null);
+        }}
+      />
+
+      {/* Confirm Undo Gold Sale with Linked Finance Transaction Option */}
+      <ConfirmDialog
+        isOpen={Boolean(pendingUndoSale)}
+        isDanger
+        title="Hoàn tác giao dịch bán vàng?"
+        message={
+          pendingUndoSale
+            ? `Hệ thống sẽ hủy sự kiện bán ${pendingUndoSale.totalSoldChi} chỉ ${GOLD_CATEGORY_META[pendingUndoSale.category].shortLabel} ngày ${formatDateVN(pendingUndoSale.saleDate)} và cộng trả nguyên vẹn số chỉ về các lô gốc.`
+            : ""
+        }
+        confirmLabel="Xác nhận hoàn tác"
+        cancelLabel="Hủy bỏ"
+        onCancel={() => setPendingUndoSale(null)}
+        onConfirm={() => {
+          if (pendingUndoSale) {
+            onUndoSale(pendingUndoSale.id, {
+              deleteLinkedFinanceTx: Boolean(
+                pendingUndoSale.linkedTransactionId && deleteLinkedTxOnUndo
+              ),
+            });
+          }
+          setPendingUndoSale(null);
+        }}
+      >
+        {pendingUndoSale?.linkedTransactionId && (
+          <label className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs">
+            <input
+              type="checkbox"
+              checked={deleteLinkedTxOnUndo}
+              onChange={(e) => setDeleteLinkedTxOnUndo(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-rose-600"
+            />
+            <div>
+              <p className="font-bold text-slate-800 dark:text-slate-100">
+                Xóa kèm giao dịch thu đã liên kết trong Sổ Thu Chi (FINANCE)
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Bỏ tick nếu bạn muốn giữ nguyên số dư ví ngân hàng và chỉ hoàn lại tồn kho vàng.
+              </p>
+            </div>
+          </label>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

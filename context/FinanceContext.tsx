@@ -55,10 +55,14 @@ import {
   GoldMacroContext,
   GoldPortfolioState,
   GoldPriceQuote,
+  GoldSaleAllocationMode,
   GoldSaleEvent,
   GoldSalePurpose,
+  HandoverChecklistItem,
+  HandoverChecklistStatus,
   InteriorBoqPaymentRecord,
   InteriorBoqPaymentStage,
+  InteriorCameraBookmark,
   InteriorDesignScenario,
   InteriorDoorMode,
   InteriorExtraBoqItem,
@@ -128,12 +132,15 @@ import {
   togglePinkBook5PctDisbursement,
 } from "@/lib/mortgageEngine";
 import {
+  allocateBatchGoldSale,
   allocateFifoGoldSale,
   allocateSpecificLotSale,
+  allocateWacGoldSale,
   computeGoldPortfolioMetrics,
   createDefaultGoldAlerts,
   createDefaultGoldPortfolio,
   createGoldPriceSnapshot,
+  revertGoldSaleAllocation,
   upsertGoldPriceSnapshot,
 } from "@/lib/goldEngine";
 import {
@@ -164,6 +171,8 @@ import {
   buildAppPath,
   getAppDocumentTitle,
   saveActiveApp,
+  getSavedSubAppTabs,
+  saveSubAppTab,
 } from "@/lib/appRouting";
 import {
   BrowserNotificationStatus,
@@ -261,6 +270,9 @@ interface FinanceContextType {
       goldTab?: GoldRouteTab;
       interiorTab?: InteriorRouteTab;
       highlightPeriod?: number | null;
+      goldTargetAmount?: number | null;
+      interiorScenarioId?: string | null;
+      restoreLastTab?: boolean;
     }
   ) => void;
   openAppLauncher: () => void;
@@ -467,12 +479,28 @@ interface FinanceContextType {
     category: GoldCategory;
     quantityChi: number;
     unitSellPricePerChi: number;
-    mode: "FIFO" | "SPECIFIC_LOT";
+    mode: GoldSaleAllocationMode;
     specificLotId?: string;
     purpose: GoldSalePurpose;
     note?: string;
     linkAccountId?: string;
   }) => { ok: boolean; saleEvent?: GoldSaleEvent; error?: string };
+  recordBatchGoldSale: (input: {
+    saleDate: string;
+    steps: Array<{
+      lotId: string;
+      category: GoldCategory;
+      sellChi: number;
+      unitSellPricePerChi: number;
+    }>;
+    purpose: GoldSalePurpose;
+    note?: string;
+    linkAccountId?: string;
+  }) => { ok: boolean; saleEvents?: GoldSaleEvent[]; error?: string };
+  undoGoldSale: (
+    saleId: string,
+    options?: { deleteLinkedFinanceTx?: boolean }
+  ) => { ok: boolean; error?: string };
   updateGoldPriceQuote: (
     category: GoldCategory,
     patch: Partial<Pick<GoldPriceQuote, "brandLabel" | "buyPricePerChi" | "sellPricePerChi" | "source">>
@@ -502,12 +530,20 @@ interface FinanceContextType {
     options?: { skipUndoHistory?: boolean }
   ) => void;
   duplicateInteriorScenario: (sourceScenarioId: string, newName?: string) => InteriorDesignScenario | null;
+  deleteInteriorScenario: (scenarioId: string) => boolean;
+  toggleInteriorScenarioBaselineLock: (scenarioId: string) => void;
+  addInteriorCameraBookmark: (
+    scenarioId: string,
+    bookmark: Omit<InteriorCameraBookmark, "id" | "createdAt">
+  ) => InteriorCameraBookmark | null;
+  deleteInteriorCameraBookmark: (scenarioId: string, bookmarkId: string) => void;
   addInteriorFurnitureItem: (item: Omit<InteriorFurnitureItem, "id">) => InteriorFurnitureItem;
   updateInteriorFurnitureItem: (
     id: string,
     patch: Partial<InteriorFurnitureItem>,
     options?: { skipUndoHistory?: boolean }
   ) => void;
+  relinkCustomGlbItem: (itemId: string, customGlbId: string, customGlbName: string) => void;
   deleteInteriorFurnitureItem: (id: string) => void;
   addInteriorExtraBoqItem: (item: Omit<InteriorExtraBoqItem, "id">) => InteriorExtraBoqItem;
   updateInteriorExtraBoqItem: (id: string, patch: Partial<InteriorExtraBoqItem>) => void;
@@ -529,6 +565,12 @@ interface FinanceContextType {
     statusAfter?: "DEPOSITED" | "INSTALLED";
     note?: string;
   }) => Transaction;
+  deleteBoqPaymentRecord: (
+    origin: "3D_ITEM" | "EXTRA_LINE",
+    itemId: string,
+    paymentId: string,
+    options?: { deleteLinkedFinanceTx?: boolean }
+  ) => { ok: boolean };
   applyInteriorStylePaletteToAllFurniture: (
     scenarioId: string,
     preset: InteriorStylePreset
@@ -548,11 +590,23 @@ interface FinanceContextType {
   updateInteriorCurtainOpenRatio: (ratio: number) => void;
   commitInteriorUndoSnapshot: (snapshot: InteriorStudioState) => void;
   toggleHandoverChecklistItem: (id: string) => void;
+  updateHandoverChecklistStatus: (id: string, status: HandoverChecklistStatus) => void;
   updateHandoverChecklistNote: (id: string, note: string) => void;
+  updateHandoverChecklistPhoto: (id: string, localPhotoKey: string | undefined) => void;
+  addHandoverChecklistItem: (input: {
+    zoneCode: string;
+    zoneName: string;
+    title: string;
+    specDetail: string;
+    status?: HandoverChecklistStatus;
+    note?: string;
+  }) => HandoverChecklistItem;
+  deleteHandoverChecklistItem: (id: string) => void;
   undoInteriorChange: () => void;
   redoInteriorChange: () => void;
   canUndoInterior: boolean;
   canRedoInterior: boolean;
+  updateInteriorTargetHandoverDate: (targetHandoverDate: string) => void;
   resetInteriorStudio: () => void;
 
   // Cài đặt & Sao lưu
@@ -1143,6 +1197,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const savedTabs = getSavedSubAppTabs();
     const initialRoute =
       typeof window !== "undefined"
         ? parseAppRoute(window.location.pathname, window.location.search)
@@ -1150,11 +1205,41 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
     if (initialRoute) {
       setActiveApp(initialRoute.app);
-      setActiveTabState(initialRoute.financeTab);
-      setSkyoneTabState(initialRoute.skyoneTab);
-      setGoldTabState(initialRoute.goldTab);
-      setInteriorTabState(initialRoute.interiorTab);
+      setActiveTabState(
+        initialRoute.app === "FINANCE"
+          ? initialRoute.financeTab
+          : savedTabs.FINANCE ?? initialRoute.financeTab
+      );
+      setSkyoneTabState(
+        initialRoute.app === "SKYONE"
+          ? initialRoute.skyoneTab
+          : savedTabs.SKYONE ?? initialRoute.skyoneTab
+      );
+      setGoldTabState(
+        initialRoute.app === "GOLD"
+          ? initialRoute.goldTab
+          : savedTabs.GOLD ?? initialRoute.goldTab
+      );
+      setInteriorTabState(
+        initialRoute.app === "INTERIOR"
+          ? initialRoute.interiorTab
+          : savedTabs.INTERIOR ?? initialRoute.interiorTab
+      );
       setSkyoneHighlightPeriod(initialRoute.highlightPeriod);
+      if (initialRoute.goldTargetAmount && initialRoute.goldTargetAmount > 0) {
+        setGoldSimulatorPresetTarget({
+          amountVnd: initialRoute.goldTargetAmount,
+          label: "Mục tiêu từ liên kết nhanh",
+        });
+      }
+      if (initialRoute.interiorScenarioId) {
+        const matchedScenario = (data.interiorStudio || createDefaultInteriorStudio()).scenarios.find(
+          (sc) => sc.id === initialRoute.interiorScenarioId
+        );
+        if (matchedScenario) {
+          setInteriorStudio((prev) => ({ ...prev, activeScenarioId: matchedScenario.id }));
+        }
+      }
       saveActiveApp(initialRoute.app);
     }
 
@@ -1288,6 +1373,19 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setGoldTabState(parsed.goldTab);
       setInteriorTabState(parsed.interiorTab);
       setSkyoneHighlightPeriod(parsed.highlightPeriod);
+      if (parsed.goldTargetAmount && parsed.goldTargetAmount > 0) {
+        setGoldSimulatorPresetTarget({
+          amountVnd: parsed.goldTargetAmount,
+          label: "Mục tiêu từ liên kết nhanh",
+        });
+      }
+      if (parsed.interiorScenarioId) {
+        setInteriorStudio((prev) =>
+          prev.scenarios.some((sc) => sc.id === parsed.interiorScenarioId)
+            ? { ...prev, activeScenarioId: parsed.interiorScenarioId! }
+            : prev
+        );
+      }
       saveActiveApp(parsed.app);
     };
 
@@ -1309,12 +1407,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         goldTab?: GoldRouteTab;
         interiorTab?: InteriorRouteTab;
         highlightPeriod?: number | null;
+        goldTargetAmount?: number | null;
+        interiorScenarioId?: string | null;
+        restoreLastTab?: boolean;
       }
     ) => {
-      const nextFinanceTab = options?.financeTab ?? activeTab;
-      const nextSkyoneTab = options?.skyoneTab ?? skyoneTab;
-      const nextGoldTab = options?.goldTab ?? goldTab;
-      const nextInteriorTab = options?.interiorTab ?? interiorTab;
+      const savedTabs = options?.restoreLastTab ? getSavedSubAppTabs() : {};
+      const nextFinanceTab = options?.financeTab ?? savedTabs.FINANCE ?? activeTab;
+      const nextSkyoneTab = options?.skyoneTab ?? savedTabs.SKYONE ?? skyoneTab;
+      const nextGoldTab = options?.goldTab ?? savedTabs.GOLD ?? goldTab;
+      const nextInteriorTab = options?.interiorTab ?? savedTabs.INTERIOR ?? interiorTab;
       const nextHighlight =
         options?.highlightPeriod !== undefined ? options.highlightPeriod : null;
 
@@ -1331,19 +1433,40 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      if (options?.goldTargetAmount && options.goldTargetAmount > 0) {
+        setGoldSimulatorPresetTarget({
+          amountVnd: options.goldTargetAmount,
+          label: "Mục tiêu từ liên kết nhanh",
+        });
+      }
+
+      if (options?.interiorScenarioId) {
+        setInteriorStudio((prev) =>
+          prev.scenarios.some((sc) => sc.id === options.interiorScenarioId)
+            ? { ...prev, activeScenarioId: options.interiorScenarioId! }
+            : prev
+        );
+      }
+
       setActiveApp(app);
-      if (options?.financeTab) {
-        setActiveTabState(options.financeTab);
+      if (options?.financeTab || (options?.restoreLastTab && app === "FINANCE" && savedTabs.FINANCE)) {
+        setActiveTabState(nextFinanceTab);
       }
-      if (options?.skyoneTab) {
-        setSkyoneTabState(options.skyoneTab);
+      if (options?.skyoneTab || (options?.restoreLastTab && app === "SKYONE" && savedTabs.SKYONE)) {
+        setSkyoneTabState(nextSkyoneTab);
       }
-      if (options?.goldTab) {
-        setGoldTabState(options.goldTab);
+      if (options?.goldTab || (options?.restoreLastTab && app === "GOLD" && savedTabs.GOLD)) {
+        setGoldTabState(nextGoldTab);
       }
-      if (options?.interiorTab) {
-        setInteriorTabState(options.interiorTab);
+      if (options?.interiorTab || (options?.restoreLastTab && app === "INTERIOR" && savedTabs.INTERIOR)) {
+        setInteriorTabState(nextInteriorTab);
       }
+
+      if (app === "FINANCE") saveSubAppTab("FINANCE", nextFinanceTab);
+      if (app === "SKYONE") saveSubAppTab("SKYONE", nextSkyoneTab);
+      if (app === "GOLD") saveSubAppTab("GOLD", nextGoldTab);
+      if (app === "INTERIOR") saveSubAppTab("INTERIOR", nextInteriorTab);
+
       setSkyoneHighlightPeriod(nextHighlight);
       saveActiveApp(app);
 
@@ -1354,7 +1477,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           nextSkyoneTab,
           nextHighlight,
           nextGoldTab,
-          nextInteriorTab
+          nextInteriorTab,
+          {
+            goldTargetAmount: options?.goldTargetAmount,
+            interiorScenarioId: options?.interiorScenarioId,
+          }
         );
         const currentFull = `${window.location.pathname}${window.location.search}`;
         if (currentFull !== targetPath) {
@@ -3232,7 +3359,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       category: GoldCategory;
       quantityChi: number;
       unitSellPricePerChi: number;
-      mode: "FIFO" | "SPECIFIC_LOT";
+      mode: GoldSaleAllocationMode;
       specificLotId?: string;
       purpose: GoldSalePurpose;
       note?: string;
@@ -3241,7 +3368,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const allocationResult =
         input.mode === "SPECIFIC_LOT" && input.specificLotId
           ? allocateSpecificLotSale(goldPortfolio.lots, input.specificLotId, input.quantityChi)
-          : allocateFifoGoldSale(goldPortfolio.lots, input.category, input.quantityChi);
+          : input.mode === "WAC"
+            ? allocateWacGoldSale(goldPortfolio.lots, input.category, input.quantityChi)
+            : allocateFifoGoldSale(goldPortfolio.lots, input.category, input.quantityChi);
 
       if (!allocationResult.ok) {
         return { ok: false, error: allocationResult.error };
@@ -3268,7 +3397,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           memberId: "SHARED",
           scope: "FAMILY",
           tag: "INVESTMENT",
-          note: `Bán ${input.quantityChi} chỉ vàng (${input.category}) · ${input.purpose}${input.note ? ` · ${input.note}` : ""}`,
+          note: `Bán ${input.quantityChi} chỉ vàng (${input.category} · ${input.mode}) · ${input.purpose}${input.note ? ` · ${input.note}` : ""}`,
         });
         linkedTransactionId = tx.id;
       }
@@ -3277,6 +3406,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         id: `gold_sale_${Date.now()}`,
         saleDate: input.saleDate,
         category: input.category,
+        allocationMode: input.mode,
         allocations: allocationResult.allocations,
         totalSoldChi: input.quantityChi,
         unitSellPricePerChi: input.unitSellPricePerChi,
@@ -3298,6 +3428,143 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return { ok: true, saleEvent };
     },
     [goldPortfolio.lots, addTransaction, categories, updateGoldPortfolioState]
+  );
+
+  const recordBatchGoldSale = useCallback(
+    (input: {
+      saleDate: string;
+      steps: Array<{
+        lotId: string;
+        category: GoldCategory;
+        sellChi: number;
+        unitSellPricePerChi: number;
+      }>;
+      purpose: GoldSalePurpose;
+      note?: string;
+      linkAccountId?: string;
+    }): { ok: boolean; saleEvents?: GoldSaleEvent[]; error?: string } => {
+      if (!input.steps.length) {
+        return { ok: false, error: "Chưa có lô vàng nào trong kế hoạch bán hàng loạt." };
+      }
+
+      const batchRes = allocateBatchGoldSale(
+        goldPortfolio.lots,
+        input.steps.map((s) => ({ lotId: s.lotId, sellChi: s.sellChi }))
+      );
+      if (!batchRes.ok) {
+        return { ok: false, error: batchRes.error };
+      }
+
+      // Group allocations by GoldCategory so each GoldSaleEvent retains exact category & Bid unit price
+      const groups = new Map<
+        GoldCategory,
+        {
+          allocations: GoldSaleEvent["allocations"];
+          totalSoldChi: number;
+          totalProceeds: number;
+          costBasisAllocated: number;
+        }
+      >();
+
+      input.steps.forEach((step, idx) => {
+        const alloc = batchRes.allocations[idx];
+        if (!alloc) return;
+        const current = groups.get(step.category) || {
+          allocations: [],
+          totalSoldChi: 0,
+          totalProceeds: 0,
+          costBasisAllocated: 0,
+        };
+        current.allocations.push(alloc);
+        current.totalSoldChi = Number((current.totalSoldChi + alloc.soldChi).toFixed(4));
+        current.totalProceeds += Math.round(alloc.soldChi * step.unitSellPricePerChi);
+        current.costBasisAllocated += alloc.costBasisAllocated;
+        groups.set(step.category, current);
+      });
+
+      const nowMs = Date.now();
+      const nowIso = new Date().toISOString();
+      const createdEvents: GoldSaleEvent[] = [];
+      const incomeCatId =
+        categories.find((c) => c.type === "INCOME" && c.name.toLowerCase().includes("đầu tư"))?.id ||
+        categories.find((c) => c.type === "INCOME")?.id ||
+        "cat_income_other";
+
+      let groupIdx = 0;
+      groups.forEach((grp, category) => {
+        const unitSellPricePerChi =
+          grp.totalSoldChi > 0 ? Math.round(grp.totalProceeds / grp.totalSoldChi) : 0;
+        const realizedPnl = grp.totalProceeds - grp.costBasisAllocated;
+
+        let linkedTransactionId: string | undefined;
+        if (input.linkAccountId && grp.totalProceeds > 0) {
+          const tx = addTransaction({
+            amount: grp.totalProceeds,
+            date: input.saleDate,
+            type: "INCOME",
+            categoryId: incomeCatId,
+            accountId: input.linkAccountId,
+            memberId: "SHARED",
+            scope: "FAMILY",
+            tag: "INVESTMENT",
+            note: `Chốt bán ${grp.totalSoldChi} chỉ (${category} · ${grp.allocations.length} lô)${input.note ? ` · ${input.note}` : ""}`,
+          });
+          linkedTransactionId = tx.id;
+        }
+
+        createdEvents.push({
+          id: `gold_sale_${nowMs}_${groupIdx++}`,
+          saleDate: input.saleDate,
+          category,
+          allocationMode: "SPECIFIC_LOT",
+          allocations: grp.allocations,
+          totalSoldChi: grp.totalSoldChi,
+          unitSellPricePerChi,
+          totalProceeds: grp.totalProceeds,
+          costBasisAllocated: grp.costBasisAllocated,
+          realizedPnl,
+          purpose: input.purpose,
+          linkedTransactionId,
+          note: input.note,
+          createdAt: nowIso,
+        });
+      });
+
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: batchRes.updatedLots,
+        sales: [...createdEvents, ...prev.sales],
+      }));
+
+      return { ok: true, saleEvents: createdEvents };
+    },
+    [goldPortfolio.lots, addTransaction, categories, updateGoldPortfolioState]
+  );
+
+  const undoGoldSale = useCallback(
+    (
+      saleId: string,
+      options?: { deleteLinkedFinanceTx?: boolean }
+    ): { ok: boolean; error?: string } => {
+      const targetSale = goldPortfolio.sales.find((s) => s.id === saleId);
+      if (!targetSale) {
+        return { ok: false, error: "Không tìm thấy giao dịch bán vàng cần hoàn tác." };
+      }
+
+      const restoredLots = revertGoldSaleAllocation(goldPortfolio.lots, targetSale);
+      updateGoldPortfolioState((prev) => ({
+        ...prev,
+        lots: restoredLots,
+        sales: prev.sales.filter((s) => s.id !== saleId),
+      }));
+
+      if (options?.deleteLinkedFinanceTx && targetSale.linkedTransactionId) {
+        deleteTransaction(targetSale.linkedTransactionId);
+      }
+
+      return { ok: true };
+    },
+    [goldPortfolio.lots, goldPortfolio.sales, updateGoldPortfolioState, deleteTransaction]
   );
 
   const updateGoldPriceQuote = useCallback(
@@ -3572,6 +3839,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         roomFloorOverrides: source.roomFloorOverrides ? { ...source.roomFloorOverrides } : undefined,
         lightingZones: source.lightingZones ? { ...source.lightingZones } : undefined,
         curtainOpenRatio: source.curtainOpenRatio,
+        isLockedBaseline: false,
+        cameraBookmarks: source.cameraBookmarks ? source.cameraBookmarks.map((b) => ({ ...b })) : undefined,
         updatedAt: nowIso,
       };
       updateInteriorState((prev) => ({
@@ -3582,6 +3851,101 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return clone;
     },
     [interiorStudio.scenarios, updateInteriorState]
+  );
+
+  const deleteInteriorScenario = useCallback(
+    (scenarioId: string): boolean => {
+      if (interiorStudio.scenarios.length <= 1) return false;
+      const target = interiorStudio.scenarios.find((s) => s.id === scenarioId);
+      if (!target || target.isLockedBaseline) return false;
+      updateInteriorState((prev) => {
+        if (prev.scenarios.length <= 1) return prev;
+        const remaining = prev.scenarios.filter((s) => s.id !== scenarioId);
+        const nextActiveId =
+          prev.activeScenarioId === scenarioId ? remaining[0].id : prev.activeScenarioId;
+        return {
+          ...prev,
+          activeScenarioId: nextActiveId,
+          scenarios: remaining,
+        };
+      });
+      return true;
+    },
+    [interiorStudio.scenarios, updateInteriorState]
+  );
+
+  const toggleInteriorScenarioBaselineLock = useCallback(
+    (scenarioId: string) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === scenarioId
+            ? {
+                ...sc,
+                isLockedBaseline: !sc.isLockedBaseline,
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const addInteriorCameraBookmark = useCallback(
+    (
+      scenarioId: string,
+      bookmark: Omit<InteriorCameraBookmark, "id" | "createdAt">
+    ): InteriorCameraBookmark | null => {
+      const targetScenario = interiorStudio.scenarios.find((s) => s.id === scenarioId);
+      if (!targetScenario) return null;
+      const existing = targetScenario.cameraBookmarks ?? [];
+      if (existing.length >= 6) return null;
+      const created: InteriorCameraBookmark = {
+        ...bookmark,
+        id: `cam_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        name: bookmark.name.trim() || `Góc nhìn ${existing.length + 1}`,
+        createdAt: new Date().toISOString(),
+      };
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) =>
+            sc.id === scenarioId
+              ? {
+                  ...sc,
+                  cameraBookmarks: [...(sc.cameraBookmarks ?? []).slice(0, 5), created],
+                  updatedAt: new Date().toISOString(),
+                }
+              : sc
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+      return created;
+    },
+    [interiorStudio.scenarios, updateInteriorState]
+  );
+
+  const deleteInteriorCameraBookmark = useCallback(
+    (scenarioId: string, bookmarkId: string) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) =>
+            sc.id === scenarioId
+              ? {
+                  ...sc,
+                  cameraBookmarks: (sc.cameraBookmarks ?? []).filter((b) => b.id !== bookmarkId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : sc
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
   );
 
   const addInteriorFurnitureItem = useCallback(
@@ -3624,6 +3988,28 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         }),
         options
       );
+    },
+    [updateInteriorState]
+  );
+
+  const relinkCustomGlbItem = useCallback(
+    (itemId: string, customGlbId: string, customGlbName: string) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                items: sc.items.map((it) =>
+                  it.id === itemId
+                    ? { ...it, customGlbId, customGlbName }
+                    : it
+                ),
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
     },
     [updateInteriorState]
   );
@@ -3816,6 +4202,92 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return tx;
     },
     [addTransaction, categories, updateInteriorState]
+  );
+
+  const deleteBoqPaymentRecord = useCallback(
+    (
+      origin: "3D_ITEM" | "EXTRA_LINE",
+      itemId: string,
+      paymentId: string,
+      options?: { deleteLinkedFinanceTx?: boolean }
+    ): { ok: boolean } => {
+      const activeScenario = interiorStudio.scenarios.find(
+        (sc) => sc.id === interiorStudio.activeScenarioId
+      );
+      if (!activeScenario) return { ok: false };
+
+      let targetPayment: InteriorBoqPaymentRecord | undefined;
+      if (origin === "3D_ITEM") {
+        const item = activeScenario.items.find((it) => it.id === itemId);
+        targetPayment = item?.payments?.find((p) => p.id === paymentId);
+      } else {
+        const ex = activeScenario.extraBoqItems.find((e) => e.id === itemId);
+        targetPayment = ex?.payments?.find((p) => p.id === paymentId);
+      }
+      if (!targetPayment) return { ok: false };
+
+      if (options?.deleteLinkedFinanceTx && targetPayment.linkedTransactionId) {
+        deleteTransaction(targetPayment.linkedTransactionId);
+      }
+
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          if (origin === "3D_ITEM") {
+            return {
+              ...sc,
+              items: sc.items.map((it) => {
+                if (it.id !== itemId) return it;
+                const remainingPayments = (it.payments ?? []).filter((p) => p.id !== paymentId);
+                const totalPaid = remainingPayments.reduce((s, p) => s + p.amountVnd, 0);
+                const rowTotal = calculateFurnitureItemCostVnd(it);
+                const nextStatus: InteriorProcurementStatus =
+                  totalPaid <= 0
+                    ? "QUOTED"
+                    : rowTotal > 0 && totalPaid >= rowTotal
+                      ? "INSTALLED"
+                      : "DEPOSITED";
+                return {
+                  ...it,
+                  payments: remainingPayments,
+                  linkedTransactionId:
+                    remainingPayments[remainingPayments.length - 1]?.linkedTransactionId,
+                  procurementStatus: nextStatus,
+                };
+              }),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return {
+            ...sc,
+            extraBoqItems: sc.extraBoqItems.map((ex) => {
+              if (ex.id !== itemId) return ex;
+              const remainingPayments = (ex.payments ?? []).filter((p) => p.id !== paymentId);
+              const totalPaid = remainingPayments.reduce((s, p) => s + p.amountVnd, 0);
+              const rowTotal = Math.round(ex.quantity * ex.unitPriceVnd);
+              const nextStatus: InteriorProcurementStatus =
+                totalPaid <= 0
+                  ? "QUOTED"
+                  : rowTotal > 0 && totalPaid >= rowTotal
+                    ? "INSTALLED"
+                    : "DEPOSITED";
+              return {
+                ...ex,
+                payments: remainingPayments,
+                linkedTransactionId:
+                  remainingPayments[remainingPayments.length - 1]?.linkedTransactionId,
+                procurementStatus: nextStatus,
+              };
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+
+      return { ok: true };
+    },
+    [interiorStudio.scenarios, interiorStudio.activeScenarioId, deleteTransaction, updateInteriorState]
   );
 
   const applyInteriorStylePaletteToAllFurniture = useCallback(
@@ -4044,11 +4516,42 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const toggleHandoverChecklistItem = useCallback(
     (id: string) => {
+      const nowIso = new Date().toISOString();
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: prev.handoverChecklist.map((it) => {
+            if (it.id !== id) return it;
+            const nextChecked = !it.checked;
+            return {
+              ...it,
+              checked: nextChecked,
+              status: nextChecked ? "PASSED" : "PENDING",
+              updatedAt: nowIso,
+            };
+          }),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const updateHandoverChecklistStatus = useCallback(
+    (id: string, status: HandoverChecklistStatus) => {
+      const nowIso = new Date().toISOString();
       updateInteriorState(
         (prev) => ({
           ...prev,
           handoverChecklist: prev.handoverChecklist.map((it) =>
-            it.id === id ? { ...it, checked: !it.checked } : it
+            it.id === id
+              ? {
+                  ...it,
+                  status,
+                  checked: status === "PASSED",
+                  updatedAt: nowIso,
+                }
+              : it
           ),
         }),
         { skipUndoHistory: true }
@@ -4059,12 +4562,77 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const updateHandoverChecklistNote = useCallback(
     (id: string, note: string) => {
+      const nowIso = new Date().toISOString();
       updateInteriorState(
         (prev) => ({
           ...prev,
           handoverChecklist: prev.handoverChecklist.map((it) =>
-            it.id === id ? { ...it, note } : it
+            it.id === id ? { ...it, note, updatedAt: nowIso } : it
           ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const updateHandoverChecklistPhoto = useCallback(
+    (id: string, localPhotoKey: string | undefined) => {
+      const nowIso = new Date().toISOString();
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: prev.handoverChecklist.map((it) =>
+            it.id === id ? { ...it, localPhotoKey, updatedAt: nowIso } : it
+          ),
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const addHandoverChecklistItem = useCallback(
+    (input: {
+      zoneCode: string;
+      zoneName: string;
+      title: string;
+      specDetail: string;
+      status?: HandoverChecklistStatus;
+      note?: string;
+    }): HandoverChecklistItem => {
+      const nowIso = new Date().toISOString();
+      const status: HandoverChecklistStatus = input.status ?? "DEFECT_MINOR";
+      const created: HandoverChecklistItem = {
+        id: `snag_custom_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        zoneCode: input.zoneCode,
+        zoneName: input.zoneName,
+        title: input.title.trim(),
+        specDetail: input.specDetail.trim() || "Hạng mục phát sinh kiểm tra tại hiện trường",
+        checked: status === "PASSED",
+        status,
+        isCustom: true,
+        note: input.note?.trim() || undefined,
+        updatedAt: nowIso,
+      };
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: [created, ...prev.handoverChecklist],
+        }),
+        { skipUndoHistory: true }
+      );
+      return created;
+    },
+    [updateInteriorState]
+  );
+
+  const deleteHandoverChecklistItem = useCallback(
+    (id: string) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          handoverChecklist: prev.handoverChecklist.filter((it) => !(it.id === id && it.isCustom)),
         }),
         { skipUndoHistory: true }
       );
@@ -4093,6 +4661,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return stack.slice(0, -1);
     });
   }, [interiorStudio, queueCloudMutation]);
+
+  const updateInteriorTargetHandoverDate = useCallback(
+    (targetHandoverDate: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetHandoverDate)) return;
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          targetHandoverDate,
+        }),
+        { skipUndoHistory: true }
+      );
+    },
+    [updateInteriorState]
+  );
 
   const resetInteriorStudio = useCallback(() => {
     const fresh = createDefaultInteriorStudio();
@@ -5115,6 +5697,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateGoldLot,
     deleteGoldLot,
     recordGoldSale,
+    recordBatchGoldSale,
+    undoGoldSale,
     updateGoldPriceQuote,
     updateGoldMacro,
     updateGoldDcaPlan,
@@ -5130,14 +5714,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setActiveInteriorScenario,
     updateInteriorScenarioMeta,
     duplicateInteriorScenario,
+    deleteInteriorScenario,
+    toggleInteriorScenarioBaselineLock,
+    addInteriorCameraBookmark,
+    deleteInteriorCameraBookmark,
     addInteriorFurnitureItem,
     updateInteriorFurnitureItem,
+    relinkCustomGlbItem,
     deleteInteriorFurnitureItem,
     addInteriorExtraBoqItem,
     updateInteriorExtraBoqItem,
     deleteInteriorExtraBoqItem,
     updateBoqItemStatus,
     recordBoqPaymentToFinance,
+    deleteBoqPaymentRecord,
     applyInteriorStylePaletteToAllFurniture,
     addInteriorMepPoint,
     updateInteriorMepPoint,
@@ -5150,11 +5740,16 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateInteriorCurtainOpenRatio,
     commitInteriorUndoSnapshot,
     toggleHandoverChecklistItem,
+    updateHandoverChecklistStatus,
     updateHandoverChecklistNote,
+    updateHandoverChecklistPhoto,
+    addHandoverChecklistItem,
+    deleteHandoverChecklistItem,
     undoInteriorChange,
     redoInteriorChange,
     canUndoInterior: interiorUndoStack.length > 0,
     canRedoInterior: interiorRedoStack.length > 0,
+    updateInteriorTargetHandoverDate,
     resetInteriorStudio,
     updateSettings,
     markNotificationRead,

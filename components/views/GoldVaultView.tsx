@@ -12,7 +12,9 @@ import {
   calculateConstructionMilestones,
   calculateHandoverReadiness,
   calculateScenarioBoq,
+  computeMonthsUntilHandover,
 } from "@/lib/interiorBoqEngine";
+import { generateMortgageSchedule } from "@/lib/mortgageEngine";
 import { GoldOverviewTab } from "@/components/gold/tabs/GoldOverviewTab";
 import { GoldLotsTab } from "@/components/gold/tabs/GoldLotsTab";
 import { GoldPricesTab } from "@/components/gold/tabs/GoldPricesTab";
@@ -31,6 +33,8 @@ export function GoldVaultView() {
     updateGoldLot,
     deleteGoldLot,
     recordGoldSale,
+    recordBatchGoldSale,
+    undoGoldSale,
     updateGoldPriceQuote,
     updateGoldMacro,
     updateGoldDcaPlan,
@@ -43,6 +47,7 @@ export function GoldVaultView() {
     setGoldSimulatorPresetTarget,
     accounts,
     summary,
+    activePerspective,
     skyoneLoan,
     interiorStudio,
     settings,
@@ -74,13 +79,18 @@ export function GoldVaultView() {
 
   const nhanBidPerChi = goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000;
   const monthlySurplus = Math.max(10_000_000, summary.savingsAmount || 18_000_000);
+  const dynamicMonthsUntilHandover = useMemo(
+    () => computeMonthsUntilHandover(interiorStudio.targetHandoverDate),
+    [interiorStudio.targetHandoverDate]
+  );
 
   const handoverReadiness = useMemo(
     () =>
       calculateHandoverReadiness({
         liquidCashVnd: summary.currentBalance,
         monthlyNetSurplusVnd: monthlySurplus,
-        monthsUntilHandover: 9,
+        monthsUntilHandover: dynamicMonthsUntilHandover,
+        targetHandoverDateIso: interiorStudio.targetHandoverDate,
         goldLiquidationValueBidVnd: metrics.totalLiquidationValueBid,
         goldNhan9999BidPerChiVnd: nhanBidPerChi,
         interiorBoqTotalVnd: activeBoqSummary?.grandTotalWithContingency ?? 140_000_000,
@@ -90,6 +100,8 @@ export function GoldVaultView() {
     [
       summary.currentBalance,
       monthlySurplus,
+      dynamicMonthsUntilHandover,
+      interiorStudio.targetHandoverDate,
       metrics.totalLiquidationValueBid,
       nhanBidPerChi,
       activeBoqSummary,
@@ -103,21 +115,43 @@ export function GoldVaultView() {
         boqPaidVnd: activeBoqSummary?.paidOrDepositedVnd ?? 0,
         currentLiquidCashVnd: summary.currentBalance,
         monthlyNetSurplusVnd: monthlySurplus,
-        monthsUntilHandover: 9,
+        monthsUntilHandover: dynamicMonthsUntilHandover,
         goldPortfolio,
       }),
-    [activeBoqSummary, summary.currentBalance, monthlySurplus, goldPortfolio]
+    [
+      activeBoqSummary,
+      summary.currentBalance,
+      monthlySurplus,
+      dynamicMonthsUntilHandover,
+      goldPortfolio,
+    ]
   );
 
-  // Household Net Worth estimate for Allocation Guardrail
+  // Full Household Net Worth for Allocation Guardrail (Cash + Investments + Gold Bid + SKYONE Home Equity - Debts)
   const estimatedHouseholdNetWorthVnd = useMemo(() => {
-    const liquidCash = Math.max(0, summary.currentBalance);
     const goldBid = metrics.totalLiquidationValueBid;
-    const baseNetWorth = goldPortfolio.includeInNetWorth
-      ? Math.max(liquidCash, goldBid)
-      : liquidCash + goldBid;
-    return Math.max(goldBid, baseNetWorth);
-  }, [summary.currentBalance, metrics.totalLiquidationValueBid, goldPortfolio.includeInNetWorth]);
+    const summaryAlreadyIncludesGold =
+      goldPortfolio.includeInNetWorth && activePerspective === "ALL";
+    const financialNetWorthWithGold = summaryAlreadyIncludesGold
+      ? summary.netWorth
+      : summary.netWorth + goldBid;
+
+    let skyoneEquityVnd = 0;
+    if (skyoneLoan) {
+      const schedule = generateMortgageSchedule(skyoneLoan);
+      const propertyMarketValue =
+        skyoneLoan.currentMarketValue > 0 ? skyoneLoan.currentMarketValue : skyoneLoan.propertyValue;
+      skyoneEquityVnd = Math.max(0, propertyMarketValue - schedule.remainingBalance);
+    }
+
+    return Math.max(goldBid, financialNetWorthWithGold + skyoneEquityVnd);
+  }, [
+    summary.netWorth,
+    metrics.totalLiquidationValueBid,
+    goldPortfolio.includeInNetWorth,
+    activePerspective,
+    skyoneLoan,
+  ]);
 
   const guardrail = useMemo(
     () =>
@@ -231,6 +265,7 @@ export function GoldVaultView() {
             })
           }
           onDeleteLot={deleteGoldLot}
+          onUndoSale={undoGoldSale}
           onPrintVaultAudit={() => setIsPrintPortalOpen(true)}
         />
       )}
@@ -275,8 +310,10 @@ export function GoldVaultView() {
             setSimTargetVnd(val);
             if (label !== undefined) setSimPresetLabel(label);
           }}
+          nonCreditAccounts={nonCreditAccounts}
           isPrivacyMode={isPrivacyMode}
           onExecuteSimulatedSale={(prefill) => handleOpenSellModal(prefill)}
+          onExecuteBatchSale={recordBatchGoldSale}
           onPrintVaultAudit={() => setIsPrintPortalOpen(true)}
         />
       )}
@@ -299,6 +336,7 @@ export function GoldVaultView() {
         goldPortfolio={goldPortfolio}
         holdingLots={holdingLots}
         nonCreditAccounts={nonCreditAccounts}
+        isPrivacyMode={isPrivacyMode}
         onClose={() => setIsSellModalOpen(false)}
         onRecordSale={recordGoldSale}
       />

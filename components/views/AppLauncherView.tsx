@@ -17,7 +17,7 @@ import { useFinance } from "@/context/FinanceContext";
 import {
   APP_ECOSYSTEM_REGISTRY,
   EcosystemAppId,
-  getUrgentSkyOneAlert,
+  computeEcosystemAlertBadges,
 } from "@/lib/appRegistry";
 import {
   FinanceAppIconSvg,
@@ -50,6 +50,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
     skyoneLoan,
     goldPortfolio,
     interiorStudio,
+    budgetSummary,
     isPrivacyMode,
     switchSubApp,
     themeMode,
@@ -67,9 +68,15 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
 
   const [isCloudAuthModalOpen, setIsCloudAuthModalOpen] = useState(false);
 
-  const urgentSkyoneAlert = useMemo(
-    () => getUrgentSkyOneAlert(skyoneLoan),
-    [skyoneLoan]
+  const ecosystemBadges = useMemo(
+    () =>
+      computeEcosystemAlertBadges({
+        skyoneLoan,
+        goldPortfolio,
+        interiorStudio,
+        budgetItems: budgetSummary.items,
+      }),
+    [skyoneLoan, goldPortfolio, interiorStudio, budgetSummary.items]
   );
 
   const goldMetrics = useMemo(
@@ -89,15 +96,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
   }, [interiorStudio]);
 
   const handleOpenSubApp = (appId: EcosystemAppId) => {
-    if (appId === "FINANCE") {
-      switchSubApp("FINANCE", { financeTab: "overview" });
-    } else if (appId === "SKYONE") {
-      switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" });
-    } else if (appId === "GOLD") {
-      switchSubApp("GOLD", { goldTab: "OVERVIEW" });
-    } else {
-      switchSubApp("INTERIOR", { interiorTab: "STUDIO" });
-    }
+    switchSubApp(appId, { restoreLastTab: true });
   };
 
   return (
@@ -219,6 +218,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
             const isSkyOne = app.id === "SKYONE";
             const isGold = app.id === "GOLD";
             const isInterior = app.id === "INTERIOR";
+            const appBadge = ecosystemBadges[app.id];
             const displayTitle = isSkyOne ? skyoneLoan.projectName : app.title;
             const hoverBorderClass =
               app.accentTone === "indigo"
@@ -243,8 +243,15 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                 type="button"
                 data-testid={`launcher-card-${app.testIdKey}`}
                 onClick={() => handleOpenSubApp(app.id)}
-                className={`group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 ${hoverBorderClass} p-6 sm:p-7 text-center flex flex-col items-center justify-between gap-5 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2`}
+                className={`relative group bg-white dark:bg-slate-900 rounded-2xl border border-[#DCE4EE] dark:border-slate-800 ${hoverBorderClass} p-6 sm:p-7 text-center flex flex-col items-center justify-between gap-5 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2`}
               >
+                <kbd
+                  aria-label={`Phím tắt ${app.shortcutLabel}`}
+                  className="hidden sm:inline-block absolute top-3.5 right-3.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 rounded"
+                >
+                  {app.shortcutLabel}
+                </kbd>
+
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-20 h-20 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-[#E9EEF5] dark:border-slate-700/80 flex items-center justify-center transition-transform duration-150 group-hover:scale-105">
                     <IconComponent className="w-14 h-14" />
@@ -257,23 +264,6 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
                       {app.launcherDescription}
                     </p>
-
-                    {isSkyOne && urgentSkyoneAlert && (
-                      <p
-                        className={`pt-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold tabular-nums ${
-                          urgentSkyoneAlert.kind === "danger"
-                            ? "text-rose-700 dark:text-rose-300"
-                            : "text-amber-700 dark:text-amber-300"
-                        }`}
-                      >
-                        {urgentSkyoneAlert.kind === "danger" ? (
-                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                        ) : (
-                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                        )}
-                        <span>{urgentSkyoneAlert.detailLabel}</span>
-                      </p>
-                    )}
 
                     {isGold && (
                       <p className="pt-1 text-xs font-bold text-amber-700 dark:text-amber-300 tabular-nums">
@@ -289,6 +279,24 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
                           activeInteriorSummary.boq.grandTotalWithContingency,
                           isPrivacyMode
                         )}
+                      </p>
+                    )}
+
+                    {appBadge && (
+                      <p
+                        data-testid={`launcher-badge-${app.testIdKey}`}
+                        className={`pt-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold tabular-nums ${
+                          appBadge.severity === "danger"
+                            ? "text-rose-700 dark:text-rose-300"
+                            : "text-amber-700 dark:text-amber-300"
+                        }`}
+                      >
+                        {appBadge.severity === "danger" ? (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>{appBadge.detailLabel}</span>
                       </p>
                     )}
                   </div>
@@ -308,7 +316,7 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
         {/* Quiet Shared Workspace Links */}
         <div className="mt-10 pt-5 border-t border-[#E9EEF5] dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
           <span>
-            Nhấn lưới 9 chấm (hoặc phím Alt+M) trong Header để đổi ứng dụng hoặc quay về đây.
+            Dùng phím <kbd className="font-mono font-bold">Alt+1..4</kbd> để chuyển nhanh giữa 4 ứng dụng, hoặc <kbd className="font-mono font-bold">Alt+M</kbd> mở lưới 9 chấm.
           </span>
           <div className="flex flex-wrap items-center gap-4 font-semibold">
             <button

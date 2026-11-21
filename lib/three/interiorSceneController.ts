@@ -275,6 +275,7 @@ export class InteriorSceneController {
   private selectedArchTarget: InteriorArchTarget | null = null;
   private timeOfDay: InteriorTimeOfDay = "MORNING_08";
   private activePreset: InteriorCameraPreset = "DOLLHOUSE";
+  private isBaselineLocked = false;
   private cameraEmitTimer: number | null = null;
   private suppressCameraEmit = false;
 
@@ -1641,6 +1642,7 @@ export class InteriorSceneController {
     this.currentWallOverrides = scenario.wallOverrides;
     this.currentDoorOverrides = scenario.doorOverrides;
     this.currentFloorOverrides = scenario.roomFloorOverrides;
+    this.isBaselineLocked = Boolean(scenario.isLockedBaseline);
     this.currentLightingZones = {
       ...DEFAULT_LIGHTING_ZONES,
       ...(scenario.lightingZones ?? {}),
@@ -1973,6 +1975,33 @@ export class InteriorSceneController {
     this.scheduleCameraEmit();
   }
 
+  public applyCameraTarget(
+    pos: [number, number, number],
+    target: [number, number, number]
+  ): void {
+    if (this.disposed) return;
+    if (this.navMode === "WALKTHROUGH") {
+      this.camera.position.set(pos[0], 1.6, pos[2]);
+      const look = new THREE.Vector3(...target);
+      const dir = look.sub(this.camera.position);
+      if (dir.lengthSq() > 1e-5) {
+        dir.normalize();
+        this.walkYaw = Math.atan2(-dir.x, -dir.z);
+        this.walkPitch = THREE.MathUtils.clamp(Math.asin(dir.y), -0.65, 0.55);
+      }
+      this.applyWalkCameraOrientation();
+      this.updateCeilingAndSkyVisibility();
+      this.requestRender();
+      this.scheduleCameraEmit();
+      return;
+    }
+    this.animTargetPos = new THREE.Vector3(...pos);
+    this.animTargetLook = new THREE.Vector3(...target);
+    this.lastFrameTime = performance.now();
+    this.requestRender();
+    this.scheduleCameraEmit();
+  }
+
   private applyWalkCameraOrientation(): void {
     const euler = new THREE.Euler(this.walkPitch, this.walkYaw, 0, "YXZ");
     this.camera.quaternion.setFromEuler(euler);
@@ -2110,7 +2139,7 @@ export class InteriorSceneController {
         this.requestRender();
 
         const group = this.furnitureMap.get(hitId);
-        if (group && !group.userData.isLocked) {
+        if (group && !group.userData.isLocked && !this.isBaselineLocked) {
           const hitPoint = new THREE.Vector3();
           if (this.raycaster.ray.intersectPlane(this.floorPlane, hitPoint)) {
             this.draggingId = hitId;

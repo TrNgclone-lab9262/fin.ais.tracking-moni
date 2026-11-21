@@ -12,12 +12,16 @@ import {
   FileText,
   Hammer,
   Layers,
+  Lock,
   Paintbrush,
   PanelRight,
+  Pencil,
   Plus,
   Redo2,
   Search,
+  Trash2,
   Undo2,
+  Unlock,
   Upload,
   X,
   Zap,
@@ -50,6 +54,7 @@ import {
   InteriorInteractionMode,
 } from "@/lib/three/interiorSceneController";
 import { FullscreenToggle } from "@/components/common/FullscreenToggle";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   Interior3DViewport,
   Interior3DViewportHandle,
@@ -120,6 +125,11 @@ export function StudioWorkspaceTab({
     setActiveInteriorScenario,
     updateInteriorScenarioMeta,
     duplicateInteriorScenario,
+    deleteInteriorScenario,
+    toggleInteriorScenarioBaselineLock,
+    addInteriorCameraBookmark,
+    deleteInteriorCameraBookmark,
+    relinkCustomGlbItem,
     addInteriorFurnitureItem,
     updateInteriorFurnitureItem,
     deleteInteriorFurnitureItem,
@@ -143,6 +153,7 @@ export function StudioWorkspaceTab({
   const isFullscreen = isStageFullscreen;
   const toggleFullscreen = onToggleStageFullscreen;
   const exitFullscreen = onExitStageFullscreen;
+  const isScenarioLocked = Boolean(activeScenario.isLockedBaseline);
 
   const [isCatalogOpen, setIsCatalogOpen] = useState<boolean>(false);
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<string>("ALL");
@@ -150,6 +161,11 @@ export function StudioWorkspaceTab({
   const [showGlbForm, setShowGlbForm] = useState<boolean>(false);
   const [paletteToast, setPaletteToast] = useState<string | null>(null);
   const [fsDrawerOpen, setFsDrawerOpen] = useState<boolean>(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
+  const [renameTitle, setRenameTitle] = useState<string>("");
+  const [renameShort, setRenameShort] = useState<string>("");
+  const [renameDesc, setRenameDesc] = useState<string>("");
+  const [confirmDeleteScenarioOpen, setConfirmDeleteScenarioOpen] = useState<boolean>(false);
 
   // Custom GLB Upload Form State
   const [glbFile, setGlbFile] = useState<File | null>(null);
@@ -254,7 +270,7 @@ export function StudioWorkspaceTab({
         return;
       }
 
-      if (!selectedItem || selectedItem.isLocked) return;
+      if (!selectedItem || selectedItem.isLocked || isScenarioLocked) return;
 
       if (key === "r" && !mod) {
         e.preventDefault();
@@ -310,10 +326,33 @@ export function StudioWorkspaceTab({
     isFullscreen,
     selectedItemId,
     selectedItem,
+    isScenarioLocked,
     onSelectItem,
     updateInteriorFurnitureItem,
     deleteInteriorFurnitureItem,
   ]);
+
+  const handleOpenRenameModal = () => {
+    setRenameTitle(activeScenario.name);
+    setRenameShort(activeScenario.shortLabel);
+    setRenameDesc(activeScenario.description);
+    setIsRenameModalOpen(true);
+  };
+
+  const handleSaveRenameScenario = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = renameTitle.trim();
+    const cleanShort = renameShort.trim();
+    if (!cleanName) return;
+    updateInteriorScenarioMeta(activeScenario.id, {
+      name: cleanName,
+      shortLabel: cleanShort || cleanName.slice(0, 24),
+      description: renameDesc.trim() || activeScenario.description,
+    });
+    setIsRenameModalOpen(false);
+    setPaletteToast(`Đã cập nhật tên phương án "${cleanShort || cleanName}".`);
+    window.setTimeout(() => setPaletteToast(null), 3000);
+  };
 
   const handleAddFromCatalog = (tpl: CatalogItemTemplate) => {
     const room = SKYONE_A2_ROOMS.find((r) => r.id === tpl.defaultRoomId) || SKYONE_A2_ROOMS[0];
@@ -418,14 +457,15 @@ export function StudioWorkspaceTab({
   };
 
   const handleApplyStyleToAllFurniture = () => {
+    if (isScenarioLocked) return;
     const presetMeta = INTERIOR_STYLE_PRESETS[activeScenario.stylePreset];
     applyInteriorStylePaletteToAllFurniture(activeScenario.id, activeScenario.stylePreset);
     const targetFloorPattern =
       activeScenario.stylePreset === "WARM_SCANDINAVIAN" || activeScenario.stylePreset === "MODERN_WARM"
         ? "HERRINGBONE"
         : "STRAIGHT";
-    updateInteriorFloorPattern("room_master_bedroom", targetFloorPattern);
-    updateInteriorFloorPattern("room_05_multi", targetFloorPattern);
+    updateInteriorFloorPattern("room_master", targetFloorPattern);
+    updateInteriorFloorPattern("room_05", targetFloorPattern);
     setPaletteToast(
       `Đã đồng bộ trọn bộ Style Kit ${presetMeta.name} (vật liệu nội thất + vân sàn phòng ngủ). Nhấn Ctrl+Z để hoàn tác.`
     );
@@ -458,6 +498,7 @@ export function StudioWorkspaceTab({
           scenario={activeScenario}
           selectedTarget={selectedArchTarget}
           isPrivacyMode={isPrivacyMode}
+          isScenarioLocked={isScenarioLocked}
           onSelectTarget={onSelectArchTarget}
           onUpdateWallOverride={updateInteriorWallOverride}
           onUpdateDoorOverride={updateInteriorDoorOverride}
@@ -479,8 +520,10 @@ export function StudioWorkspaceTab({
           item={selectedItem}
           interiorStudio={interiorStudio}
           isPrivacyMode={isPrivacyMode}
+          isScenarioLocked={isScenarioLocked}
           onUpdateItem={updateInteriorFurnitureItem}
           onCommitUndoSnapshot={commitInteriorUndoSnapshot}
+          onRelinkCustomGlb={relinkCustomGlbItem}
           onToggleVisibility={onToggleItemVisibility}
           onDuplicate={handleDuplicateSelected}
           onDelete={(id) => {
@@ -506,7 +549,7 @@ export function StudioWorkspaceTab({
       {/* Studio Control Strip */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Scenario Selector */}
+          {/* Scenario Selector + Lifecycle Actions */}
           <div className="flex flex-wrap items-center gap-2">
             {allScenarioBoqs.map(({ scenario: sc, boq }) => {
               const active = sc.id === activeScenario.id;
@@ -524,7 +567,10 @@ export function StudioWorkspaceTab({
                       : "bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400"
                   }`}
                 >
-                  <p className="text-xs font-black leading-tight">{sc.shortLabel}</p>
+                  <p className="text-xs font-black leading-tight inline-flex items-center gap-1">
+                    {sc.isLockedBaseline && <Lock className="w-3 h-3 shrink-0" />}
+                    <span>{sc.shortLabel}</span>
+                  </p>
                   <p
                     className={`text-[10px] font-semibold tabular-nums mt-0.5 ${
                       active ? "text-teal-100" : "text-slate-500 dark:text-slate-400"
@@ -535,15 +581,64 @@ export function StudioWorkspaceTab({
                 </button>
               );
             })}
-            <button
-              type="button"
-              onClick={() => duplicateInteriorScenario(activeScenario.id)}
-              title="Nhân bản phương án hiện tại để thử nghiệm"
-              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500 hover:text-teal-600 whitespace-nowrap cursor-pointer"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Nhân bản PA</span>
-            </button>
+
+            <div className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleOpenRenameModal}
+                title="Đổi tên & mô tả phương án đang chọn"
+                aria-label="Đổi tên phương án"
+                className="inline-flex items-center gap-1 px-2 py-2 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500 hover:text-teal-600 whitespace-nowrap cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">Đổi tên</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => toggleInteriorScenarioBaselineLock(activeScenario.id)}
+                title={
+                  isScenarioLocked
+                    ? "Mở khóa phương án để tiếp tục chỉnh sửa"
+                    : "Chốt làm Phương án Thi công chuẩn (khóa chống kéo nhầm)"
+                }
+                className={`inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold border whitespace-nowrap transition-colors cursor-pointer ${
+                  isScenarioLocked
+                    ? "bg-amber-500 border-amber-500 text-stone-950 hover:bg-amber-400"
+                    : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-amber-500 hover:text-amber-700 dark:hover:text-amber-300"
+                }`}
+              >
+                {isScenarioLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                <span>{isScenarioLocked ? "Đã chốt PA" : "Chốt PA"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => duplicateInteriorScenario(activeScenario.id)}
+                title="Nhân bản phương án hiện tại để thử nghiệm"
+                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500 hover:text-teal-600 whitespace-nowrap cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Nhân bản</span>
+              </button>
+
+              {allScenarioBoqs.length > 1 && (
+                <button
+                  type="button"
+                  disabled={isScenarioLocked}
+                  onClick={() => setConfirmDeleteScenarioOpen(true)}
+                  title={
+                    isScenarioLocked
+                      ? "Hãy mở khóa trước khi xóa phương án đã chốt"
+                      : "Xóa phương án đang chọn"
+                  }
+                  aria-label="Xóa phương án đang chọn"
+                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 hover:border-rose-300 disabled:opacity-35 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Right Toolbar */}
@@ -645,14 +740,35 @@ export function StudioWorkspaceTab({
 
             <button
               type="button"
+              disabled={isScenarioLocked}
               onClick={() => setIsCatalogOpen((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold bg-teal-600 hover:bg-teal-700 text-white whitespace-nowrap transition-colors cursor-pointer"
+              title={isScenarioLocked ? "Mở khóa hoặc Nhân bản PA để thêm đồ mới" : "Mở thư viện nội thất & nạp file .GLB"}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold bg-teal-600 hover:bg-teal-700 disabled:opacity-45 text-white whitespace-nowrap transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Thêm nội thất</span>
             </button>
           </div>
         </div>
+
+        {/* Locked Baseline Read-Only Banner */}
+        {isScenarioLocked && (
+          <div className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-xs font-bold text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>
+                Phương án đã chốt thi công (Baseline) — Đã khóa chống kéo nhầm đồ 3D/2D &amp; kết cấu. Mở khóa hoặc Nhân bản PA để chỉnh sửa.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => duplicateInteriorScenario(activeScenario.id)}
+              className="px-2.5 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-extrabold whitespace-nowrap cursor-pointer"
+            >
+              Nhân bản để thử nghiệm
+            </button>
+          </div>
+        )}
 
         {/* Second Strip: Style Presets + 1-click Apply All Colors + Live Budget */}
         <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
@@ -667,10 +783,11 @@ export function StudioWorkspaceTab({
                 <button
                   key={presetKey}
                   type="button"
+                  disabled={isScenarioLocked}
                   onClick={() =>
                     updateInteriorScenarioMeta(activeScenario.id, { stylePreset: presetKey })
                   }
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border whitespace-nowrap transition-colors disabled:opacity-45 cursor-pointer ${
                     active
                       ? "bg-slate-900 dark:bg-teal-500 text-white dark:text-slate-950 border-slate-900 dark:border-teal-500"
                       : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400"
@@ -687,9 +804,10 @@ export function StudioWorkspaceTab({
 
             <button
               type="button"
+              disabled={isScenarioLocked}
               onClick={handleApplyStyleToAllFurniture}
               title="Đồng bộ trọn bộ vật liệu đồ nội thất + kiểu lát sàn phòng ngủ theo Style Kit đang chọn (Ctrl+Z để hoàn tác)"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/60 whitespace-nowrap transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/60 disabled:opacity-45 whitespace-nowrap transition-colors cursor-pointer"
             >
               <Paintbrush className="w-3 h-3" />
               <span>Đồng bộ Style Kit 1 chạm</span>
@@ -721,7 +839,7 @@ export function StudioWorkspaceTab({
       </div>
 
       {/* Collapsible 46-Item + Custom GLB Catalog Drawer */}
-      {isCatalogOpen && (
+      {isCatalogOpen && !isScenarioLocked && (
         <div className="bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-800 rounded-xl p-4 space-y-3 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1107,6 +1225,13 @@ export function StudioWorkspaceTab({
                 onUpdateCurtainOpenRatio={updateInteriorCurtainOpenRatio}
                 initialCameraState={activeCameraState}
                 onCameraStateChange={onSaveCameraState}
+                bookmarks={activeScenario.cameraBookmarks ?? []}
+                onAddBookmark={(label, position, target) =>
+                  addInteriorCameraBookmark(activeScenario.id, { name: label, position, target })
+                }
+                onDeleteBookmark={(bookmarkId) =>
+                  deleteInteriorCameraBookmark(activeScenario.id, bookmarkId)
+                }
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={toggleFullscreen}
                 onFallbackTo2D={() => onChangeViewportMode("2D")}
@@ -1162,6 +1287,13 @@ export function StudioWorkspaceTab({
                   onUpdateCurtainOpenRatio={updateInteriorCurtainOpenRatio}
                   initialCameraState={activeCameraState}
                   onCameraStateChange={onSaveCameraState}
+                  bookmarks={activeScenario.cameraBookmarks ?? []}
+                  onAddBookmark={(label, position, target) =>
+                    addInteriorCameraBookmark(activeScenario.id, { name: label, position, target })
+                  }
+                  onDeleteBookmark={(bookmarkId) =>
+                    deleteInteriorCameraBookmark(activeScenario.id, bookmarkId)
+                  }
                   isFullscreen={isFullscreen}
                   onToggleFullscreen={toggleFullscreen}
                   onFallbackTo2D={() => onChangeViewportMode("2D")}
@@ -1307,6 +1439,98 @@ export function StudioWorkspaceTab({
           )}
         </div>
       </div>
+      {/* Modal: Rename Scenario */}
+      {isRenameModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveRenameScenario}
+            className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3.5 shadow-xl"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                Đổi tên &amp; mô tả Phương án thiết kế
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRenameModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                aria-label="Đóng hộp thoại đổi tên"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                Nhãn ngắn trên thanh công cụ
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={40}
+                value={renameShort}
+                onChange={(e) => setRenameShort(e.target.value)}
+                placeholder="VD: PA-C · Tối ưu 120tr"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                Tên đầy đủ (hiển thị trên Hồ sơ PDF)
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={120}
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                Ghi chú định hướng phương án
+              </label>
+              <textarea
+                rows={3}
+                maxLength={400}
+                value={renameDesc}
+                onChange={(e) => setRenameDesc(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsRenameModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold cursor-pointer"
+              >
+                Lưu thay đổi
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteScenarioOpen}
+        isDanger
+        title={`Xóa phương án "${activeScenario.shortLabel}"?`}
+        message="Phương án thiết kế 3D, danh sách nội thất và các dòng BOQ riêng của phương án này sẽ bị xóa. Các giao dịch đã ghi vào Sổ Thu Chi vẫn được giữ nguyên."
+        confirmLabel="Xóa phương án"
+        cancelLabel="Giữ lại"
+        onCancel={() => setConfirmDeleteScenarioOpen(false)}
+        onConfirm={() => {
+          deleteInteriorScenario(activeScenario.id);
+          onSelectItem(null);
+          setConfirmDeleteScenarioOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -334,10 +334,13 @@ export interface GoldSaleAllocation {
   costBasisAllocated: number;
 }
 
+export type GoldSaleAllocationMode = 'FIFO' | 'SPECIFIC_LOT' | 'WAC';
+
 export interface GoldSaleEvent {
   id: string;
   saleDate: string;              // YYYY-MM-DD
   category: GoldCategory;
+  allocationMode?: GoldSaleAllocationMode;
   allocations: GoldSaleAllocation[];
   totalSoldChi: number;
   unitSellPricePerChi: number;   // Giá tiệm mua lại thực nhận (Bid VND/chỉ)
@@ -634,6 +637,14 @@ export interface InteriorCameraSnapshot {
   autoCutaway?: boolean;
 }
 
+export interface InteriorCameraBookmark {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  target: [number, number, number];
+  createdAt: string;
+}
+
 export interface InteriorDesignScenario {
   id: string;
   code: 'A' | 'B' | string;
@@ -644,6 +655,7 @@ export interface InteriorDesignScenario {
   targetBudgetMinVnd: number;
   targetBudgetMaxVnd: number;
   contingencyPercent: number;
+  isLockedBaseline?: boolean;
   items: InteriorFurnitureItem[];
   extraBoqItems: InteriorExtraBoqItem[];
   mepPoints?: InteriorMepPoint[];
@@ -653,8 +665,15 @@ export interface InteriorDesignScenario {
   lightingZones?: InteriorLightingZones;
   curtainOpenRatio?: number; // 0 = đóng rèm, 1 = mở thoáng hoàn toàn
   lastCameraView?: InteriorCameraSnapshot;
+  cameraBookmarks?: InteriorCameraBookmark[];
   updatedAt: string;
 }
+
+export type HandoverChecklistStatus =
+  | 'PENDING'
+  | 'PASSED'
+  | 'DEFECT_MINOR'
+  | 'DEFECT_CRITICAL';
 
 export interface HandoverChecklistItem {
   id: string;
@@ -663,7 +682,11 @@ export interface HandoverChecklistItem {
   title: string;
   specDetail: string;
   checked: boolean;
+  status?: HandoverChecklistStatus;
+  isCustom?: boolean;
+  localPhotoKey?: string;
   note?: string;
+  updatedAt?: string;
 }
 
 export interface InteriorStudioState {
@@ -671,6 +694,7 @@ export interface InteriorStudioState {
   usableAreaSqm: number;         // 51.0 (CAD A2) / 51.9 (HĐMB)
   builtUpAreaSqm: number;        // 55.3 (CAD A2)
   orientation: 'EAST_SOUTHEAST' | 'EAST' | 'SOUTH' | 'WEST';
+  targetHandoverDate?: string;   // ISO YYYY-MM-DD, mặc định '2027-08-31'
   activeScenarioId: string;
   scenarios: InteriorDesignScenario[];
   handoverChecklist: HandoverChecklistItem[];

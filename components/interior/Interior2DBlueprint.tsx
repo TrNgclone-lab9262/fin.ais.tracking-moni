@@ -253,7 +253,7 @@ export function Interior2DBlueprint({
     e.stopPropagation();
     setSelectedMepId(null);
     onSelectItem(item.id);
-    if (item.isLocked) return;
+    if (item.isLocked || scenario.isLockedBaseline) return;
 
     const { x, y } = clientToSvgCoords(e.clientX, e.clientY);
     const wx = svgToWorldX(x);
@@ -281,6 +281,7 @@ export function Interior2DBlueprint({
     e.stopPropagation();
     onSelectItem(null);
     setSelectedMepId(pt.id);
+    if (scenario.isLockedBaseline) return;
     svgRef.current?.setPointerCapture?.(e.pointerId);
     setDraggingMep({
       pointerId: e.pointerId,
@@ -309,7 +310,7 @@ export function Interior2DBlueprint({
       return;
     }
 
-    if (toolMode === "ADD_MEP" && onAddMepPoint) {
+    if (toolMode === "ADD_MEP" && onAddMepPoint && !scenario.isLockedBaseline) {
       const meta = MEP_KIND_META[newMepKind];
       const created = onAddMepPoint({
         kind: newMepKind,

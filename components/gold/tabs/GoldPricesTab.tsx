@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Bell, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Bell, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   GoldAlertCondition,
   GoldCategory,
@@ -11,8 +11,10 @@ import {
   EvaluatedGoldAlert,
   GOLD_ALERT_CONDITION_META,
   GOLD_CATEGORY_META,
+  GoldWeightUnit,
   computeDomesticPremium,
   computeWorldGoldPricePerChiVnd,
+  convertGoldUnit,
 } from "@/lib/goldEngine";
 import { formatVNDMasked } from "@/lib/formatters";
 import { GOLD_CATEGORIES } from "./goldConstants";
@@ -58,10 +60,30 @@ export function GoldPricesTab({
   const [newAlertCond, setNewAlertCond] = useState<GoldAlertCondition>("TARGET_BID_ABOVE");
   const [newAlertThreshold, setNewAlertThreshold] = useState("9800000");
 
+  // Bidirectional Gold Unit Converter state
+  const [convAmount, setConvAmount] = useState("1");
+  const [convUnit, setConvUnit] = useState<GoldWeightUnit>("LUONG");
+  const [convCategory, setConvCategory] = useState<GoldCategory>("NHAN_9999");
+
   const worldPerChi = useMemo(
     () => computeWorldGoldPricePerChiVnd(goldPortfolio.macro),
     [goldPortfolio.macro]
   );
+
+  const unitConversion = useMemo(() => {
+    const val = Math.max(0, Number(convAmount) || 0);
+    const chi = convertGoldUnit(val, convUnit, "CHI");
+    const quote = goldPortfolio.quotes[convCategory];
+    return {
+      chi,
+      luong: convertGoldUnit(val, convUnit, "LUONG"),
+      phan: convertGoldUnit(val, convUnit, "PHAN"),
+      gram: convertGoldUnit(val, convUnit, "GRAM"),
+      troyOz: convertGoldUnit(val, convUnit, "TROY_OZ"),
+      bidValueVnd: Math.round(chi * (quote?.buyPricePerChi || 0)),
+      askValueVnd: Math.round(chi * (quote?.sellPricePerChi || 0)),
+    };
+  }, [convAmount, convUnit, convCategory, goldPortfolio.quotes]);
 
   const handleAddRule = (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,6 +257,100 @@ export function GoldPricesTab({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Bidirectional Gold Unit Converter (Chỉ ↔ Lượng ↔ Phân ↔ Gram ↔ Troy Oz) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <div>
+              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                Quy Đổi Đơn Vị Vàng 2 Chiều & Ước Tính Tiền Thực (Bid / Ask)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Chuẩn đo lường Việt Nam & Quốc tế: 1 Lượng = 10 Chỉ = 100 Phân = 37,5 Gram ≈ 1,2057 Troy Oz
+              </p>
+            </div>
+          </div>
+          <select
+            value={convCategory}
+            onChange={(e) => setConvCategory(e.target.value as GoldCategory)}
+            aria-label="Loại vàng quy đổi giá"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+          >
+            {GOLD_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                Định giá theo: {GOLD_CATEGORY_META[c].shortLabel}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center text-xs">
+          <div className="lg:col-span-4 flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={convAmount}
+              onChange={(e) => setConvAmount(e.target.value)}
+              aria-label="Số lượng vàng cần quy đổi"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-black tabular-nums"
+            />
+            <select
+              value={convUnit}
+              onChange={(e) => setConvUnit(e.target.value as GoldWeightUnit)}
+              aria-label="Đơn vị nhập vào"
+              className="px-2.5 py-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-bold shrink-0"
+            >
+              <option value="CHI">Chỉ</option>
+              <option value="LUONG">Lượng (Cây)</option>
+              <option value="PHAN">Phân</option>
+              <option value="GRAM">Gram (g)</option>
+              <option value="TROY_OZ">Troy Oz</option>
+            </select>
+          </div>
+
+          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-5 gap-2 tabular-nums">
+            {[
+              { key: "CHI", label: "Chỉ", val: unitConversion.chi },
+              { key: "LUONG", label: "Lượng", val: unitConversion.luong },
+              { key: "PHAN", label: "Phân", val: unitConversion.phan },
+              { key: "GRAM", label: "Gram", val: unitConversion.gram },
+              { key: "TROY_OZ", label: "Troy Oz", val: unitConversion.troyOz },
+            ].map((u) => (
+              <div
+                key={u.key}
+                className={`px-2.5 py-2 rounded-lg border ${
+                  convUnit === u.key
+                    ? "bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800"
+                    : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800"
+                }`}
+              >
+                <span className="text-[10px] font-semibold text-slate-500 block">{u.label}</span>
+                <strong className="text-xs font-black text-slate-900 dark:text-white">
+                  {u.val.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs tabular-nums">
+          <span className="text-slate-600 dark:text-slate-300">
+            Bán ra tiệm thu mua (Bid):{" "}
+            <strong className="text-emerald-700 dark:text-emerald-400">
+              {formatVNDMasked(unitConversion.bidValueVnd, isPrivacyMode)}
+            </strong>
+          </span>
+          <span className="text-slate-600 dark:text-slate-300">
+            Mua mới từ tiệm (Ask):{" "}
+            <strong className="text-slate-900 dark:text-white">
+              {formatVNDMasked(unitConversion.askValueVnd, isPrivacyMode)}
+            </strong>
+          </span>
         </div>
       </div>
 

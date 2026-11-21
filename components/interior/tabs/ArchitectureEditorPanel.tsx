@@ -34,6 +34,7 @@ interface ArchitectureEditorPanelProps {
   scenario: InteriorDesignScenario;
   selectedTarget: InteriorArchTarget | null;
   isPrivacyMode: boolean;
+  isScenarioLocked?: boolean;
   onSelectTarget: (target: InteriorArchTarget | null) => void;
   onUpdateWallOverride: (wallId: string, patch: Partial<InteriorWallOverride>) => void;
   onUpdateDoorOverride: (openingId: string, mode: InteriorDoorMode) => void;
@@ -51,6 +52,7 @@ export function ArchitectureEditorPanel({
   scenario,
   selectedTarget,
   isPrivacyMode,
+  isScenarioLocked = false,
   onSelectTarget,
   onUpdateWallOverride,
   onUpdateDoorOverride,
@@ -111,6 +113,13 @@ export function ArchitectureEditorPanel({
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {isScenarioLocked && (
+        <div className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] font-bold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+          <Lock className="w-3.5 h-3.5 shrink-0" />
+          <span>Phương án đã chốt thi công — mở khóa để đổi kết cấu.</span>
+        </div>
+      )}
 
       {/* Quick Wall Selector */}
       <div className="space-y-2">
@@ -180,8 +189,9 @@ export function ArchitectureEditorPanel({
                 <button
                   key={mode}
                   type="button"
+                  disabled={isScenarioLocked}
                   onClick={() => onUpdateWallOverride(activeWall.id, { mode })}
-                  className={`p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg border text-left transition-colors disabled:opacity-40 cursor-pointer ${
                     active
                       ? "border-teal-600 bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-100"
                       : "border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 hover:border-slate-400"
@@ -215,10 +225,11 @@ export function ArchitectureEditorPanel({
                 <button
                   key={finishKey}
                   type="button"
+                  disabled={isScenarioLocked}
                   onClick={() =>
                     onUpdateWallOverride(activeWall.id, { accentFinish: finishKey })
                   }
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-colors disabled:opacity-40 cursor-pointer ${
                     active
                       ? "border-teal-600 bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-100"
                       : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400"
@@ -285,12 +296,13 @@ export function ArchitectureEditorPanel({
                       <button
                         key={mode}
                         type="button"
+                        disabled={isScenarioLocked}
                         onClick={(e) => {
                           e.stopPropagation();
                           onSelectTarget({ kind: "DOOR", id: op.id });
                           onUpdateDoorOverride(op.id, mode);
                         }}
-                        className={`py-1 px-1.5 rounded text-[10.5px] font-bold border transition-colors cursor-pointer ${
+                        className={`py-1 px-1.5 rounded text-[10.5px] font-bold border transition-colors disabled:opacity-40 cursor-pointer ${
                           active
                             ? "bg-teal-600 border-teal-600 text-white"
                             : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-400"
@@ -332,8 +344,9 @@ export function ArchitectureEditorPanel({
                       <button
                         key={pat}
                         type="button"
+                        disabled={isScenarioLocked}
                         onClick={() => onUpdateFloorPattern(room.roomId, pat)}
-                        className={`px-2 py-0.5 rounded text-[10.5px] font-bold whitespace-nowrap cursor-pointer ${
+                        className={`px-2 py-0.5 rounded text-[10.5px] font-bold whitespace-nowrap disabled:opacity-40 cursor-pointer ${
                           active
                             ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs"
                             : "text-slate-600 dark:text-slate-400"

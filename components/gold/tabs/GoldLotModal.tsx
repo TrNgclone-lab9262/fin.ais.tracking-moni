@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Check, ShieldCheck, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Camera, Check, Loader2, ShieldCheck, Sparkles, X } from "lucide-react";
 import {
   Account,
   FamilyMember,
@@ -60,6 +60,12 @@ export function GoldLotModal({
   const [lotStoreName, setLotStoreName] = useState("");
   const [lotNote, setLotNote] = useState("");
   const [lotLinkAccountId, setLotLinkAccountId] = useState("");
+  const [isScanningInvoice, setIsScanningInvoice] = useState(false);
+  const [scanStatus, setScanStatus] = useState<{
+    type: "success" | "warning" | "error";
+    message: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -96,11 +102,131 @@ export function GoldLotModal({
       setLotNote("");
       setLotLinkAccountId("");
     }
+    setScanStatus(null);
+    setIsScanningInvoice(false);
   }, [open, editingLot, goldPortfolio.quotes]);
 
   if (!open) return null;
 
   const isEdit = Boolean(editingLot);
+
+  const compressImageToJpegBase64 = (file: File): Promise<{ base64: string; mimeType: string }> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Không thể đọc tệp ảnh hóa đơn."));
+      reader.onload = () => {
+        const dataUrl = String(reader.result || "");
+        const img = new Image();
+        img.onerror = () => reject(new Error("Ảnh không hợp lệ hoặc bị hỏng."));
+        img.onload = () => {
+          const maxDim = 1400;
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            const rawBase64 = dataUrl.split(",")[1] || "";
+            resolve({ base64: rawBase64, mimeType: file.type || "image/jpeg" });
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          resolve({
+            base64: compressed.split(",")[1] || "",
+            mimeType: "image/jpeg",
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+
+  const handleInvoiceFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setIsScanningInvoice(true);
+    setScanStatus(null);
+    try {
+      const { base64, mimeType } = await compressImageToJpegBase64(file);
+      const res = await fetch("/api/ai/scan-gold-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const payload = (await res.json()) as {
+        source?: string;
+        reason?: string;
+        result?: {
+          category?: GoldCategory;
+          brand?: string;
+          purchaseDate?: string;
+          quantityChi?: number;
+          unitBuyPricePerChi?: number;
+          makingFee?: number;
+          serialNumber?: string;
+          certificateCode?: string;
+          storeName?: string;
+          purityLabel?: string;
+          invoiceNote?: string;
+          confidence?: number;
+        };
+      };
+
+      if (payload.source !== "gemini" || !payload.result) {
+        setScanStatus({
+          type: "warning",
+          message:
+            payload.reason === "GEMINI_API_KEY_NOT_CONFIGURED"
+              ? "Chưa cấu hình GEMINI_API_KEY trên server — vui lòng nhập tay thông tin hóa đơn bên dưới."
+              : "Không thể nhận diện rõ ảnh hóa đơn vàng. Bạn có thể chụp nét hơn hoặc nhập tay trực tiếp.",
+        });
+        return;
+      }
+
+      const r = payload.result;
+      if (r.category && GOLD_CATEGORIES.includes(r.category)) {
+        setLotCategory(r.category);
+      }
+      if (r.brand) setLotBrand(r.brand);
+      if (r.purchaseDate) setLotDate(r.purchaseDate);
+      if (r.quantityChi && r.quantityChi > 0) {
+        setLotUnit("CHI");
+        setLotQtyInput(String(r.quantityChi));
+      }
+      if (r.unitBuyPricePerChi && r.unitBuyPricePerChi > 0) {
+        setLotBuyPriceInput(String(r.unitBuyPricePerChi));
+      }
+      if (typeof r.makingFee === "number" && r.makingFee >= 0) {
+        setLotMakingFeeInput(String(r.makingFee));
+      }
+      if (r.serialNumber) setLotSerial(r.serialNumber);
+      if (r.certificateCode) setLotCertificate(r.certificateCode);
+      if (r.storeName) setLotStoreName(r.storeName);
+      if (r.purityLabel) setLotPurity(r.purityLabel);
+      if (r.invoiceNote) setLotNote(r.invoiceNote);
+
+      const pct = Math.round((r.confidence ?? 0.85) * 100);
+      setScanStatus({
+        type: "success",
+        message: `Đã tự động điền từ hóa đơn vàng (độ tin cậy ~${pct}%). Vui lòng kiểm tra lại số chỉ, đơn giá & số seri trước khi lưu.`,
+      });
+    } catch {
+      setScanStatus({
+        type: "error",
+        message: "Lỗi kết nối khi quét hóa đơn vàng. Bạn vẫn có thể nhập thủ công bình thường.",
+      });
+    } finally {
+      setIsScanningInvoice(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +322,56 @@ export function GoldLotModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+          {/* AI Gold Invoice Scanner */}
+          <div className="p-3 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/70 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div>
+                  <p className="font-extrabold text-amber-950 dark:text-amber-200">
+                    Quét hóa đơn / giấy đảm bảo vàng bằng AI
+                  </p>
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                    Tự trích xuất loại vàng, số chỉ, đơn giá, tiền công, số seri & cửa hàng (PNJ, SJC, DOJI...)
+                  </p>
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleInvoiceFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={isScanningInvoice}
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-bold cursor-pointer shrink-0"
+              >
+                {isScanningInvoice ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
+                <span>{isScanningInvoice ? "Đang đọc hóa đơn..." : "Chụp / Tải ảnh hóa đơn"}</span>
+              </button>
+            </div>
+            {scanStatus && (
+              <p
+                className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-md ${
+                  scanStatus.type === "success"
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                    : scanStatus.type === "warning"
+                      ? "bg-white/80 dark:bg-slate-900/80 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800"
+                      : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                }`}
+              >
+                {scanStatus.message}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="block font-bold text-slate-600 dark:text-slate-300 mb-1">

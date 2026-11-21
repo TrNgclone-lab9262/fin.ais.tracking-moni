@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Copy,
   Lock,
   RotateCcw,
   RotateCw,
   Trash2,
   Unlock,
+  Upload,
   X,
   Building2,
   Clock,
@@ -31,17 +33,20 @@ import {
   calculateFurnitureItemCostVnd,
 } from "@/lib/interiorBoqEngine";
 import { formatVNDMasked } from "@/lib/formatters";
+import { hasCustomGlbBuffer, saveCustomGlbFile } from "@/lib/interiorGlbVault";
 
 interface FurnitureInspectorPanelProps {
   item: InteriorFurnitureItem;
   interiorStudio: InteriorStudioState;
   isPrivacyMode: boolean;
+  isScenarioLocked?: boolean;
   onUpdateItem: (
     id: string,
     patch: Partial<InteriorFurnitureItem>,
     options?: { skipUndoHistory?: boolean }
   ) => void;
   onCommitUndoSnapshot: (snapshot: InteriorStudioState) => void;
+  onRelinkCustomGlb?: (itemId: string, customGlbId: string, customGlbName: string) => void;
   onToggleVisibility?: (id: string) => void;
   onDuplicate: (item: InteriorFurnitureItem) => void;
   onDelete: (id: string) => void;
@@ -69,8 +74,10 @@ export function FurnitureInspectorPanel({
   item,
   interiorStudio,
   isPrivacyMode,
+  isScenarioLocked = false,
   onUpdateItem,
   onCommitUndoSnapshot,
+  onRelinkCustomGlb,
   onToggleVisibility,
   onDuplicate,
   onDelete,
@@ -78,9 +85,49 @@ export function FurnitureInspectorPanel({
   className = "xl:col-span-4",
 }: FurnitureInspectorPanelProps) {
   const sliderSnapshotRef = useRef<InteriorStudioState | null>(null);
+  const relinkFileInputRef = useRef<HTMLInputElement | null>(null);
   const [showVendorFields, setShowVendorFields] = useState<boolean>(
     Boolean(item.vendorName || item.leadTimeDays || item.warrantyMonths)
   );
+  const [glbMissingOnDevice, setGlbMissingOnDevice] = useState<boolean>(false);
+  const [relinkingGlb, setRelinkingGlb] = useState<boolean>(false);
+  const [relinkError, setRelinkError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (item.catalogKey === "custom_glb_model" && item.customGlbId) {
+      void hasCustomGlbBuffer(item.customGlbId).then((exists) => {
+        if (active) setGlbMissingOnDevice(!exists);
+      });
+    } else {
+      setGlbMissingOnDevice(false);
+    }
+    setRelinkError(null);
+    return () => {
+      active = false;
+    };
+  }, [item.catalogKey, item.customGlbId]);
+
+  const handleRelinkFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !onRelinkCustomGlb) return;
+    setRelinkingGlb(true);
+    setRelinkError(null);
+    try {
+      const saved = await saveCustomGlbFile(file);
+      if (!saved.ok || !saved.id) {
+        setRelinkError(saved.error || "Không thể nạp lại file .GLB.");
+        return;
+      }
+      onRelinkCustomGlb(item.id, saved.id, saved.fileName || file.name);
+      setGlbMissingOnDevice(false);
+    } catch (err) {
+      setRelinkError(err instanceof Error ? err.message : "Lỗi nạp lại file .GLB.");
+    } finally {
+      setRelinkingGlb(false);
+    }
+  };
 
   const captureSnapshotIfIdle = () => {
     if (!sliderSnapshotRef.current) {
@@ -98,6 +145,7 @@ export function FurnitureInspectorPanel({
   const liveCost = calculateFurnitureItemCostVnd(item);
   const effectiveMount: InteriorMountType = item.mountType ?? "FLOOR";
   const effectiveElevationCm = item.elevationCm ?? 0;
+  const isLockedForEdit = Boolean(item.isLocked || isScenarioLocked);
 
   return (
     <aside
@@ -132,6 +180,48 @@ export function FurnitureInspectorPanel({
         </button>
       </div>
 
+      {/* Missing Local GLB Warning & 1-Click Relink */}
+      {item.catalogKey === "custom_glb_model" && glbMissingOnDevice && (
+        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 space-y-2">
+          <div className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <p className="leading-snug font-semibold">
+              Mô hình 3D gốc chưa có trên máy này (dữ liệu tọa độ, kích thước &amp; BOQ vẫn nguyên vẹn).
+            </p>
+          </div>
+          {relinkError && (
+            <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">{relinkError}</p>
+          )}
+          {onRelinkCustomGlb && (
+            <>
+              <input
+                ref={relinkFileInputRef}
+                type="file"
+                accept=".glb,.gltf"
+                onChange={handleRelinkFilePicked}
+                className="hidden"
+              />
+              <button
+                type="button"
+                disabled={relinkingGlb}
+                onClick={() => relinkFileInputRef.current?.click()}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-extrabold cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{relinkingGlb ? "Đang nạp lại..." : "Tải lại file .GLB"}</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {isScenarioLocked && (
+        <div className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] font-bold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+          <Lock className="w-3.5 h-3.5 shrink-0" />
+          <span>Phương án đã chốt thi công — chỉ xem thông số.</span>
+        </div>
+      )}
+
       {/* Live Cost Preview + Editable Unit Price */}
       <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 space-y-2">
         <div className="flex items-center justify-between gap-2">
@@ -158,12 +248,13 @@ export function FurnitureInspectorPanel({
               type="number"
               min={0}
               step={100_000}
+              disabled={isScenarioLocked}
               value={item.unitPriceVnd}
               onChange={(e) => {
                 const next = Math.max(0, Number(e.target.value) || 0);
                 onUpdateItem(item.id, { unitPriceVnd: next });
               }}
-              className="w-32 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-right text-slate-800 dark:text-slate-100 tabular-nums"
+              className="w-32 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-right text-slate-800 dark:text-slate-100 tabular-nums disabled:opacity-50"
             />
           </div>
         )}
@@ -187,7 +278,7 @@ export function FurnitureInspectorPanel({
               <button
                 key={opt.id}
                 type="button"
-                disabled={Boolean(item.isLocked)}
+                disabled={isLockedForEdit}
                 onClick={() =>
                   onUpdateItem(item.id, {
                     mountType: opt.id,
@@ -215,7 +306,7 @@ export function FurnitureInspectorPanel({
           min={0}
           max={250}
           step={2}
-          disabled={Boolean(item.isLocked)}
+          disabled={isLockedForEdit}
           value={effectiveElevationCm}
           aria-label="Cao độ Y tính từ mặt sàn (cm)"
           onPointerDown={captureSnapshotIfIdle}
@@ -257,7 +348,7 @@ export function FurnitureInspectorPanel({
               min={dim.min}
               max={dim.max}
               step={5}
-              disabled={Boolean(item.isLocked)}
+              disabled={isLockedForEdit}
               value={item.dimensionsCm[dim.key]}
               onPointerDown={captureSnapshotIfIdle}
               onFocus={captureSnapshotIfIdle}
@@ -292,7 +383,7 @@ export function FurnitureInspectorPanel({
         <div className="grid grid-cols-3 gap-1.5">
           <button
             type="button"
-            disabled={Boolean(item.isLocked)}
+            disabled={isLockedForEdit}
             onClick={() =>
               onUpdateItem(item.id, {
                 rotationDeg: (((item.rotationDeg - 15) % 360) + 360) % 360,
@@ -304,7 +395,7 @@ export function FurnitureInspectorPanel({
           </button>
           <button
             type="button"
-            disabled={Boolean(item.isLocked)}
+            disabled={isLockedForEdit}
             onClick={() =>
               onUpdateItem(item.id, {
                 rotationDeg: (item.rotationDeg + 15) % 360,
@@ -316,7 +407,7 @@ export function FurnitureInspectorPanel({
           </button>
           <button
             type="button"
-            disabled={Boolean(item.isLocked)}
+            disabled={isLockedForEdit}
             onClick={() =>
               onUpdateItem(item.id, {
                 rotationDeg: (item.rotationDeg + 90) % 360,
@@ -342,8 +433,9 @@ export function FurnitureInspectorPanel({
               <button
                 key={fk}
                 type="button"
+                disabled={isScenarioLocked}
                 onClick={() => onUpdateItem(item.id, { materialFinish: fk })}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left text-[11px] font-bold transition-colors cursor-pointer ${
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left text-[11px] font-bold transition-colors disabled:opacity-40 cursor-pointer ${
                   active
                     ? "border-teal-600 bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200"
                     : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400"
@@ -439,8 +531,9 @@ export function FurnitureInspectorPanel({
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
         <button
           type="button"
+          disabled={isScenarioLocked}
           onClick={() => onUpdateItem(item.id, { isLocked: !item.isLocked })}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 whitespace-nowrap cursor-pointer"
         >
           {item.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
           <span>{item.isLocked ? "Mở khóa" : "Khóa vị trí"}</span>
@@ -458,8 +551,9 @@ export function FurnitureInspectorPanel({
         )}
         <button
           type="button"
+          disabled={isScenarioLocked}
           onClick={() => onDuplicate(item)}
-          className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+          className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
           title="Nhân bản món này"
         >
           <Copy className="w-4 h-4" />
@@ -467,8 +561,9 @@ export function FurnitureInspectorPanel({
         {item.source !== "DEVELOPER_INCLUDED" && (
           <button
             type="button"
+            disabled={isScenarioLocked}
             onClick={() => onDelete(item.id)}
-            className="p-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+            className="p-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-40 cursor-pointer"
             title="Xóa món này (Phím Delete)"
           >
             <Trash2 className="w-4 h-4" />

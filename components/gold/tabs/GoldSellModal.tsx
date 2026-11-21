@@ -1,21 +1,28 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Check, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Check, Info, X } from "lucide-react";
 import {
   Account,
   GoldCategory,
   GoldLot,
   GoldPortfolioState,
+  GoldSaleAllocationMode,
   GoldSalePurpose,
 } from "@/types/finance";
-import { GOLD_CATEGORY_META } from "@/lib/goldEngine";
-import { formatDateVN } from "@/lib/formatters";
+import {
+  GOLD_CATEGORY_META,
+  allocateFifoGoldSale,
+  allocateSpecificLotSale,
+  allocateWacGoldSale,
+  formatChiWeight,
+} from "@/lib/goldEngine";
+import { formatDateVN, formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 import { GOLD_CATEGORIES, SALE_PURPOSE_LABELS } from "./goldConstants";
 
 export interface GoldSellPrefill {
   category: GoldCategory;
-  mode: "FIFO" | "SPECIFIC_LOT";
+  mode: GoldSaleAllocationMode;
   specificLotId?: string;
   quantityChi?: number;
   purpose?: GoldSalePurpose;
@@ -28,13 +35,14 @@ interface GoldSellModalProps {
   goldPortfolio: GoldPortfolioState;
   holdingLots: GoldLot[];
   nonCreditAccounts: Account[];
+  isPrivacyMode: boolean;
   onClose: () => void;
   onRecordSale: (input: {
     saleDate: string;
     category: GoldCategory;
     quantityChi: number;
     unitSellPricePerChi: number;
-    mode: "FIFO" | "SPECIFIC_LOT";
+    mode: GoldSaleAllocationMode;
     specificLotId?: string;
     purpose: GoldSalePurpose;
     note?: string;
@@ -48,11 +56,12 @@ export function GoldSellModal({
   goldPortfolio,
   holdingLots,
   nonCreditAccounts,
+  isPrivacyMode,
   onClose,
   onRecordSale,
 }: GoldSellModalProps) {
   const [sellCategory, setSellCategory] = useState<GoldCategory>("NHAN_9999");
-  const [sellMode, setSellMode] = useState<"FIFO" | "SPECIFIC_LOT">("FIFO");
+  const [sellMode, setSellMode] = useState<GoldSaleAllocationMode>("FIFO");
   const [sellSpecificLotId, setSellSpecificLotId] = useState("");
   const [sellQtyInput, setSellQtyInput] = useState("1");
   const [sellPriceInput, setSellPriceInput] = useState(
@@ -78,6 +87,62 @@ export function GoldSellModal({
     setSellLinkAccountId("");
     setSellError(null);
   }, [open, prefill, goldPortfolio.quotes]);
+
+  const livePreview = useMemo(() => {
+    const qty = Number(sellQtyInput);
+    const unitPrice = Number(sellPriceInput);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+      return null;
+    }
+
+    if (sellMode === "SPECIFIC_LOT" && !sellSpecificLotId) {
+      return {
+        ok: false as const,
+        error: "Vui lòng chọn lô vàng cụ thể để xem trước lãi/lỗ.",
+      };
+    }
+
+    const res =
+      sellMode === "SPECIFIC_LOT"
+        ? allocateSpecificLotSale(goldPortfolio.lots, sellSpecificLotId, qty)
+        : sellMode === "WAC"
+          ? allocateWacGoldSale(goldPortfolio.lots, sellCategory, qty)
+          : allocateFifoGoldSale(goldPortfolio.lots, sellCategory, qty);
+
+    if (!res.ok) {
+      return { ok: false as const, error: res.error || "Không đủ tồn kho khả dụng." };
+    }
+
+    const totalProceeds = Math.round(qty * unitPrice);
+    const totalCostBasis = res.allocations.reduce((s, a) => s + a.costBasisAllocated, 0);
+    const realizedPnl = totalProceeds - totalCostBasis;
+    const realizedPnlPct =
+      totalCostBasis > 0 ? Number(((realizedPnl / totalCostBasis) * 100).toFixed(2)) : 0;
+
+    const impactedLots = res.allocations.map((alloc) => {
+      const before = goldPortfolio.lots.find((l) => l.id === alloc.lotId);
+      const after = res.updatedLots.find((l) => l.id === alloc.lotId);
+      return {
+        lotId: alloc.lotId,
+        brand: before?.brand || "Lô vàng",
+        purchaseDate: before?.purchaseDate || "",
+        soldChi: alloc.soldChi,
+        costBasis: alloc.costBasisAllocated,
+        remainingAfterChi: after?.remainingChi ?? 0,
+      };
+    });
+
+    return {
+      ok: true as const,
+      totalProceeds,
+      totalCostBasis,
+      realizedPnl,
+      realizedPnlPct,
+      impactedLots,
+      wacPerChi:
+        "wacPerChi" in res && typeof res.wacPerChi === "number" ? res.wacPerChi : undefined,
+    };
+  }, [sellQtyInput, sellPriceInput, sellMode, sellSpecificLotId, sellCategory, goldPortfolio.lots]);
 
   if (!open) return null;
 
@@ -116,13 +181,18 @@ export function GoldSellModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
-            Ghi nhận bán vàng / Thanh khoản
-          </h3>
+          <div>
+            <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+              Ghi nhận bán vàng / Thanh khoản
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Hỗ trợ xuất lô FIFO, Bình quân gia quyền (WAC) hoặc chỉ định lô cụ thể kèm xem trước lãi/lỗ.
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -147,10 +217,11 @@ export function GoldSellModal({
               </label>
               <select
                 value={sellMode}
-                onChange={(e) => setSellMode(e.target.value as "FIFO" | "SPECIFIC_LOT")}
+                onChange={(e) => setSellMode(e.target.value as GoldSaleAllocationMode)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold"
               >
                 <option value="FIFO">FIFO (Bán lô mua cũ nhất)</option>
+                <option value="WAC">WAC (Giá vốn bình quân gia quyền)</option>
                 <option value="SPECIFIC_LOT">Chọn lô cụ thể</option>
               </select>
             </div>
@@ -210,8 +281,8 @@ export function GoldSellModal({
               </label>
               <input
                 type="number"
-                step="0.1"
-                min="0.1"
+                step="0.05"
+                min="0.05"
                 required
                 value={sellQtyInput}
                 onChange={(e) => setSellQtyInput(e.target.value)}
@@ -264,6 +335,86 @@ export function GoldSellModal({
               </select>
             </div>
 
+            {/* Live Sale Preview Panel */}
+            {livePreview && (
+              <div className="col-span-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/60 p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    <Info className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Xem trước hạch toán thực nhận ({sellMode})</span>
+                  </span>
+                  {livePreview.ok && livePreview.wacPerChi && (
+                    <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                      WAC: {formatShortVNDMasked(livePreview.wacPerChi, isPrivacyMode)}/chỉ
+                    </span>
+                  )}
+                </div>
+
+                {!livePreview.ok ? (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                    {livePreview.error}
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 tabular-nums">
+                      <div className="p-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700">
+                        <span className="text-[10px] text-slate-500 block">Tiền thực thu (Bid)</span>
+                        <strong className="text-xs font-black text-slate-900 dark:text-white">
+                          {formatVNDMasked(livePreview.totalProceeds, isPrivacyMode)}
+                        </strong>
+                      </div>
+                      <div className="p-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700">
+                        <span className="text-[10px] text-slate-500 block">Giá vốn phân bổ</span>
+                        <strong className="text-xs font-black text-slate-700 dark:text-slate-200">
+                          {formatVNDMasked(livePreview.totalCostBasis, isPrivacyMode)}
+                        </strong>
+                      </div>
+                      <div className="p-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700">
+                        <span className="text-[10px] text-slate-500 block">Lãi/Lỗ thực nhận</span>
+                        <strong
+                          className={`text-xs font-black ${
+                            livePreview.realizedPnl >= 0
+                              ? "text-emerald-700 dark:text-emerald-400"
+                              : "text-rose-600 dark:text-rose-400"
+                          }`}
+                        >
+                          {livePreview.realizedPnl >= 0 ? "+" : ""}
+                          {formatShortVNDMasked(livePreview.realizedPnl, isPrivacyMode)} (
+                          {livePreview.realizedPnlPct >= 0 ? "+" : ""}
+                          {livePreview.realizedPnlPct}%)
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
+                        Các lô bị khấu trừ ({livePreview.impactedLots.length} lô):
+                      </p>
+                      <div className="divide-y divide-slate-200/60 dark:divide-slate-700/60 rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900">
+                        {livePreview.impactedLots.map((row) => (
+                          <div
+                            key={row.lotId}
+                            className="px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] tabular-nums"
+                          >
+                            <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
+                              {row.brand}
+                              {row.purchaseDate ? ` (${formatDateVN(row.purchaseDate)})` : ""}
+                            </span>
+                            <span className="shrink-0 text-slate-600 dark:text-slate-300">
+                              Trừ <strong>{formatChiWeight(row.soldChi, isPrivacyMode)}</strong> · Còn{" "}
+                              <strong className="text-teal-700 dark:text-teal-300">
+                                {formatChiWeight(row.remainingAfterChi, isPrivacyMode)}
+                              </strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="col-span-2">
               <label className="block font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Liên thông Sổ Thu Chi (nạp tiền bán vàng vào ví ngân hàng)
@@ -306,7 +457,8 @@ export function GoldSellModal({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg font-bold bg-slate-900 dark:bg-amber-600 hover:opacity-90 text-white cursor-pointer"
+              disabled={Boolean(livePreview && !livePreview.ok)}
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg font-bold bg-slate-900 dark:bg-amber-600 hover:opacity-90 disabled:opacity-50 text-white cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>Xác nhận bán vàng</span>
@@ -317,3 +469,4 @@ export function GoldSellModal({
     </div>
   );
 }
+

@@ -2248,6 +2248,8 @@ export function createDefaultHandoverChecklist(): HandoverChecklistItem[] {
   ];
 }
 
+export const DEFAULT_HANDOVER_DATE = "2027-08-31";
+
 export function createDefaultInteriorStudio(): InteriorStudioState {
   const scenarioA = createScenarioAGuestBedroom();
   const scenarioB = createScenarioBDualGrowthStudio();
@@ -2256,6 +2258,7 @@ export function createDefaultInteriorStudio(): InteriorStudioState {
     usableAreaSqm: 51.0,
     builtUpAreaSqm: 55.3,
     orientation: "EAST_SOUTHEAST",
+    targetHandoverDate: DEFAULT_HANDOVER_DATE,
     activeScenarioId: scenarioB.id, // Mở sẵn Phương án B (Dual Growth Studio) để vợ chồng trải nghiệm ngay
     scenarios: [scenarioA, scenarioB],
     handoverChecklist: createDefaultHandoverChecklist(),

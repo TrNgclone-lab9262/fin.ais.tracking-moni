@@ -22,9 +22,12 @@ import {
   Hammer,
   Ruler,
   Sparkles,
+  Bookmark,
+  Plus,
   X,
 } from "lucide-react";
 import {
+  InteriorCameraBookmark,
   InteriorCameraSnapshot,
   InteriorDesignScenario,
   InteriorLightingZones,
@@ -46,6 +49,11 @@ export interface Interior3DViewportHandle {
   captureSnapshotPng: () => string | null;
   captureHighResPng: (scale?: number) => string | null;
   focusCameraPreset: (preset: InteriorCameraPreset) => void;
+  getCameraSnapshot: () => InteriorCameraSnapshot | null;
+  applyCameraTarget: (
+    position: [number, number, number],
+    target: [number, number, number]
+  ) => void;
 }
 
 interface Interior3DViewportProps {
@@ -63,6 +71,13 @@ interface Interior3DViewportProps {
   onUpdateCurtainOpenRatio?: (ratio: number) => void;
   initialCameraState?: InteriorCameraSnapshot | null;
   onCameraStateChange?: (snapshot: InteriorCameraSnapshot) => void;
+  bookmarks?: InteriorCameraBookmark[];
+  onAddBookmark?: (
+    label: string,
+    position: [number, number, number],
+    target: [number, number, number]
+  ) => void;
+  onDeleteBookmark?: (bookmarkId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onFallbackTo2D?: () => void;
@@ -240,6 +255,9 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
       onUpdateCurtainOpenRatio,
       initialCameraState = null,
       onCameraStateChange,
+      bookmarks = [],
+      onAddBookmark,
+      onDeleteBookmark,
       isFullscreen = false,
       onToggleFullscreen,
       onFallbackTo2D,
@@ -282,6 +300,9 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     const [snapshotFlash, setSnapshotFlash] = useState<boolean>(false);
     const [measureMode, setMeasureMode] = useState<boolean>(false);
     const [measurement3D, setMeasurement3D] = useState<Interior3DMeasurement | null>(null);
+    const [addingBookmark, setAddingBookmark] = useState<boolean>(false);
+    const [bookmarkDraftLabel, setBookmarkDraftLabel] = useState<string>("");
+    const [activeBookmarkId, setActiveBookmarkId] = useState<string | null>(null);
 
     const isDarkMode = themeMode === "dark";
     const lightingZones: InteriorLightingZones = {
@@ -313,7 +334,15 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
         },
         focusCameraPreset: (preset: InteriorCameraPreset) => {
           setActivePreset(preset);
+          setActiveBookmarkId(null);
           controllerRef.current?.applyCameraPreset(preset);
+        },
+        getCameraSnapshot: () => controllerRef.current?.getCameraSnapshot() ?? null,
+        applyCameraTarget: (
+          position: [number, number, number],
+          target: [number, number, number]
+        ) => {
+          controllerRef.current?.applyCameraTarget(position, target);
         },
       }),
       []
@@ -418,9 +447,40 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
       controllerRef.current?.resize();
     }, [isFullscreen]);
 
+    // Exit 3D Laser Measurement Mode cleanly on Escape
+    useEffect(() => {
+      if (!measureMode) return;
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setMeasureMode(false);
+          controllerRef.current?.setMeasureMode(false);
+        }
+      };
+      window.addEventListener("keydown", handleKey);
+      return () => window.removeEventListener("keydown", handleKey);
+    }, [measureMode]);
+
     const handleSelectCamera = (preset: InteriorCameraPreset) => {
       setActivePreset(preset);
+      setActiveBookmarkId(null);
       controllerRef.current?.applyCameraPreset(preset);
+    };
+
+    const handleSaveCurrentBookmark = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!onAddBookmark) return;
+      const snap = controllerRef.current?.getCameraSnapshot();
+      if (!snap) return;
+      const label =
+        bookmarkDraftLabel.trim() || `Góc lưu ${bookmarks.length + 1}`;
+      onAddBookmark(label, snap.position, snap.target);
+      setBookmarkDraftLabel("");
+      setAddingBookmark(false);
+    };
+
+    const handleJumpToBookmark = (bm: InteriorCameraBookmark) => {
+      setActiveBookmarkId(bm.id);
+      controllerRef.current?.applyCameraTarget(bm.position, bm.target);
     };
 
     const handleSelectTime = (tod: InteriorTimeOfDay) => {
@@ -667,25 +727,111 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
         {/* Collapsible Bottom Control Dock (Solid surface, no backdrop-filter) */}
         {dockExpanded && !webglError && (
           <div className="absolute bottom-3 left-3 right-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 shadow-lg space-y-2">
-            {/* Row 1: Camera Presets */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 px-1">
-                Góc nhìn
-              </span>
-              {CAMERA_PRESET_BUTTONS.map((btn) => (
-                <button
-                  key={btn.id}
-                  type="button"
-                  onClick={() => handleSelectCamera(btn.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap transition-colors cursor-pointer ${
-                    activePreset === btn.id
-                      ? "bg-teal-600 text-white"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  {btn.label}
-                </button>
-              ))}
+            {/* Row 1: Camera Presets + Custom Saved Camera Bookmarks */}
+            <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 px-1">
+                  Góc nhìn
+                </span>
+                {CAMERA_PRESET_BUTTONS.map((btn) => (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    onClick={() => handleSelectCamera(btn.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap transition-colors cursor-pointer ${
+                      activePreset === btn.id && !activeBookmarkId
+                        ? "bg-teal-600 text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+
+                {bookmarks.map((bm) => (
+                  <div
+                    key={bm.id}
+                    className={`inline-flex items-center rounded-lg border shrink-0 overflow-hidden ${
+                      activeBookmarkId === bm.id
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleJumpToBookmark(bm)}
+                      className="inline-flex items-center gap-1 pl-2 pr-1.5 py-1 text-[11px] font-bold whitespace-nowrap cursor-pointer"
+                      title={`Di chuyển tới góc nhìn đã lưu: ${bm.name}`}
+                    >
+                      <Bookmark className="w-3 h-3 shrink-0" />
+                      <span>{bm.name}</span>
+                    </button>
+                    {onDeleteBookmark && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeBookmarkId === bm.id) setActiveBookmarkId(null);
+                          onDeleteBookmark(bm.id);
+                        }}
+                        aria-label={`Xóa góc nhìn ${bm.name}`}
+                        className={`pr-1.5 pl-0.5 py-1 cursor-pointer ${
+                          activeBookmarkId === bm.id
+                            ? "text-indigo-200 hover:text-white"
+                            : "text-indigo-400 hover:text-rose-600"
+                        }`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {onAddBookmark && bookmarks.length < 6 && !addingBookmark && (
+                  <button
+                    type="button"
+                    onClick={() => setAddingBookmark(true)}
+                    title="Lưu góc nhìn 3D hiện tại (tối đa 6 góc/phương án)"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 shrink-0 whitespace-nowrap cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Lưu góc ({bookmarks.length}/6)</span>
+                  </button>
+                )}
+
+                {onAddBookmark && addingBookmark && (
+                  <form
+                    onSubmit={handleSaveCurrentBookmark}
+                    className="inline-flex items-center gap-1 shrink-0"
+                  >
+                    <input
+                      type="text"
+                      value={bookmarkDraftLabel}
+                      onChange={(e) => setBookmarkDraftLabel(e.target.value)}
+                      placeholder="VD: Góc bàn làm việc"
+                      maxLength={32}
+                      autoFocus
+                      className="w-32 px-2 py-0.5 rounded-md border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-800 dark:text-slate-100"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-bold cursor-pointer"
+                    >
+                      Lưu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddingBookmark(false);
+                        setBookmarkDraftLabel("");
+                      }}
+                      className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      aria-label="Hủy lưu góc nhìn"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
 
             {/* Row 2: Sun Time + Nav Mode + Cutaway + MEP */}

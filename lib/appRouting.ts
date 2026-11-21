@@ -7,6 +7,14 @@ import {
 } from "@/types/finance";
 
 export const ACTIVE_APP_STORAGE_KEY = "HOME_MONI_ACTIVE_APP";
+export const SUB_APP_LAST_TABS_STORAGE_KEY = "HOME_MONI_SUB_APP_LAST_TABS";
+
+export interface SavedSubAppTabs {
+  FINANCE?: FinanceTab;
+  SKYONE?: SkyOneRouteTab;
+  GOLD?: GoldRouteTab;
+  INTERIOR?: InteriorRouteTab;
+}
 
 export interface ParsedAppRoute {
   app: SubAppId;
@@ -15,6 +23,8 @@ export interface ParsedAppRoute {
   goldTab: GoldRouteTab;
   interiorTab: InteriorRouteTab;
   highlightPeriod: number | null;
+  goldTargetAmount: number | null;
+  interiorScenarioId: string | null;
   isLoginRoute: boolean;
 }
 
@@ -118,11 +128,48 @@ export function saveActiveApp(app: SubAppId): void {
   }
 }
 
+export function getSavedSubAppTabs(): SavedSubAppTabs {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SUB_APP_LAST_TABS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Partial<SavedSubAppTabs>;
+    return {
+      FINANCE:
+        parsed.FINANCE && parsed.FINANCE in FINANCE_TAB_TO_SEGMENT ? parsed.FINANCE : undefined,
+      SKYONE:
+        parsed.SKYONE && parsed.SKYONE in SKYONE_TAB_TO_SEGMENT ? parsed.SKYONE : undefined,
+      GOLD: parsed.GOLD && parsed.GOLD in GOLD_TAB_TO_SEGMENT ? parsed.GOLD : undefined,
+      INTERIOR:
+        parsed.INTERIOR && parsed.INTERIOR in INTERIOR_TAB_TO_SEGMENT ? parsed.INTERIOR : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function saveSubAppTab<K extends keyof SavedSubAppTabs>(
+  app: K,
+  tab: NonNullable<SavedSubAppTabs[K]>
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const prev = getSavedSubAppTabs();
+    const next: SavedSubAppTabs = { ...prev, [app]: tab };
+    window.localStorage.setItem(SUB_APP_LAST_TABS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
 export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
   const cleanPath = (pathname || "/").replace(/\/+$/, "") || "/";
   const parts = cleanPath.split("/").filter(Boolean).map((s) => s.toLowerCase());
 
   let highlightPeriod: number | null = null;
+  let goldTargetAmount: number | null = null;
+  let interiorScenarioId: string | null = null;
+
   if (search) {
     try {
       const params = new URLSearchParams(search);
@@ -132,6 +179,17 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
         if (!Number.isNaN(parsed) && parsed > 0) {
           highlightPeriod = parsed;
         }
+      }
+      const rawTarget = params.get("target");
+      if (rawTarget) {
+        const parsedTarget = Number(rawTarget.replace(/[^0-9.]/g, ""));
+        if (Number.isFinite(parsedTarget) && parsedTarget > 0) {
+          goldTargetAmount = Math.round(parsedTarget);
+        }
+      }
+      const rawScenario = params.get("scenario")?.trim();
+      if (rawScenario && rawScenario.length <= 80) {
+        interiorScenarioId = rawScenario;
       }
     } catch {
       // ignore invalid query
@@ -146,6 +204,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab: "OVERVIEW",
       interiorTab: "STUDIO",
       highlightPeriod: null,
+      goldTargetAmount: null,
+      interiorScenarioId: null,
       isLoginRoute: true,
     };
   }
@@ -158,6 +218,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab: "OVERVIEW",
       interiorTab: "STUDIO",
       highlightPeriod: null,
+      goldTargetAmount: null,
+      interiorScenarioId: null,
       isLoginRoute: false,
     };
   }
@@ -172,6 +234,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab: "OVERVIEW",
       interiorTab: "STUDIO",
       highlightPeriod,
+      goldTargetAmount: null,
+      interiorScenarioId: null,
       isLoginRoute: false,
     };
   }
@@ -186,6 +250,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab,
       interiorTab: "STUDIO",
       highlightPeriod: null,
+      goldTargetAmount,
+      interiorScenarioId: null,
       isLoginRoute: false,
     };
   }
@@ -200,6 +266,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab: "OVERVIEW",
       interiorTab,
       highlightPeriod: null,
+      goldTargetAmount: null,
+      interiorScenarioId,
       isLoginRoute: false,
     };
   }
@@ -214,6 +282,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
       goldTab: "OVERVIEW",
       interiorTab: "STUDIO",
       highlightPeriod: null,
+      goldTargetAmount: null,
+      interiorScenarioId: null,
       isLoginRoute: false,
     };
   }
@@ -226,6 +296,8 @@ export function parseAppRoute(pathname: string, search = ""): ParsedAppRoute {
     goldTab: "OVERVIEW",
     interiorTab: "STUDIO",
     highlightPeriod: null,
+    goldTargetAmount: null,
+    interiorScenarioId: null,
     isLoginRoute: false,
   };
 }
@@ -236,7 +308,11 @@ export function buildAppPath(
   skyoneTab: SkyOneRouteTab,
   highlightPeriod?: number | null,
   goldTab: GoldRouteTab = "OVERVIEW",
-  interiorTab: InteriorRouteTab = "STUDIO"
+  interiorTab: InteriorRouteTab = "STUDIO",
+  extraQuery?: {
+    goldTargetAmount?: number | null;
+    interiorScenarioId?: string | null;
+  }
 ): string {
   if (app === "LAUNCHER") {
     return "/launcher";
@@ -253,12 +329,24 @@ export function buildAppPath(
 
   if (app === "GOLD") {
     const seg = GOLD_TAB_TO_SEGMENT[goldTab] || "overview";
-    return `/gold/${seg}`;
+    const base = `/gold/${seg}`;
+    if (
+      goldTab === "SIMULATOR" &&
+      extraQuery?.goldTargetAmount &&
+      extraQuery.goldTargetAmount > 0
+    ) {
+      return `${base}?target=${Math.round(extraQuery.goldTargetAmount)}`;
+    }
+    return base;
   }
 
   if (app === "INTERIOR") {
     const seg = INTERIOR_TAB_TO_SEGMENT[interiorTab] || "studio";
-    return `/interior/${seg}`;
+    const base = `/interior/${seg}`;
+    if (extraQuery?.interiorScenarioId) {
+      return `${base}?scenario=${encodeURIComponent(extraQuery.interiorScenarioId)}`;
+    }
+    return base;
   }
 
   const seg = FINANCE_TAB_TO_SEGMENT[financeTab] || "overview";

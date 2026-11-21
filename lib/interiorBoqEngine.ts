@@ -731,6 +731,30 @@ export function evaluateErgonomicClearances(
   return warnings;
 }
 
+export const DEFAULT_HANDOVER_TARGET_DATE = "2027-08-31";
+
+/**
+ * Tính động số tháng còn lại tới ngày nhận bàn giao căn hộ A.12A.07 (mặc định 31/08/2027).
+ * Luôn chặn an toàn trong khoảng [1, 36] tháng để không bị chia cho 0 hoặc âm khi sát/qua ngày bàn giao.
+ */
+export function computeMonthsUntilHandover(
+  targetHandoverDateIso: string = DEFAULT_HANDOVER_TARGET_DATE,
+  referenceDateIso?: string
+): number {
+  const ref = referenceDateIso ? new Date(referenceDateIso) : new Date();
+  const parsedTarget = new Date(
+    /^\d{4}-\d{2}-\d{2}$/.test(targetHandoverDateIso)
+      ? `${targetHandoverDateIso}T00:00:00`
+      : `${DEFAULT_HANDOVER_TARGET_DATE}T00:00:00`
+  );
+  if (Number.isNaN(ref.getTime()) || Number.isNaN(parsedTarget.getTime())) {
+    return 9;
+  }
+  const diffDays = (parsedTarget.getTime() - ref.getTime()) / (1000 * 60 * 60 * 24);
+  const approxMonths = Math.round(diffDays / 30.4375);
+  return Math.max(1, Math.min(36, approxMonths));
+}
+
 export interface HandoverReadinessInput {
   liquidCashVnd: number;
   monthlyNetSurplusVnd: number;
@@ -742,6 +766,7 @@ export interface HandoverReadinessInput {
   interiorBoqPaidVnd?: number;
   includePinkBook5Pct: boolean;
   monthsUntilHandover?: number;
+  targetHandoverDateIso?: string;
 }
 
 export interface HandoverReadinessResult {
@@ -771,7 +796,8 @@ export interface HandoverReadinessResult {
 export function calculateHandoverReadiness(
   input: HandoverReadinessInput
 ): HandoverReadinessResult {
-  const monthsUntilHandover = Math.max(1, input.monthsUntilHandover ?? 9);
+  const dynamicMonths = computeMonthsUntilHandover(input.targetHandoverDateIso);
+  const monthsUntilHandover = Math.max(1, input.monthsUntilHandover ?? dynamicMonths);
   const maintenanceFee2PctVnd = SKYONE_A12A07_VERIFIED_FACTS.pricing.maintenanceFee2Pct; // 28.925.479 đ
   const pinkBook5PctVnd = input.includePinkBook5Pct
     ? SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount // 72.313.698 đ

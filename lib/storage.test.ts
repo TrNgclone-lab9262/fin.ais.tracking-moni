@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   recalculateAccountBalances,
+  buildSyncBundleJson,
   parseSyncBundleText,
   previewMergeDiff,
   mergeFinanceData,
@@ -236,3 +237,172 @@ test('mergeFinanceData merges skyoneLoan paidRecords and prepayments without dup
   assert.equal(merged.skyoneLoan.prepayments.length, 1);
   assert.equal(merged.skyoneLoan.prepayments[0]?.id, 'prepay_partner_1');
 });
+
+test('Zod validation preserves Gold serial/certificate/priceHistory/alerts and Interior executionPhase/targetHandoverDate', () => {
+  const base = createBaseState();
+  base.goldPortfolio.lots[0] = {
+    ...base.goldPortfolio.lots[0],
+    serialNumber: 'SJC-999888',
+    certificateCode: 'HD-PNJ-2026-101',
+    storeName: 'PNJ Next Thủ Đức',
+    purityLabel: '999.9 (24K)',
+  };
+  base.goldPortfolio.priceHistory = [
+    {
+      date: '2026-11-15',
+      nhan9999BidPerChi: 9050000,
+      nhan9999AskPerChi: 9200000,
+      sjcBidPerChi: 9100000,
+      sjcAskPerChi: 9300000,
+      worldXauUsdPerOz: 2740,
+      usdVndRate: 25450,
+      portfolioBidValueVnd: 54300000,
+      portfolioCostBasisVnd: 50000000,
+      totalRemainingChi: 6,
+      recordedAt: '2026-11-15T10:00:00.000Z',
+    },
+  ];
+  base.goldPortfolio.alerts = [
+    {
+      id: 'alert_test_1',
+      label: 'Chốt lời 9.8tr',
+      category: 'NHAN_9999',
+      condition: 'TARGET_BID_ABOVE',
+      threshold: 9800000,
+      enabled: true,
+      createdAt: '2026-11-15T10:00:00.000Z',
+    },
+  ];
+  base.interiorStudio.targetHandoverDate = '2027-09-15';
+  base.interiorStudio.scenarios[0] = {
+    ...base.interiorStudio.scenarios[0],
+    isLockedBaseline: true,
+    items: base.interiorStudio.scenarios[0].items.map((item, idx) =>
+      idx === 0 ? { ...item, executionPhase: 'PHASE_2_UPGRADE' as const } : item
+    ),
+  };
+
+  const parsed = parseSyncBundleText(buildSyncBundleJson(base));
+  assert.equal(parsed.success, true, parsed.error);
+  assert.ok(parsed.data);
+  assert.equal(parsed.data.goldPortfolio.lots[0]?.serialNumber, 'SJC-999888');
+  assert.equal(parsed.data.goldPortfolio.lots[0]?.certificateCode, 'HD-PNJ-2026-101');
+  assert.equal(parsed.data.goldPortfolio.lots[0]?.storeName, 'PNJ Next Thủ Đức');
+  assert.equal(parsed.data.goldPortfolio.lots[0]?.purityLabel, '999.9 (24K)');
+  assert.equal(parsed.data.goldPortfolio.priceHistory?.length, 1);
+  assert.equal(parsed.data.goldPortfolio.alerts?.length, 1);
+  assert.equal(parsed.data.interiorStudio.targetHandoverDate, '2027-09-15');
+  assert.equal(parsed.data.interiorStudio.scenarios[0]?.isLockedBaseline, true);
+  assert.equal(
+    parsed.data.interiorStudio.scenarios[0]?.items[0]?.executionPhase,
+    'PHASE_2_UPGRADE'
+  );
+});
+
+test('mergeFinanceData performs granular 2-device Smart Merge for Gold priceHistory/alerts and Interior scenarios/checklist', () => {
+  const local = createBaseState();
+  const partner = createBaseState();
+
+  local.goldPortfolio.priceHistory = [
+    {
+      date: '2026-11-10',
+      nhan9999BidPerChi: 9000000,
+      nhan9999AskPerChi: 9150000,
+      sjcBidPerChi: 9050000,
+      sjcAskPerChi: 9250000,
+      worldXauUsdPerOz: 2700,
+      usdVndRate: 25400,
+      portfolioBidValueVnd: 54000000,
+      portfolioCostBasisVnd: 50000000,
+      totalRemainingChi: 6,
+      recordedAt: '2026-11-10T08:00:00.000Z',
+    },
+  ];
+  partner.goldPortfolio.priceHistory = [
+    {
+      date: '2026-11-10',
+      nhan9999BidPerChi: 9120000,
+      nhan9999AskPerChi: 9260000,
+      sjcBidPerChi: 9150000,
+      sjcAskPerChi: 9350000,
+      worldXauUsdPerOz: 2735,
+      usdVndRate: 25450,
+      portfolioBidValueVnd: 54720000,
+      portfolioCostBasisVnd: 50000000,
+      totalRemainingChi: 6,
+      recordedAt: '2026-11-10T18:00:00.000Z',
+    },
+    {
+      date: '2026-11-11',
+      nhan9999BidPerChi: 9150000,
+      nhan9999AskPerChi: 9300000,
+      sjcBidPerChi: 9180000,
+      sjcAskPerChi: 9380000,
+      worldXauUsdPerOz: 2750,
+      usdVndRate: 25460,
+      portfolioBidValueVnd: 54900000,
+      portfolioCostBasisVnd: 50000000,
+      totalRemainingChi: 6,
+      recordedAt: '2026-11-11T09:00:00.000Z',
+    },
+  ];
+  partner.goldPortfolio.alerts = [
+    ...(partner.goldPortfolio.alerts || []),
+    {
+      id: 'alert_partner_new',
+      label: 'Cảnh báo vợ thêm',
+      category: 'SJC_BAR',
+      condition: 'SPREAD_ABOVE_PCT',
+      threshold: 3.5,
+      enabled: true,
+      createdAt: '2026-11-11T10:00:00.000Z',
+    },
+  ];
+
+  // Husband checks item 0, Wife checks item 1 on another device
+  local.interiorStudio.handoverChecklist[0] = {
+    ...local.interiorStudio.handoverChecklist[0],
+    checked: true,
+    note: 'Chồng đã kiểm cửa Lecmax',
+    updatedAt: '2026-11-12T08:00:00.000Z',
+  };
+  partner.interiorStudio.handoverChecklist[1] = {
+    ...partner.interiorStudio.handoverChecklist[1],
+    checked: true,
+    note: 'Vợ đã kiểm kính ban công',
+    updatedAt: '2026-11-12T09:00:00.000Z',
+  };
+
+  // Partner adds a custom scenario
+  const partnerScenario = {
+    ...partner.interiorStudio.scenarios[0],
+    id: 'scenario_partner_custom',
+    name: 'Phương án C - Vợ đề xuất',
+    updatedAt: '2026-11-12T10:00:00.000Z',
+  };
+  partner.interiorStudio.scenarios = [...partner.interiorStudio.scenarios, partnerScenario];
+
+  const merged = mergeFinanceData(local, partner, {
+    mode: 'MERGE',
+    keepLocalSecurity: true,
+  });
+
+  // Gold priceHistory merged by date preferring newer recordedAt
+  assert.equal(merged.goldPortfolio.priceHistory?.length, 2);
+  const nov10 = merged.goldPortfolio.priceHistory?.find((p) => p.date === '2026-11-10');
+  assert.equal(nov10?.nhan9999BidPerChi, 9120000);
+  assert.ok(merged.goldPortfolio.alerts?.some((a) => a.id === 'alert_partner_new'));
+
+  // Interior checklist retains BOTH husband's and wife's checks
+  assert.equal(merged.interiorStudio.handoverChecklist[0]?.checked, true);
+  assert.equal(merged.interiorStudio.handoverChecklist[1]?.checked, true);
+  assert.equal(
+    merged.interiorStudio.handoverChecklist[1]?.note,
+    'Vợ đã kiểm kính ban công'
+  );
+  // Interior scenarios keeps partner's new scenario
+  assert.ok(
+    merged.interiorStudio.scenarios.some((s) => s.id === 'scenario_partner_custom')
+  );
+});
+

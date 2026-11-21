@@ -1,4 +1,27 @@
 import { z } from "zod";
+import type {
+  GoldAlertRule,
+  GoldCategory,
+  GoldLot,
+  GoldPortfolioState,
+  GoldPriceSnapshot,
+  GoldSaleEvent,
+} from "@/types/finance";
+
+/**
+ * Chuẩn hóa chuỗi tùy chọn: tự động trim, chuyển null / "" / chỉ khoảng trắng thành undefined
+ * để tương thích 100% với bản ghi cũ từ localStorage và Supabase JSONB.
+ */
+function optionalTrimmedString(maxLen: number) {
+  return z.preprocess((val) => {
+    if (val === null || val === undefined) return undefined;
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      return trimmed.length === 0 ? undefined : trimmed;
+    }
+    return val;
+  }, z.string().max(maxLen).optional());
+}
 
 export const FamilyMemberSchema = z.enum(["HUSBAND", "WIFE", "SHARED"]);
 export const ExpenseScopeSchema = z.enum(["FAMILY", "PERSONAL"]);
@@ -276,68 +299,111 @@ export const GoldStorageLocationSchema = z.enum([
   "PARENTS",
 ]);
 
-export const GoldLotSchema = z.object({
-  id: z.string().min(1),
-  category: GoldCategorySchema,
-  brand: z.string().min(1),
-  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  quantityChi: z.number().positive(),
-  remainingChi: z.number().nonnegative(),
-  unitBuyPricePerChi: z.number().positive(),
-  makingFee: z.number().nonnegative(),
-  memberId: FamilyMemberSchema,
-  storageLocation: GoldStorageLocationSchema,
-  invoiceNote: z.string().optional(),
-  linkedTransactionId: z.string().optional(),
-  status: z.enum(["HOLDING", "PARTIAL_SOLD", "SOLD"]),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const GoldLotSchema = z
+  .object({
+    id: z.string().min(1),
+    category: GoldCategorySchema,
+    brand: z.string().trim().min(1),
+    purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    quantityChi: z.number().finite().positive(),
+    remainingChi: z.number().finite().nonnegative(),
+    unitBuyPricePerChi: z.number().finite().positive(),
+    makingFee: z.number().finite().nonnegative().default(0),
+    memberId: FamilyMemberSchema,
+    storageLocation: GoldStorageLocationSchema,
+    serialNumber: optionalTrimmedString(64),
+    certificateCode: optionalTrimmedString(64),
+    storeName: optionalTrimmedString(120),
+    purityLabel: optionalTrimmedString(40),
+    invoiceNote: optionalTrimmedString(500),
+    linkedTransactionId: optionalTrimmedString(128),
+    status: z.enum(["HOLDING", "PARTIAL_SOLD", "SOLD"]),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .refine((lot) => lot.remainingChi <= lot.quantityChi + 0.0001, {
+    message: "Số chỉ còn nắm giữ không được vượt quá số chỉ mua gốc",
+    path: ["remainingChi"],
+  });
+
+export const GoldSaleAllocationModeSchema = z.enum(["FIFO", "SPECIFIC_LOT", "WAC"]);
 
 export const GoldSaleAllocationSchema = z.object({
   lotId: z.string().min(1),
-  soldChi: z.number().positive(),
-  costBasisAllocated: z.number().nonnegative(),
+  soldChi: z.number().finite().positive(),
+  costBasisAllocated: z.number().finite().nonnegative(),
 });
 
 export const GoldSaleEventSchema = z.object({
   id: z.string().min(1),
   saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   category: GoldCategorySchema,
+  allocationMode: GoldSaleAllocationModeSchema.optional(),
   allocations: z.array(GoldSaleAllocationSchema),
-  totalSoldChi: z.number().positive(),
-  unitSellPricePerChi: z.number().positive(),
-  totalProceeds: z.number().nonnegative(),
-  costBasisAllocated: z.number().nonnegative(),
-  realizedPnl: z.number(),
+  totalSoldChi: z.number().finite().positive(),
+  unitSellPricePerChi: z.number().finite().positive(),
+  totalProceeds: z.number().finite().nonnegative(),
+  costBasisAllocated: z.number().finite().nonnegative(),
+  realizedPnl: z.number().finite(),
   purpose: z.enum(["INTERIOR_HANDOVER", "SKYONE_PREPAY", "REBALANCE", "OTHER"]),
-  linkedTransactionId: z.string().optional(),
-  note: z.string().optional(),
+  linkedTransactionId: optionalTrimmedString(128),
+  note: optionalTrimmedString(500),
   createdAt: z.string(),
 });
 
 export const GoldPriceQuoteSchema = z.object({
   category: GoldCategorySchema,
-  brandLabel: z.string().min(1),
-  buyPricePerChi: z.number().positive(),
-  sellPricePerChi: z.number().positive(),
+  brandLabel: z.string().trim().min(1),
+  buyPricePerChi: z.number().finite().positive(),
+  sellPricePerChi: z.number().finite().positive(),
   updatedAt: z.string(),
   source: z.enum(["MANUAL", "SERVER_REFERENCE"]),
 });
 
 export const GoldMacroContextSchema = z.object({
-  worldXauUsdPerOz: z.number().nonnegative(),
-  usdVndRate: z.number().positive(),
+  worldXauUsdPerOz: z.number().finite().nonnegative(),
+  usdVndRate: z.number().finite().positive(),
   updatedAt: z.string(),
 });
 
 export const GoldDcaPlanSchema = z.object({
   enabled: z.boolean(),
   targetCategory: GoldCategorySchema,
-  monthlyTargetChi: z.number().nonnegative(),
-  monthlyBudgetVnd: z.number().nonnegative(),
-  targetAllocationPercentOfNetWorth: z.number().min(0).max(100),
-  targetReserveChiFor2027: z.number().nonnegative(),
+  monthlyTargetChi: z.number().finite().nonnegative(),
+  monthlyBudgetVnd: z.number().finite().nonnegative(),
+  targetAllocationPercentOfNetWorth: z.number().finite().min(0).max(100),
+  targetReserveChiFor2027: z.number().finite().nonnegative(),
+});
+
+export const GoldPriceSnapshotSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  recordedAt: z.string(),
+  nhan9999BidPerChi: z.number().finite().nonnegative(),
+  nhan9999AskPerChi: z.number().finite().nonnegative(),
+  sjcBidPerChi: z.number().finite().nonnegative(),
+  sjcAskPerChi: z.number().finite().nonnegative(),
+  worldXauUsdPerOz: z.number().finite().nonnegative(),
+  usdVndRate: z.number().finite().nonnegative(),
+  portfolioBidValueVnd: z.number().finite().nonnegative().default(0),
+  portfolioCostBasisVnd: z.number().finite().nonnegative().default(0),
+  totalRemainingChi: z.number().finite().nonnegative().default(0),
+});
+
+export const GoldAlertConditionSchema = z.enum([
+  "TARGET_BID_ABOVE",
+  "WORLD_PREMIUM_BELOW_PCT",
+  "SPREAD_ABOVE_PCT",
+  "UNREALIZED_PNL_PCT_ABOVE",
+]);
+
+export const GoldAlertRuleSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().trim().min(1).max(160),
+  category: GoldCategorySchema,
+  condition: GoldAlertConditionSchema,
+  threshold: z.number().finite(),
+  enabled: z.boolean().default(true),
+  createdAt: z.string(),
 });
 
 export const GoldPortfolioStateSchema = z.object({
@@ -352,9 +418,185 @@ export const GoldPortfolioStateSchema = z.object({
   }),
   macro: GoldMacroContextSchema,
   dcaPlan: GoldDcaPlanSchema,
-  includeInNetWorth: z.boolean(),
+  includeInNetWorth: z.boolean().default(true),
+  priceHistory: z.array(GoldPriceSnapshotSchema).default([]),
+  alerts: z.array(GoldAlertRuleSchema).default([]),
   updatedAt: z.string(),
 });
+
+const GOLD_CATEGORIES: readonly GoldCategory[] = [
+  "NHAN_9999",
+  "SJC_BAR",
+  "GOLD_24K_JEWELRY",
+  "GOLD_18K",
+  "DIGITAL_GOLD",
+];
+
+/**
+ * Phục hồi dữ liệu cục bộ an toàn (Graceful Partial Recovery) cho Kho Vàng:
+ * - Nếu hợp lệ 100%, trả thẳng kết quả Zod đã chuẩn hóa.
+ * - Nếu chỉ một phần (ví dụ 1 lô bị lỗi hoặc 1 snapshot hỏng), chỉ loại bỏ đúng phần hỏng
+ *   và bảo toàn toàn bộ các lô/lịch sử/cảnh báo hợp lệ thay vì rơi toàn bộ về dữ liệu mẫu.
+ */
+export function parseGoldPortfolioSafely(
+  raw: unknown,
+  fallbackFactory: () => GoldPortfolioState
+): {
+  data: GoldPortfolioState;
+  recovered: boolean;
+  droppedItems: string[];
+} {
+  const fullParsed = GoldPortfolioStateSchema.safeParse(raw);
+  if (fullParsed.success) {
+    return {
+      data: fullParsed.data,
+      recovered: false,
+      droppedItems: [],
+    };
+  }
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      data: fallbackFactory(),
+      recovered: true,
+      droppedItems: ["goldPortfolio:root"],
+    };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const base = fallbackFactory();
+  const droppedItems: string[] = [];
+
+  // 1. Lots
+  let lots: GoldLot[] = base.lots;
+  if (Array.isArray(obj.lots)) {
+    lots = [];
+    obj.lots.forEach((item, idx) => {
+      const parsed = GoldLotSchema.safeParse(item);
+      if (parsed.success) {
+        lots.push(parsed.data);
+      } else {
+        const rawId =
+          item && typeof item === "object" && "id" in item && typeof (item as { id: unknown }).id === "string"
+            ? (item as { id: string }).id
+            : String(idx);
+        droppedItems.push(`lots[${rawId}]`);
+      }
+    });
+  } else {
+    droppedItems.push("lots");
+  }
+
+  // 2. Sales
+  let sales: GoldSaleEvent[] = base.sales;
+  if (Array.isArray(obj.sales)) {
+    sales = [];
+    obj.sales.forEach((item, idx) => {
+      const parsed = GoldSaleEventSchema.safeParse(item);
+      if (parsed.success) {
+        sales.push(parsed.data);
+      } else {
+        const rawId =
+          item && typeof item === "object" && "id" in item && typeof (item as { id: unknown }).id === "string"
+            ? (item as { id: string }).id
+            : String(idx);
+        droppedItems.push(`sales[${rawId}]`);
+      }
+    });
+  } else if (obj.sales !== undefined) {
+    droppedItems.push("sales");
+  }
+
+  // 3. Quotes (per-category recovery)
+  const quotes = { ...base.quotes };
+  const rawQuotes =
+    obj.quotes && typeof obj.quotes === "object" && !Array.isArray(obj.quotes)
+      ? (obj.quotes as Record<string, unknown>)
+      : null;
+  if (rawQuotes) {
+    for (const cat of GOLD_CATEGORIES) {
+      const parsedQuote = GoldPriceQuoteSchema.safeParse(rawQuotes[cat]);
+      if (parsedQuote.success) {
+        quotes[cat] = parsedQuote.data;
+      } else if (rawQuotes[cat] !== undefined) {
+        droppedItems.push(`quotes.${cat}`);
+      }
+    }
+  } else if (obj.quotes !== undefined) {
+    droppedItems.push("quotes");
+  }
+
+  // 4. Macro & DCA Plan
+  const parsedMacro = GoldMacroContextSchema.safeParse(obj.macro);
+  const macro = parsedMacro.success ? parsedMacro.data : base.macro;
+  if (!parsedMacro.success && obj.macro !== undefined) {
+    droppedItems.push("macro");
+  }
+
+  const parsedDca = GoldDcaPlanSchema.safeParse(obj.dcaPlan);
+  const dcaPlan = parsedDca.success ? parsedDca.data : base.dcaPlan;
+  if (!parsedDca.success && obj.dcaPlan !== undefined) {
+    droppedItems.push("dcaPlan");
+  }
+
+  // 5. Price History
+  let priceHistory: GoldPriceSnapshot[] = base.priceHistory ?? [];
+  if (Array.isArray(obj.priceHistory)) {
+    priceHistory = [];
+    obj.priceHistory.forEach((item, idx) => {
+      const parsed = GoldPriceSnapshotSchema.safeParse(item);
+      if (parsed.success) {
+        priceHistory.push(parsed.data);
+      } else {
+        droppedItems.push(`priceHistory[${idx}]`);
+      }
+    });
+  } else if (obj.priceHistory !== undefined) {
+    droppedItems.push("priceHistory");
+  }
+
+  // 6. Alerts
+  let alerts: GoldAlertRule[] = base.alerts ?? [];
+  if (Array.isArray(obj.alerts)) {
+    alerts = [];
+    obj.alerts.forEach((item, idx) => {
+      const parsed = GoldAlertRuleSchema.safeParse(item);
+      if (parsed.success) {
+        alerts.push(parsed.data);
+      } else {
+        droppedItems.push(`alerts[${idx}]`);
+      }
+    });
+  } else if (obj.alerts !== undefined) {
+    droppedItems.push("alerts");
+  }
+
+  const includeInNetWorth =
+    typeof obj.includeInNetWorth === "boolean"
+      ? obj.includeInNetWorth
+      : base.includeInNetWorth;
+
+  const updatedAt =
+    typeof obj.updatedAt === "string" && obj.updatedAt.trim().length > 0
+      ? obj.updatedAt
+      : base.updatedAt;
+
+  return {
+    data: {
+      lots,
+      sales,
+      quotes,
+      macro,
+      dcaPlan,
+      includeInNetWorth,
+      priceHistory,
+      alerts,
+      updatedAt,
+    },
+    recovered: true,
+    droppedItems,
+  };
+}
 
 export const InteriorStylePresetSchema = z.enum([
   "MODERN_WARM",
@@ -507,6 +749,11 @@ export const InteriorMepPointSchema = z.object({
   note: z.string().optional(),
 });
 
+export const InteriorExecutionPhaseSchema = z.enum([
+  "PHASE_1_MOVE_IN",
+  "PHASE_2_UPGRADE",
+]);
+
 export const InteriorFurnitureItemSchema = z.object({
   id: z.string().min(1),
   catalogKey: InteriorCatalogKeySchema,
@@ -533,6 +780,7 @@ export const InteriorFurnitureItemSchema = z.object({
   pricingRule: z.enum(["FIXED_UNIT", "PER_LINEAR_METER", "PER_SQUARE_METER"]),
   unitPriceVnd: z.number().nonnegative(),
   boqGroup: InteriorBoqGroupSchema,
+  executionPhase: InteriorExecutionPhaseSchema.optional(),
   procurementStatus: z.enum(["PLANNED", "QUOTED", "DEPOSITED", "INSTALLED"]),
   linkedTransactionId: z.string().optional(),
   payments: z.array(InteriorBoqPaymentRecordSchema).optional(),
@@ -547,6 +795,7 @@ export const InteriorExtraBoqItemSchema = z.object({
   name: z.string().min(1),
   roomId: z.string().min(1),
   boqGroup: InteriorBoqGroupSchema,
+  executionPhase: InteriorExecutionPhaseSchema.optional(),
   source: z.enum(["DEVELOPER_INCLUDED", "NEW_PURCHASE"]),
   unit: z.string().min(1),
   quantity: z.number().positive(),
@@ -579,6 +828,14 @@ export const InteriorCameraSnapshotSchema = z.object({
   autoCutaway: z.boolean().optional(),
 });
 
+export const InteriorCameraBookmarkSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  position: z.tuple([z.number(), z.number(), z.number()]),
+  target: z.tuple([z.number(), z.number(), z.number()]),
+  createdAt: z.string(),
+});
+
 export const InteriorDesignScenarioSchema = z.object({
   id: z.string().min(1),
   code: z.string().min(1),
@@ -589,6 +846,7 @@ export const InteriorDesignScenarioSchema = z.object({
   targetBudgetMinVnd: z.number().nonnegative(),
   targetBudgetMaxVnd: z.number().positive(),
   contingencyPercent: z.number().min(0).max(50),
+  isLockedBaseline: z.boolean().optional(),
   items: z.array(InteriorFurnitureItemSchema),
   extraBoqItems: z.array(InteriorExtraBoqItemSchema),
   mepPoints: z.array(InteriorMepPointSchema).optional(),
@@ -598,8 +856,16 @@ export const InteriorDesignScenarioSchema = z.object({
   lightingZones: InteriorLightingZonesSchema.optional(),
   curtainOpenRatio: z.number().min(0).max(1).optional(),
   lastCameraView: InteriorCameraSnapshotSchema.optional(),
+  cameraBookmarks: z.array(InteriorCameraBookmarkSchema).optional(),
   updatedAt: z.string(),
 });
+
+export const HandoverChecklistStatusSchema = z.enum([
+  "PENDING",
+  "PASSED",
+  "DEFECT_MINOR",
+  "DEFECT_CRITICAL",
+]);
 
 export const HandoverChecklistItemSchema = z.object({
   id: z.string().min(1),
@@ -608,7 +874,11 @@ export const HandoverChecklistItemSchema = z.object({
   title: z.string().min(1),
   specDetail: z.string(),
   checked: z.boolean(),
+  status: HandoverChecklistStatusSchema.optional(),
+  isCustom: z.boolean().optional(),
+  localPhotoKey: z.string().optional(),
   note: z.string().optional(),
+  updatedAt: z.string().optional(),
 });
 
 export const InteriorStudioStateSchema = z.object({
@@ -616,6 +886,7 @@ export const InteriorStudioStateSchema = z.object({
   usableAreaSqm: z.number().positive(),
   builtUpAreaSqm: z.number().positive(),
   orientation: z.enum(["EAST_SOUTHEAST", "EAST", "SOUTH", "WEST"]),
+  targetHandoverDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   activeScenarioId: z.string().min(1),
   scenarios: z.array(InteriorDesignScenarioSchema).min(1),
   handoverChecklist: z.array(HandoverChecklistItemSchema),

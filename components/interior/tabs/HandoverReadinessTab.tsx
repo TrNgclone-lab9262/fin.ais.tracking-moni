@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { ArrowUpRight, CheckCircle2, Coins, Layers } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Calendar, CheckCircle2, Coins, Layers } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { InteriorDesignScenario } from "@/types/finance";
 import {
+  DEFAULT_HANDOVER_TARGET_DATE,
   ScenarioBoqSummary,
   calculateConstructionMilestones,
   calculateHandoverReadiness,
+  computeMonthsUntilHandover,
 } from "@/lib/interiorBoqEngine";
 import { computeGoldPortfolioMetrics, formatChiWeight } from "@/lib/goldEngine";
-import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
+import { formatDateVN, formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 
 interface HandoverReadinessTabProps {
   activeScenario: InteriorDesignScenario;
@@ -23,11 +25,20 @@ export function HandoverReadinessTab({
 }: HandoverReadinessTabProps) {
   const {
     goldPortfolio,
+    interiorStudio,
+    updateInteriorTargetHandoverDate,
     summary,
     isPrivacyMode,
     switchSubApp,
     setGoldSimulatorPresetTarget,
   } = useFinance();
+
+  const targetHandoverDate =
+    interiorStudio.targetHandoverDate || DEFAULT_HANDOVER_TARGET_DATE;
+  const computedMonthsFromTarget = useMemo(
+    () => computeMonthsUntilHandover(targetHandoverDate),
+    [targetHandoverDate]
+  );
 
   const [monthlySurplusInput, setMonthlySurplusInput] = useState<number>(() =>
     Math.max(
@@ -36,9 +47,15 @@ export function HandoverReadinessTab({
         1_000_000
     )
   );
-  const [monthsUntilHandover, setMonthsUntilHandover] = useState<number>(9);
+  const [monthsUntilHandover, setMonthsUntilHandover] = useState<number>(
+    computedMonthsFromTarget
+  );
   const [includePinkBook5Pct, setIncludePinkBook5Pct] = useState<boolean>(false);
   const [boqScopeMode, setBoqScopeMode] = useState<"FULL" | "PHASE_1">("FULL");
+
+  useEffect(() => {
+    setMonthsUntilHandover(computedMonthsFromTarget);
+  }, [computedMonthsFromTarget]);
 
   const goldMetrics = useMemo(() => computeGoldPortfolioMetrics(goldPortfolio), [goldPortfolio]);
   const nhanBidPerChi = goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000;
@@ -215,23 +232,37 @@ export function HandoverReadinessTab({
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="font-bold text-slate-700 dark:text-slate-200">
-                Số tháng tích lũy tới Q3/2027
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                <span>Mốc nhận bàn giao</span>
               </span>
               <span className="font-black text-teal-700 dark:text-teal-300 tabular-nums">
-                {monthsUntilHandover} tháng
+                {monthsUntilHandover} tháng ({formatDateVN(targetHandoverDate)})
               </span>
             </div>
-            <input
-              type="range"
-              min={3}
-              max={18}
-              step={1}
-              value={monthsUntilHandover}
-              onChange={(e) => setMonthsUntilHandover(Number(e.target.value))}
-              className="w-full accent-teal-600"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={targetHandoverDate}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    updateInteriorTargetHandoverDate(e.target.value);
+                  }
+                }}
+                aria-label="Ngày nhận bàn giao căn hộ A.12A.07"
+                className="px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold tabular-nums shrink-0"
+              />
+              <input
+                type="range"
+                min={1}
+                max={36}
+                step={1}
+                value={monthsUntilHandover}
+                onChange={(e) => setMonthsUntilHandover(Number(e.target.value))}
+                className="w-full accent-teal-600"
+              />
+            </div>
           </div>
 
           <label className="flex items-center gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer">

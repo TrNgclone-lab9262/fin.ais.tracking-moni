@@ -13,6 +13,7 @@ interface ConfirmDialogProps {
   isDanger?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   isDanger = false,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmDialogProps) {
   const haptic = useHaptic();
 
@@ -57,6 +59,7 @@ export function ConfirmDialog({
               <X className="w-5 h-5" />
             </button>
           </div>
+          {children && <div className="mt-4">{children}</div>}
         </div>
 
         <div className="bg-slate-50 dark:bg-slate-800/70 px-6 py-4 flex items-center justify-end gap-3 border-t border-[#E9EEF5] dark:border-slate-800">

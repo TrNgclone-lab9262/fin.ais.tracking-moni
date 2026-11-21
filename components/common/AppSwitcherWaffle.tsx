@@ -12,7 +12,7 @@ import { useFinance } from "@/context/FinanceContext";
 import {
   APP_ECOSYSTEM_REGISTRY,
   EcosystemAppId,
-  getUrgentSkyOneAlert,
+  computeEcosystemAlertBadges,
 } from "@/lib/appRegistry";
 import {
   FinanceAppIconSvg,
@@ -61,16 +61,46 @@ export function AppSwitcherWaffle({
   variant = "default",
   align = "left",
 }: AppSwitcherWaffleProps) {
-  const { activeApp, switchSubApp, openAppLauncher, skyoneLoan } = useFinance();
+  const {
+    activeApp,
+    switchSubApp,
+    openAppLauncher,
+    skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
+    budgetSummary,
+  } = useFinance();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const urgentSkyoneStatus = useMemo(
-    () => getUrgentSkyOneAlert(skyoneLoan),
-    [skyoneLoan]
+  const ecosystemBadges = useMemo(
+    () =>
+      computeEcosystemAlertBadges({
+        skyoneLoan,
+        goldPortfolio,
+        interiorStudio,
+        budgetItems: budgetSummary.items,
+      }),
+    [skyoneLoan, goldPortfolio, interiorStudio, budgetSummary.items]
   );
+
+  const otherAppAlert = useMemo(() => {
+    let highest: { severity: "danger" | "warning"; label: string } | null = null;
+    for (const app of APP_ECOSYSTEM_REGISTRY) {
+      if (app.id === activeApp) continue;
+      const badge = ecosystemBadges[app.id];
+      if (!badge || badge.severity === "info") continue;
+      if (!highest || (badge.severity === "danger" && highest.severity !== "danger")) {
+        highest = {
+          severity: badge.severity,
+          label: `${app.title}: ${badge.compactLabel}`,
+        };
+      }
+    }
+    return highest;
+  }, [activeApp, ecosystemBadges]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -136,15 +166,7 @@ export function AppSwitcherWaffle({
   const handleSelectSubApp = (targetApp: EcosystemAppId) => {
     setIsOpen(false);
     if (activeApp !== targetApp) {
-      if (targetApp === "FINANCE") {
-        switchSubApp("FINANCE", { financeTab: "overview" });
-      } else if (targetApp === "SKYONE") {
-        switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" });
-      } else if (targetApp === "GOLD") {
-        switchSubApp("GOLD", { goldTab: "OVERVIEW" });
-      } else {
-        switchSubApp("INTERIOR", { interiorTab: "STUDIO" });
-      }
+      switchSubApp(targetApp, { restoreLastTab: true });
     }
   };
 
@@ -160,7 +182,7 @@ export function AppSwitcherWaffle({
         aria-expanded={isOpen}
         aria-haspopup="menu"
         data-testid="waffle-menu-trigger"
-        title="Chuyển phân hệ / Về App Launcher (Alt+M)"
+        title="Chuyển phân hệ / Về App Launcher (Alt+M · Alt+1..4)"
         className={`relative flex items-center justify-center rounded-lg border transition-colors duration-150 cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
           isCompact ? "w-8 h-8" : "w-9 h-9"
         } ${
@@ -170,11 +192,11 @@ export function AppSwitcherWaffle({
         }`}
       >
         <NineDotsWaffleSvg className={isCompact ? "w-4 h-4" : "w-[18px] h-[18px]"} />
-        {urgentSkyoneStatus && activeApp !== "SKYONE" && (
+        {otherAppAlert && (
           <span
-            title={urgentSkyoneStatus.compactLabel}
+            title={otherAppAlert.label}
             className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${
-              urgentSkyoneStatus.kind === "danger" ? "bg-rose-500" : "bg-amber-400"
+              otherAppAlert.severity === "danger" ? "bg-rose-500" : "bg-amber-400"
             }`}
           />
         )}
@@ -197,7 +219,7 @@ export function AppSwitcherWaffle({
                 App Switcher
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                Chuyển nhanh giữa các không gian làm việc
+                Chuyển nhanh (Alt+1..4) hoặc về Launcher
               </p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -246,6 +268,7 @@ export function AppSwitcherWaffle({
             {APP_ECOSYSTEM_REGISTRY.map((app) => {
               const IconComponent = APP_ICON_MAP[app.id];
               const isActive = activeApp === app.id;
+              const appBadge = ecosystemBadges[app.id];
               const activeStyles =
                 app.accentTone === "indigo"
                   ? "bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800"
@@ -286,32 +309,38 @@ export function AppSwitcherWaffle({
                       <p className="text-xs font-extrabold text-[#0F172A] dark:text-slate-100 truncate">
                         {displayTitle}
                       </p>
-                      {isActive && (
-                        <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold whitespace-nowrap shrink-0 ${activeBadgeColor}`}
-                        >
-                          <Check className="w-3 h-3" />
-                          Đang mở
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isActive ? (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold whitespace-nowrap ${activeBadgeColor}`}
+                          >
+                            <Check className="w-3 h-3" />
+                            Đang mở
+                          </span>
+                        ) : (
+                          <kbd className="hidden sm:inline-block px-1 py-0.5 text-[9px] font-mono font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 border border-[#DCE4EE] dark:border-slate-700 rounded">
+                            {app.shortcutLabel}
+                          </kbd>
+                        )}
+                      </div>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {app.waffleSubtitle}
                     </p>
-                    {app.id === "SKYONE" && urgentSkyoneStatus && (
+                    {appBadge && (
                       <p
                         className={`mt-1 inline-flex items-center gap-1 text-[10px] font-bold tabular-nums ${
-                          urgentSkyoneStatus.kind === "danger"
+                          appBadge.severity === "danger"
                             ? "text-rose-700 dark:text-rose-300"
                             : "text-amber-700 dark:text-amber-300"
                         }`}
                       >
-                        {urgentSkyoneStatus.kind === "danger" ? (
+                        {appBadge.severity === "danger" ? (
                           <AlertTriangle className="w-3 h-3 shrink-0" />
                         ) : (
                           <Clock className="w-3 h-3 shrink-0" />
                         )}
-                        <span>{urgentSkyoneStatus.compactLabel}</span>
+                        <span>{appBadge.compactLabel}</span>
                       </p>
                     )}
                   </div>

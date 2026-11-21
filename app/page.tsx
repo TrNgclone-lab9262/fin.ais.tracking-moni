@@ -1,7 +1,8 @@
 "use client";
 
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { useFinance } from "@/context/FinanceContext";
+import { getEcosystemAppByShortcutDigit } from "@/lib/appRegistry";
 import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import { Sidebar } from "@/components/common/Sidebar";
@@ -76,6 +77,7 @@ export default function HomePage() {
     settings,
     isAppLocked,
     hasPasscodeProtection,
+    switchSubApp,
   } = useFinance();
 
   const {
@@ -95,6 +97,31 @@ export default function HomePage() {
   const [isPdfReportOpen, setIsPdfReportOpen] = useState(false);
 
   const { isMobileShell } = useResponsive();
+
+  // Global Alt+1..4 sub-app switcher shortcut (works from Launcher & all 4 Sub-Apps)
+  useEffect(() => {
+    if (!isLoaded || isAppLocked) return;
+    const handleGlobalSubAppShortcut = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      const targetEl = event.target as HTMLElement | null;
+      if (
+        targetEl &&
+        (targetEl.tagName === "INPUT" ||
+          targetEl.tagName === "TEXTAREA" ||
+          targetEl.tagName === "SELECT" ||
+          targetEl.isContentEditable)
+      ) {
+        return;
+      }
+      const targetApp = getEcosystemAppByShortcutDigit(event.key);
+      if (targetApp && targetApp !== activeApp) {
+        event.preventDefault();
+        switchSubApp(targetApp, { restoreLastTab: true });
+      }
+    };
+    window.addEventListener("keydown", handleGlobalSubAppShortcut);
+    return () => window.removeEventListener("keydown", handleGlobalSubAppShortcut);
+  }, [isLoaded, isAppLocked, activeApp, switchSubApp]);
 
   if (!isLoaded) {
     return (

@@ -333,6 +333,124 @@ ${categoryList || '- "cat_expense_food": Ăn uống\n- "cat_expense_shopping": M
     }
   });
 
+  // 1b. POST /api/ai/scan-gold-invoice — Multimodal Vietnamese Gold Invoice / Certificate OCR
+  app.post('/api/ai/scan-gold-invoice', async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.json({
+        source: 'fallback',
+        reason: 'GEMINI_API_KEY_NOT_CONFIGURED',
+      });
+    }
+
+    try {
+      const { imageBase64, mimeType } = req.body as {
+        imageBase64?: string;
+        mimeType?: string;
+      };
+
+      if (!imageBase64) {
+        return res.status(400).json({ error: 'Thiếu dữ liệu ảnh hóa đơn vàng (imageBase64).' });
+      }
+
+      const prompt = `Bạn là chuyên gia kiểm định và kế toán vàng vật chất Việt Nam cho HOME MONI.
+Hãy đọc ảnh hóa đơn mua vàng / giấy đảm bảo vàng đính kèm (PNJ, SJC, DOJI, Bảo Tín Minh Châu, Phú Quý, Mi Hồng...) và trích xuất thông tin chuẩn xác:
+- category: Chọn 1 trong 5 mã: "NHAN_9999" (nhẫn tròn trơn 9999/24K/ép vỉ), "SJC_BAR" (vàng miếng SJC), "GOLD_24K_JEWELRY" (trang sức 24K/9999), "GOLD_18K" (vàng 18K/750/610), "DIGITAL_GOLD" (vàng tích lũy eGold).
+- brand: Thương hiệu / quy cách ngắn gọn (VD: "PNJ Nhẫn trơn 9999", "SJC Miếng 1 lượng", "DOJI Hưng Thịnh Vượng").
+- purchaseDate: Ngày mua định dạng YYYY-MM-DD (nếu thiếu dùng ngày hôm nay ${new Date().toISOString().slice(0, 10)}).
+- quantityChi: Tổng khối lượng quy đổi ra ĐƠN VỊ CHỈ (số dương, 1 lượng = 10 chỉ, 1 phân = 0.1 chỉ, 3.75 gram = 1 chỉ).
+- unitBuyPricePerChi: Đơn giá mua thực tế cho 1 CHỈ (VNĐ, số nguyên dương; nếu hóa đơn ghi giá 1 lượng thì chia 10; nếu chỉ có thành tiền chưa công thì chia cho quantityChi).
+- makingFee: Tổng tiền công / phí gia công / phí ép vỉ (VNĐ, số nguyên >= 0, mặc định 0 nếu không tách riêng).
+- serialNumber: Số seri vỉ / miếng vàng nếu có in trên giấy (chuỗi rỗng nếu không có).
+- certificateCode: Mã hóa đơn / số phiếu / số giấy đảm bảo (chuỗi rỗng nếu không có).
+- storeName: Tên cửa hàng / chi nhánh tiệm vàng (chuỗi rỗng nếu không rõ).
+- purityLabel: Tuổi vàng / hàm lượng (VD: "999.9 (24K)", "99.99%", "750 (18K)").
+- invoiceNote: Ghi chú ngắn gọn tiếng Việt tóm tắt quy cách/tình trạng vỉ.
+- confidence: Độ tin cậy từ 0.0 đến 1.0.`;
+
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType || 'image/jpeg',
+                  data: imageBase64,
+                },
+              },
+              { text: prompt },
+            ],
+          },
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              category: { type: Type.STRING },
+              brand: { type: Type.STRING },
+              purchaseDate: { type: Type.STRING },
+              quantityChi: { type: Type.NUMBER },
+              unitBuyPricePerChi: { type: Type.NUMBER },
+              makingFee: { type: Type.NUMBER },
+              serialNumber: { type: Type.STRING },
+              certificateCode: { type: Type.STRING },
+              storeName: { type: Type.STRING },
+              purityLabel: { type: Type.STRING },
+              invoiceNote: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+            },
+            required: ['category', 'brand', 'purchaseDate', 'quantityChi', 'unitBuyPricePerChi', 'confidence'],
+          },
+        },
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      const allowedCategories = new Set([
+        'NHAN_9999',
+        'SJC_BAR',
+        'GOLD_24K_JEWELRY',
+        'GOLD_18K',
+        'DIGITAL_GOLD',
+      ]);
+      const category = allowedCategories.has(parsed.category) ? parsed.category : 'NHAN_9999';
+      const rawQty = Number(parsed.quantityChi);
+      const rawUnitPrice = Number(parsed.unitBuyPricePerChi);
+      const rawMakingFee = Number(parsed.makingFee);
+
+      return res.json({
+        source: 'gemini',
+        result: {
+          category,
+          brand: String(parsed.brand || 'Nhẫn trơn 9999').trim(),
+          purchaseDate:
+            typeof parsed.purchaseDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.purchaseDate)
+              ? parsed.purchaseDate
+              : new Date().toISOString().slice(0, 10),
+          quantityChi: Number.isFinite(rawQty) && rawQty > 0 ? Math.round(rawQty * 1000) / 1000 : 1,
+          unitBuyPricePerChi:
+            Number.isFinite(rawUnitPrice) && rawUnitPrice > 0 ? Math.round(rawUnitPrice) : 0,
+          makingFee: Number.isFinite(rawMakingFee) && rawMakingFee > 0 ? Math.round(rawMakingFee) : 0,
+          serialNumber: typeof parsed.serialNumber === 'string' ? parsed.serialNumber.trim() : '',
+          certificateCode:
+            typeof parsed.certificateCode === 'string' ? parsed.certificateCode.trim() : '',
+          storeName: typeof parsed.storeName === 'string' ? parsed.storeName.trim() : '',
+          purityLabel: typeof parsed.purityLabel === 'string' ? parsed.purityLabel.trim() : '',
+          invoiceNote: typeof parsed.invoiceNote === 'string' ? parsed.invoiceNote.trim() : '',
+          confidence: Number(parsed.confidence) || 0.85,
+        },
+      });
+    } catch (err) {
+      console.error('[AI Scan Gold Invoice Error]', err);
+      return res.json({
+        source: 'fallback',
+        reason: 'GEMINI_REQUEST_FAILED',
+      });
+    }
+  });
+
   // 2. POST /api/ai/parse-transaction — Natural Language Quick Entry Parser
   app.post('/api/ai/parse-transaction', async (req, res) => {
     const ai = getGeminiClient();

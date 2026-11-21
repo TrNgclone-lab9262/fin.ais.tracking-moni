@@ -12,6 +12,9 @@ import {
   MortgageContract,
   SavingsChallenge,
   GoldPortfolioState,
+  GoldPriceSnapshot,
+  HandoverChecklistItem,
+  InteriorDesignScenario,
   InteriorStudioState,
 } from "@/types/finance";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
@@ -28,9 +31,9 @@ import {
 } from "@/constants/mockData";
 import {
   AppDataBackupSchema,
-  GoldPortfolioStateSchema,
   InteriorStudioStateSchema,
   MortgageContractSchema,
+  parseGoldPortfolioSafely,
 } from "./validations";
 import { createDefaultSkyOneLoan, reconcileBidvSkyOneContract } from "./mortgageEngine";
 import { createDefaultGoldPortfolio } from "./goldEngine";
@@ -153,7 +156,10 @@ export function loadStoredDataV3(): StoredAppStateV3 {
         const { contract: reconciledSkyOne, didAutoSync } = reconcileBidvSkyOneContract(
           skyoneParsed.success ? skyoneParsed.data : undefined
         );
-        const goldParsed = GoldPortfolioStateSchema.safeParse(parsed.goldPortfolio);
+        const goldRecovered = parseGoldPortfolioSafely(
+          parsed.goldPortfolio,
+          createDefaultGoldPortfolio
+        );
         const interiorParsed = InteriorStudioStateSchema.safeParse(parsed.interiorStudio);
         const nextState: StoredAppStateV3 = {
           categories: parsed.categories?.length ? parsed.categories : DEFAULT_CATEGORIES,
@@ -171,7 +177,7 @@ export function loadStoredDataV3(): StoredAppStateV3 {
             : DEFAULT_SAVINGS_CHALLENGES,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
           skyoneLoan: reconciledSkyOne,
-          goldPortfolio: goldParsed.success ? goldParsed.data : createDefaultGoldPortfolio(),
+          goldPortfolio: goldRecovered.data,
           interiorStudio: interiorParsed.success
             ? interiorParsed.data
             : createDefaultInteriorStudio(),
@@ -335,7 +341,31 @@ export function parseSyncBundleText(text: string): {
 
   try {
     const rawJson: unknown = JSON.parse(trimmed);
-    const validation = AppDataBackupSchema.safeParse(rawJson);
+    let candidateJson: unknown = rawJson;
+    let recoveredGoldPortfolio: GoldPortfolioState | undefined;
+
+    // Nếu gói backup có goldPortfolio nhưng bị lỗi cục bộ 1 phần, phục hồi phần hợp lệ trước khi parse toàn gói
+    if (
+      rawJson &&
+      typeof rawJson === "object" &&
+      !Array.isArray(rawJson) &&
+      "goldPortfolio" in rawJson &&
+      (rawJson as Record<string, unknown>).goldPortfolio !== undefined
+    ) {
+      const recovered = parseGoldPortfolioSafely(
+        (rawJson as Record<string, unknown>).goldPortfolio,
+        createDefaultGoldPortfolio
+      );
+      recoveredGoldPortfolio = recovered.data;
+      if (recovered.recovered) {
+        candidateJson = {
+          ...(rawJson as Record<string, unknown>),
+          goldPortfolio: recovered.data,
+        };
+      }
+    }
+
+    const validation = AppDataBackupSchema.safeParse(candidateJson);
 
     if (!validation.success) {
       const firstError = validation.error.issues?.[0]?.message || "Cấu trúc gói JSON không hợp lệ";
@@ -355,7 +385,8 @@ export function parseSyncBundleText(text: string): {
       savingsChallenges: validData.savingsChallenges ?? DEFAULT_SAVINGS_CHALLENGES,
       settings: { ...DEFAULT_SETTINGS, ...(validData.settings || {}) },
       skyoneLoan: reconcileBidvSkyOneContract(validData.skyoneLoan).contract,
-      goldPortfolio: validData.goldPortfolio ?? createDefaultGoldPortfolio(),
+      goldPortfolio:
+        validData.goldPortfolio ?? recoveredGoldPortfolio ?? createDefaultGoldPortfolio(),
       interiorStudio: validData.interiorStudio ?? createDefaultInteriorStudio(),
     };
 
@@ -394,6 +425,144 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
   const seen = new Set(existing.map((item) => item.id));
   const additions = incoming.filter((item) => !seen.has(item.id));
   return [...existing, ...additions];
+}
+
+function mergeByIdPreferNewer<T extends { id: string; updatedAt?: string }>(
+  existing: T[],
+  incoming: T[]
+): T[] {
+  const map = new Map<string, T>();
+  for (const item of existing) {
+    map.set(item.id, item);
+  }
+  for (const item of incoming) {
+    const prev = map.get(item.id);
+    if (!prev) {
+      map.set(item.id, item);
+    } else {
+      const incTs = item.updatedAt || "";
+      const prevTs = prev.updatedAt || "";
+      if (incTs.localeCompare(prevTs) > 0) {
+        map.set(item.id, item);
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
+function mergeGoldPriceHistory(
+  existing: GoldPriceSnapshot[] | undefined,
+  incoming: GoldPriceSnapshot[] | undefined,
+  maxPoints = 90
+): GoldPriceSnapshot[] {
+  const byDate = new Map<string, GoldPriceSnapshot>();
+  for (const snap of existing || []) {
+    byDate.set(snap.date, snap);
+  }
+  for (const snap of incoming || []) {
+    const prev = byDate.get(snap.date);
+    if (!prev || snap.recordedAt.localeCompare(prev.recordedAt) > 0) {
+      byDate.set(snap.date, snap);
+    }
+  }
+  return Array.from(byDate.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-maxPoints);
+}
+
+function mergeInteriorScenarios(
+  existing: InteriorDesignScenario[],
+  incoming: InteriorDesignScenario[]
+): InteriorDesignScenario[] {
+  const map = new Map<string, InteriorDesignScenario>();
+  for (const sc of existing) {
+    map.set(sc.id, sc);
+  }
+  for (const inc of incoming) {
+    const prev = map.get(inc.id);
+    if (!prev) {
+      map.set(inc.id, inc);
+      continue;
+    }
+    const incNewer = (inc.updatedAt || "").localeCompare(prev.updatedAt || "") > 0;
+    const primary = incNewer ? inc : prev;
+    const secondary = incNewer ? prev : inc;
+
+    // Hợp nhất mảng payments[] chống trùng id trên cả nội thất 3D lẫn dòng BOQ phụ
+    const secondaryItemsById = new Map((secondary.items || []).map((f) => [f.id, f]));
+    const mergedItems = (primary.items || []).map((item) => {
+      const peer = secondaryItemsById.get(item.id);
+      if (!peer?.payments?.length) return item;
+      const mergedPayments = mergeById(item.payments || [], peer.payments);
+      return {
+        ...item,
+        payments: mergedPayments,
+      };
+    });
+
+    const secondaryExtraById = new Map((secondary.extraBoqItems || []).map((e) => [e.id, e]));
+    const primaryExtraMerged = (primary.extraBoqItems || []).map((item) => {
+      const peer = secondaryExtraById.get(item.id);
+      if (!peer?.payments?.length) return item;
+      const mergedPayments = mergeById(item.payments || [], peer.payments);
+      return {
+        ...item,
+        payments: mergedPayments,
+      };
+    });
+    const mergedExtraBoq = mergeById(primaryExtraMerged, secondary.extraBoqItems || []);
+    const mergedBookmarks = mergeById(
+      primary.cameraBookmarks || [],
+      secondary.cameraBookmarks || []
+    ).slice(0, 6);
+    map.set(inc.id, {
+      ...primary,
+      items: mergedItems,
+      extraBoqItems: mergedExtraBoq,
+      cameraBookmarks: mergedBookmarks.length > 0 ? mergedBookmarks : primary.cameraBookmarks,
+    });
+  }
+  return Array.from(map.values());
+}
+
+function mergeHandoverChecklist(
+  existing: HandoverChecklistItem[],
+  incoming: HandoverChecklistItem[]
+): HandoverChecklistItem[] {
+  const map = new Map<string, HandoverChecklistItem>();
+  for (const item of existing) {
+    map.set(item.id, item);
+  }
+  for (const inc of incoming) {
+    const prev = map.get(inc.id);
+    if (!prev) {
+      map.set(inc.id, inc);
+      continue;
+    }
+    const incTs = inc.updatedAt || "";
+    const prevTs = prev.updatedAt || "";
+    if (incTs && prevTs) {
+      const winner = incTs.localeCompare(prevTs) > 0 ? inc : prev;
+      const loser = winner === inc ? prev : inc;
+      map.set(inc.id, {
+        ...winner,
+        localPhotoKey: winner.localPhotoKey || loser.localPhotoKey,
+        note: winner.note?.trim() ? winner.note : loser.note,
+      });
+    } else {
+      const preferInc =
+        (inc.checked && !prev.checked) ||
+        Boolean(inc.status && inc.status !== "PENDING" && (!prev.status || prev.status === "PENDING")) ||
+        Boolean(inc.note?.trim() && !prev.note?.trim());
+      map.set(inc.id, {
+        ...(preferInc ? inc : prev),
+        checked: prev.checked || inc.checked,
+        note: (preferInc ? inc.note : prev.note) || (preferInc ? prev.note : inc.note),
+        localPhotoKey: prev.localPhotoKey || inc.localPhotoKey,
+      });
+    }
+  }
+  return Array.from(map.values());
 }
 
 function budgetKey(b: CategoryBudget): string {
@@ -564,17 +733,39 @@ export function mergeFinanceData(
   const incomingGoldNewer = incGold.updatedAt.localeCompare(curGold.updatedAt) > 0;
   const mergedGoldPortfolio: GoldPortfolioState = {
     ...(incomingGoldNewer ? incGold : curGold),
-    lots: mergeById(curGold.lots, incGold.lots),
+    lots: mergeByIdPreferNewer(curGold.lots, incGold.lots),
     sales: mergeById(curGold.sales, incGold.sales),
+    priceHistory: mergeGoldPriceHistory(curGold.priceHistory, incGold.priceHistory),
+    alerts: mergeById(curGold.alerts || [], incGold.alerts || []),
     updatedAt: new Date().toISOString(),
   };
 
   const curInterior = current.interiorStudio || createDefaultInteriorStudio();
   const incInterior = incoming.interiorStudio || createDefaultInteriorStudio();
   const incomingInteriorNewer = incInterior.updatedAt.localeCompare(curInterior.updatedAt) > 0;
-  const mergedInteriorStudio: InteriorStudioState = incomingInteriorNewer
-    ? incInterior
-    : curInterior;
+  const mergedScenarios = mergeInteriorScenarios(curInterior.scenarios, incInterior.scenarios);
+  const preferredActiveId = incomingInteriorNewer
+    ? incInterior.activeScenarioId
+    : curInterior.activeScenarioId;
+  const resolvedActiveId = mergedScenarios.some((s) => s.id === preferredActiveId)
+    ? preferredActiveId
+    : mergedScenarios[0]?.id || curInterior.activeScenarioId;
+
+  const mergedInteriorStudio: InteriorStudioState = {
+    ...(incomingInteriorNewer ? incInterior : curInterior),
+    targetHandoverDate:
+      (incomingInteriorNewer ? incInterior.targetHandoverDate : curInterior.targetHandoverDate) ||
+      curInterior.targetHandoverDate ||
+      incInterior.targetHandoverDate ||
+      "2027-08-31",
+    activeScenarioId: resolvedActiveId,
+    scenarios: mergedScenarios,
+    handoverChecklist: mergeHandoverChecklist(
+      curInterior.handoverChecklist,
+      incInterior.handoverChecklist
+    ),
+    updatedAt: new Date().toISOString(),
+  };
 
   const mergedAccounts = recalculateAccountBalances(mergedAccountsRaw, mergedTransactions);
 
