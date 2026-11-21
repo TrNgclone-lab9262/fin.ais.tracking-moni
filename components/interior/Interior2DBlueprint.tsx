@@ -442,12 +442,21 @@ export function Interior2DBlueprint({
     }
   };
 
-  const measuredDistanceCm =
+  const measuredDistanceMm =
     measurePts.p1 && measurePts.p2
       ? Math.round(
-          Math.hypot(measurePts.p2.x - measurePts.p1.x, measurePts.p2.z - measurePts.p1.z) * 100
+          Math.hypot(measurePts.p2.x - measurePts.p1.x, measurePts.p2.z - measurePts.p1.z) * 1000
         )
       : null;
+  const measuredDistanceCm = measuredDistanceMm !== null ? Math.round(measuredDistanceMm / 10) : null;
+  const measuredErgonomicHint =
+    measuredDistanceMm === null
+      ? null
+      : measuredDistanceMm >= 800
+        ? "Đạt lối đi chính (≥ 800 mm)"
+        : measuredDistanceMm >= 600
+          ? "Lối đi phụ (600–799 mm)"
+          : "Khoảng hẹp (< 600 mm)";
 
   return (
     <div
@@ -685,12 +694,12 @@ export function Interior2DBlueprint({
       {/* Contextual Sub-Bar: Tape Measure OR Add MEP Picker */}
       {toolMode === "MEASURE" && (
         <div className="px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="font-bold text-amber-900 dark:text-amber-200">
-            {measuredDistanceCm !== null
-              ? `Khoảng cách đo được: ${measuredDistanceCm} cm (${(measuredDistanceCm / 100).toFixed(2)} m)`
+          <span className="font-bold text-amber-900 dark:text-amber-200 tabular-nums">
+            {measuredDistanceMm !== null && measuredDistanceCm !== null
+              ? `Khoảng cách: ${measuredDistanceMm.toLocaleString("vi-VN")} mm (${measuredDistanceCm} cm) · ${measuredErgonomicHint}`
               : measurePts.p1
-                ? "Chạm điểm thứ 2 trên mặt bằng để đo khoảng cách..."
-                : "Chạm điểm bắt đầu bất kỳ trên mặt bằng để đo khoảng cách (cm)"}
+                ? "Chạm điểm thứ 2 trên mặt bằng để đo khoảng cách (mm)..."
+                : "Chạm điểm bắt đầu bất kỳ trên mặt bằng để đo khoảng cách thực (mm / cm)"}
           </span>
           <button
             type="button"
@@ -1376,12 +1385,12 @@ export function Interior2DBlueprint({
                     stroke="#FFFFFF"
                     strokeWidth="1.5"
                   />
-                  {measuredDistanceCm !== null && (
+                  {measuredDistanceMm !== null && (
                     <>
                       <rect
-                        x={(worldToSvgX(measurePts.p1.x) + worldToSvgX(measurePts.p2.x)) / 2 - 28}
+                        x={(worldToSvgX(measurePts.p1.x) + worldToSvgX(measurePts.p2.x)) / 2 - 44}
                         y={(worldToSvgY(measurePts.p1.z) + worldToSvgY(measurePts.p2.z)) / 2 - 11}
-                        width={56}
+                        width={88}
                         height={18}
                         rx={4}
                         fill="#B45309"
@@ -1391,10 +1400,10 @@ export function Interior2DBlueprint({
                         y={(worldToSvgY(measurePts.p1.z) + worldToSvgY(measurePts.p2.z)) / 2 + 1.5}
                         textAnchor="middle"
                         fill="#FFFFFF"
-                        fontSize="9"
+                        fontSize="8.5"
                         fontWeight="900"
                       >
-                        {measuredDistanceCm} cm
+                        {measuredDistanceMm.toLocaleString("vi-VN")} mm · {measuredDistanceCm}cm
                       </text>
                     </>
                   )}

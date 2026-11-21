@@ -1,13 +1,17 @@
 import {
   FamilyMember,
+  GoldAlertCondition,
+  GoldAlertRule,
   GoldCategory,
   GoldLiquidationStrategy,
   GoldLot,
   GoldMacroContext,
   GoldPortfolioState,
   GoldPriceQuote,
+  GoldPriceSnapshot,
   GoldSaleAllocation,
   GoldStorageLocation,
+  MortgageContract,
 } from "@/types/finance";
 
 export const GRAMS_PER_LUONG = 37.5;
@@ -647,6 +651,8 @@ export function createDefaultGoldPortfolio(): GoldPortfolioState {
         makingFee: 0,
         memberId: "SHARED",
         storageLocation: "HOME_SAFE",
+        purityLabel: "999.9 (24K)",
+        storeName: "PNJ Next",
         invoiceNote: "Tích sản đợt 1 sau khi ký HĐMB SKYONE",
         status: "HOLDING",
         createdAt: "2025-09-15T10:00:00.000Z",
@@ -663,6 +669,8 @@ export function createDefaultGoldPortfolio(): GoldPortfolioState {
         makingFee: 0,
         memberId: "WIFE",
         storageLocation: "HOME_SAFE",
+        purityLabel: "999.9 (24K)",
+        storeName: "SJC Nguyễn Thị Minh Khai",
         invoiceNote: "Thưởng Tết Bính Ngọ — Nhẫn trơn ép vỉ",
         status: "HOLDING",
         createdAt: "2026-02-10T09:30:00.000Z",
@@ -679,6 +687,8 @@ export function createDefaultGoldPortfolio(): GoldPortfolioState {
         makingFee: 0,
         memberId: "HUSBAND",
         storageLocation: "HOME_SAFE",
+        purityLabel: "999.9 (24K)",
+        storeName: "PNJ Next",
         invoiceNote: "DCA Quý 3/2026 — Quỹ phòng vệ bàn giao Q3/2027",
         status: "HOLDING",
         createdAt: "2026-08-20T14:00:00.000Z",
@@ -701,6 +711,604 @@ export function createDefaultGoldPortfolio(): GoldPortfolioState {
       targetReserveChiFor2027: 12,
     },
     includeInNetWorth: true,
+    priceHistory: [],
+    alerts: createDefaultGoldAlerts(nowIso),
     updatedAt: nowIso,
   };
 }
+
+// ============================================================================
+// PRIORITY 1, 2 & 3 — GOLD MARKET INTELLIGENCE, NAV HISTORY, ALERTS & AUDIT
+// ============================================================================
+
+export const GOLD_ALERT_CONDITION_META: Record<
+  GoldAlertCondition,
+  { label: string; unit: string; shortLabel: string }
+> = {
+  TARGET_BID_ABOVE: {
+    label: "Giá thu mua (Bid) đạt mục tiêu chốt lời",
+    unit: "đ/chỉ",
+    shortLabel: "Bid ≥ mục tiêu",
+  },
+  WORLD_PREMIUM_BELOW_PCT: {
+    label: "Chênh lệch Trong nước / Thế giới hạ nhiệt (Vùng mua tốt)",
+    unit: "%",
+    shortLabel: "Premium ≤ ngưỡng",
+  },
+  SPREAD_ABOVE_PCT: {
+    label: "Biên độ Mua – Bán (Spread) giãn rộng (Tránh bán tháo)",
+    unit: "%",
+    shortLabel: "Spread ≥ ngưỡng",
+  },
+  UNREALIZED_PNL_PCT_ABOVE: {
+    label: "Lãi tạm tính danh mục đạt ngưỡng khóa lợi nhuận",
+    unit: "%",
+    shortLabel: "Lãi danh mục ≥ %",
+  },
+};
+
+export function createDefaultGoldAlerts(nowIso = new Date().toISOString()): GoldAlertRule[] {
+  return [
+    {
+      id: "alert_nhan_target_bid",
+      label: "Chốt lời Nhẫn 9999 cho quỹ Nội thất Q3/2027",
+      category: "NHAN_9999",
+      condition: "TARGET_BID_ABOVE",
+      threshold: 9_600_000,
+      enabled: true,
+      createdAt: nowIso,
+    },
+    {
+      id: "alert_nhan_premium_low",
+      label: "Chênh lệch Nhẫn 9999 / Thế giới về vùng hấp dẫn DCA",
+      category: "NHAN_9999",
+      condition: "WORLD_PREMIUM_BELOW_PCT",
+      threshold: 6,
+      enabled: true,
+      createdAt: nowIso,
+    },
+    {
+      id: "alert_sjc_spread_wide",
+      label: "Cảnh báo Spread Vàng miếng SJC giãn rộng bất thường",
+      category: "SJC_BAR",
+      condition: "SPREAD_ABOVE_PCT",
+      threshold: 3.0,
+      enabled: true,
+      createdAt: nowIso,
+    },
+  ];
+}
+
+export function createGoldPriceSnapshot(
+  portfolio: GoldPortfolioState,
+  nowIso = new Date().toISOString()
+): GoldPriceSnapshot {
+  const metrics = computeGoldPortfolioMetrics(portfolio);
+  return {
+    date: nowIso.slice(0, 10),
+    recordedAt: nowIso,
+    nhan9999BidPerChi: portfolio.quotes.NHAN_9999?.buyPricePerChi || 0,
+    nhan9999AskPerChi: portfolio.quotes.NHAN_9999?.sellPricePerChi || 0,
+    sjcBidPerChi: portfolio.quotes.SJC_BAR?.buyPricePerChi || 0,
+    sjcAskPerChi: portfolio.quotes.SJC_BAR?.sellPricePerChi || 0,
+    worldXauUsdPerOz: portfolio.macro.worldXauUsdPerOz,
+    usdVndRate: portfolio.macro.usdVndRate,
+    portfolioBidValueVnd: metrics.totalLiquidationValueBid,
+    portfolioCostBasisVnd: metrics.totalCostBasis,
+    totalRemainingChi: metrics.totalRemainingChi,
+  };
+}
+
+export function upsertGoldPriceSnapshot(
+  existing: GoldPriceSnapshot[] | undefined,
+  snapshot: GoldPriceSnapshot,
+  maxPoints = 90
+): GoldPriceSnapshot[] {
+  const list = [...(existing ?? [])];
+  const idx = list.findIndex((p) => p.date === snapshot.date);
+  if (idx >= 0) {
+    list[idx] = snapshot;
+  } else {
+    list.push(snapshot);
+  }
+  return list
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-maxPoints);
+}
+
+export interface GoldNavTimelinePoint {
+  date: string;
+  label: string;
+  costBasisVnd: number;
+  bidValueVnd: number;
+  unrealizedPnlVnd: number;
+  totalChi: number;
+  nhanBidPerChi: number;
+  source: "LOT_EVENT" | "SNAPSHOT" | "CURRENT";
+}
+
+/**
+ * Xây dựng chuỗi thời gian NAV thực tế (không dùng dữ liệu ngẫu nhiên):
+ * Kết hợp các mốc mua/bán thực tế của từng lô vàng với các snapshot giá đã ghi nhận
+ * và điểm định giá hiện tại theo giá Bid.
+ */
+export function buildGoldNavHistorySeries(
+  portfolio: GoldPortfolioState
+): GoldNavTimelinePoint[] {
+  const pointMap = new Map<string, GoldNavTimelinePoint>();
+  const sortedLots = [...portfolio.lots].sort((a, b) =>
+    a.purchaseDate.localeCompare(b.purchaseDate)
+  );
+  const sortedSales = [...portfolio.sales].sort((a, b) =>
+    a.saleDate.localeCompare(b.saleDate)
+  );
+
+  // Collect chronological event dates from actual lots and sales
+  const eventDates = Array.from(
+    new Set([
+      ...sortedLots.map((l) => l.purchaseDate),
+      ...sortedSales.map((s) => s.saleDate),
+    ])
+  ).sort((a, b) => a.localeCompare(b));
+
+  const formatShortDate = (isoDate: string): string => {
+    const parts = isoDate.split("-");
+    if (parts.length !== 3) return isoDate;
+    return `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`;
+  };
+
+  for (const d of eventDates) {
+    // Reconstruct portfolio holdings & cost basis as of date d
+    let cumChi = 0;
+    let cumCost = 0;
+    let lastKnownPrice = 0;
+
+    for (const lot of sortedLots) {
+      if (lot.purchaseDate > d) break;
+      cumChi += lot.quantityChi;
+      cumCost += Math.round(lot.quantityChi * lot.unitBuyPricePerChi + (lot.makingFee || 0));
+      lastKnownPrice = lot.unitBuyPricePerChi;
+    }
+
+    for (const sale of sortedSales) {
+      if (sale.saleDate > d) break;
+      cumChi = Math.max(0, cumChi - sale.totalSoldChi);
+      cumCost = Math.max(0, cumCost - sale.costBasisAllocated);
+      lastKnownPrice = sale.unitSellPricePerChi;
+    }
+
+    const estBidValue = Math.round(cumChi * lastKnownPrice);
+    pointMap.set(d, {
+      date: d,
+      label: formatShortDate(d),
+      costBasisVnd: cumCost,
+      bidValueVnd: estBidValue,
+      unrealizedPnlVnd: estBidValue - cumCost,
+      totalChi: Number(cumChi.toFixed(3)),
+      nhanBidPerChi: lastKnownPrice,
+      source: "LOT_EVENT",
+    });
+  }
+
+  // Overlay recorded priceHistory snapshots (more accurate mark-to-market Bid)
+  for (const snap of portfolio.priceHistory ?? []) {
+    pointMap.set(snap.date, {
+      date: snap.date,
+      label: formatShortDate(snap.date),
+      costBasisVnd: snap.portfolioCostBasisVnd,
+      bidValueVnd: snap.portfolioBidValueVnd,
+      unrealizedPnlVnd: snap.portfolioBidValueVnd - snap.portfolioCostBasisVnd,
+      totalChi: snap.totalRemainingChi,
+      nhanBidPerChi: snap.nhan9999BidPerChi,
+      source: "SNAPSHOT",
+    });
+  }
+
+  // Always include live current mark-to-market point
+  const metrics = computeGoldPortfolioMetrics(portfolio);
+  const todayStr = (portfolio.updatedAt || new Date().toISOString()).slice(0, 10);
+  pointMap.set(todayStr, {
+    date: todayStr,
+    label: "Hiện tại",
+    costBasisVnd: metrics.totalCostBasis,
+    bidValueVnd: metrics.totalLiquidationValueBid,
+    unrealizedPnlVnd: metrics.unrealizedPnl,
+    totalChi: metrics.totalRemainingChi,
+    nhanBidPerChi: portfolio.quotes.NHAN_9999?.buyPricePerChi || metrics.weightedBidPerChi,
+    source: "CURRENT",
+  });
+
+  return Array.from(pointMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface EvaluatedGoldAlert {
+  rule: GoldAlertRule;
+  triggered: boolean;
+  currentValue: number;
+  currentValueLabel: string;
+  thresholdLabel: string;
+  severity: "OPPORTUNITY" | "WARNING" | "PROFIT_TARGET";
+  summary: string;
+}
+
+export function evaluateGoldAlerts(
+  portfolio: GoldPortfolioState,
+  metricsInput?: GoldPortfolioMetrics
+): EvaluatedGoldAlert[] {
+  const metrics = metricsInput ?? computeGoldPortfolioMetrics(portfolio);
+  const rules = portfolio.alerts ?? createDefaultGoldAlerts(portfolio.updatedAt);
+
+  return rules.map((rule) => {
+    const quote = portfolio.quotes[rule.category] || portfolio.quotes.NHAN_9999;
+    const premium = computeDomesticPremium(quote, portfolio.macro);
+    const catLabel = GOLD_CATEGORY_META[rule.category].shortLabel;
+
+    if (rule.condition === "TARGET_BID_ABOVE") {
+      const currentValue = quote.buyPricePerChi;
+      const triggered = rule.enabled && currentValue >= rule.threshold;
+      return {
+        rule,
+        triggered,
+        currentValue,
+        currentValueLabel: `${(currentValue / 1_000_000).toFixed(2)} tr/chỉ`,
+        thresholdLabel: `≥ ${(rule.threshold / 1_000_000).toFixed(2)} tr/chỉ`,
+        severity: "PROFIT_TARGET",
+        summary: triggered
+          ? `${catLabel} giá thu mua đạt ${(currentValue / 1_000_000).toFixed(2)} tr/chỉ — đã chạm mục tiêu chốt lời.`
+          : `Còn thiếu ${Math.max(0, Math.round((rule.threshold - currentValue) / 1000)).toLocaleString("vi-VN")}k/chỉ để đạt ngưỡng chốt lời.`,
+      };
+    }
+
+    if (rule.condition === "WORLD_PREMIUM_BELOW_PCT") {
+      const currentValue = premium.premiumOverWorldPct;
+      const triggered = rule.enabled && currentValue <= rule.threshold;
+      return {
+        rule,
+        triggered,
+        currentValue,
+        currentValueLabel: `${currentValue > 0 ? "+" : ""}${currentValue.toFixed(1)}%`,
+        thresholdLabel: `≤ +${rule.threshold}%`,
+        severity: "OPPORTUNITY",
+        summary: triggered
+          ? `Chênh lệch ${catLabel}/Thế giới đang ở ${currentValue.toFixed(1)}% (vùng hợp lý để tích sản DCA).`
+          : `Chênh lệch hiện ở +${currentValue.toFixed(1)}%, cao hơn ngưỡng mua đẹp (${rule.threshold}%).`,
+      };
+    }
+
+    if (rule.condition === "SPREAD_ABOVE_PCT") {
+      const currentValue = premium.spreadPct;
+      const triggered = rule.enabled && currentValue >= rule.threshold;
+      return {
+        rule,
+        triggered,
+        currentValue,
+        currentValueLabel: `${currentValue.toFixed(2)}%`,
+        thresholdLabel: `≥ ${rule.threshold}%`,
+        severity: "WARNING",
+        summary: triggered
+          ? `Biên độ Mua–Bán ${catLabel} giãn lên ${currentValue.toFixed(2)}% — cân nhắc tránh chốt bán gấp.`
+          : `Spread ${catLabel} ở mức ${currentValue.toFixed(2)}% (an toàn dưới ngưỡng ${rule.threshold}%).`,
+      };
+    }
+
+    // UNREALIZED_PNL_PCT_ABOVE
+    const currentValue = metrics.unrealizedPnlPct;
+    const triggered = rule.enabled && currentValue >= rule.threshold;
+    return {
+      rule,
+      triggered,
+      currentValue,
+      currentValueLabel: `${currentValue > 0 ? "+" : ""}${currentValue.toFixed(1)}%`,
+      thresholdLabel: `≥ +${rule.threshold}%`,
+      severity: "PROFIT_TARGET",
+      summary: triggered
+        ? `Danh mục đang lãi tạm tính +${currentValue.toFixed(1)}% — đạt mốc khóa lợi nhuận.`
+        : `Lãi tạm tính hiện tại ${currentValue.toFixed(1)}% so với mốc mục tiêu +${rule.threshold}%.`,
+    };
+  });
+}
+
+export interface GoldVsMortgageBenchmarkResult {
+  weightedAvgHoldingDays: number;
+  actualSimpleReturnPct: number;
+  actualAnnualizedReturnPct: number;
+  skyoneFixedRatePct: number;
+  skyoneFloatingRatePct: number;
+  bankDepositRatePct: number;
+  prepaymentPenaltyPct: number;
+  currentSpreadPct: number;
+  /** Tốc độ tăng giá vàng tối thiểu (%/năm) cần đạt để GIỮ VÀNG có lợi hơn BÁN VÀNG TRẢ NỢ TRƯỚC HẠN */
+  breakEvenGoldGrowthVsFloatingPct: number;
+  breakEvenGoldGrowthVsFixedPct: number;
+  projectedGoldValue1YrVnd: number;
+  projectedInterestSaved1YrIfPrepayVnd: number;
+  netAdvantageHoldingGold1YrVnd: number;
+  verdict: "HOLD_GOLD" | "NEUTRAL" | "PREPAY_MORTGAGE";
+  verdictTitle: string;
+  verdictDetail: string;
+}
+
+export function computeGoldVsMortgageBenchmark(
+  portfolio: GoldPortfolioState,
+  metricsInput?: GoldPortfolioMetrics,
+  skyoneLoan?: MortgageContract | null,
+  options?: {
+    expectedGoldGrowthPct?: number;
+    bankDepositRatePct?: number;
+    prepaymentPenaltyPct?: number;
+    referenceDateIso?: string;
+  }
+): GoldVsMortgageBenchmarkResult {
+  const metrics = metricsInput ?? computeGoldPortfolioMetrics(portfolio);
+  const refDateMs = Date.parse(
+    options?.referenceDateIso || portfolio.updatedAt || new Date().toISOString()
+  );
+
+  // Weighted average holding days across active lots
+  let weightedDaysNum = 0;
+  let totalBasisWeight = 0;
+  for (const ev of metrics.lotEvaluations) {
+    const buyMs = Date.parse(ev.lot.purchaseDate);
+    if (!Number.isFinite(buyMs) || ev.remainingCostBasis <= 0) continue;
+    const days = Math.max(15, Math.round((refDateMs - buyMs) / (1000 * 60 * 60 * 24)));
+    weightedDaysNum += days * ev.remainingCostBasis;
+    totalBasisWeight += ev.remainingCostBasis;
+  }
+  const weightedAvgHoldingDays =
+    totalBasisWeight > 0 ? Math.round(weightedDaysNum / totalBasisWeight) : 180;
+  const yearsHeld = Math.max(0.15, weightedAvgHoldingDays / 365);
+
+  const actualSimpleReturnPct = metrics.unrealizedPnlPct;
+  const growthFactor = Math.max(0.1, 1 + actualSimpleReturnPct / 100);
+  const actualAnnualizedReturnPct = Number(
+    ((Math.pow(growthFactor, 1 / yearsHeld) - 1) * 100).toFixed(2)
+  );
+
+  const skyoneFixedRatePct = skyoneLoan?.fixedInterestRate ?? 5.5;
+  const skyoneFloatingRatePct = Number(
+    ((skyoneLoan?.floatingBaseRate ?? 7.0) + (skyoneLoan?.floatingSpread ?? 3.5)).toFixed(2)
+  );
+  const bankDepositRatePct = options?.bankDepositRatePct ?? 6.0;
+  const prepaymentPenaltyPct = options?.prepaymentPenaltyPct ?? 1.0;
+
+  const currentSpreadPct =
+    metrics.totalAskReplacementValue > 0
+      ? Number(((metrics.totalSpreadCostVnd / metrics.totalAskReplacementValue) * 100).toFixed(2))
+      : 1.95;
+
+  // Khi giữ vàng thêm 1 năm thay vì bán ngay trả nợ:
+  // Nếu trả nợ ngay, bạn tiết kiệm được (lãi vay - phí phạt trả trước hạn) trên số tiền thu về (Bid).
+  // Vì vậy để giữ vàng thắng trả nợ trong chân trời 1 năm, vàng phải tăng tối thiểu (r_loan - penalty).
+  const breakEvenGoldGrowthVsFloatingPct = Number(
+    Math.max(0, skyoneFloatingRatePct - prepaymentPenaltyPct).toFixed(2)
+  );
+  const breakEvenGoldGrowthVsFixedPct = Number(
+    Math.max(0, skyoneFixedRatePct - prepaymentPenaltyPct).toFixed(2)
+  );
+
+  const expectedGoldGrowthPct = options?.expectedGoldGrowthPct ?? 9.0;
+  const capitalVnd = metrics.totalLiquidationValueBid;
+  const projectedGoldGain1YrVnd = Math.round(capitalVnd * (expectedGoldGrowthPct / 100));
+  const projectedGoldValue1YrVnd = capitalVnd + projectedGoldGain1YrVnd;
+  const projectedInterestSaved1YrIfPrepayVnd = Math.round(
+    capitalVnd * (breakEvenGoldGrowthVsFloatingPct / 100)
+  );
+  const netAdvantageHoldingGold1YrVnd =
+    projectedGoldGain1YrVnd - projectedInterestSaved1YrIfPrepayVnd;
+
+  let verdict: GoldVsMortgageBenchmarkResult["verdict"] = "NEUTRAL";
+  let verdictTitle = "Cân bằng giữa Giữ Vàng và Trả gốc SKYONE";
+  let verdictDetail = `Kỳ vọng tăng giá vàng (${expectedGoldGrowthPct}%/năm) đang xấp xỉ ngưỡng hòa vốn lãi thả nổi sau phí phạt (${breakEvenGoldGrowthVsFloatingPct}%/năm). Nên chia đôi: giữ phần lõi phòng vệ, chốt một phần khi hết ân hạn 08/2028.`;
+
+  if (expectedGoldGrowthPct >= breakEvenGoldGrowthVsFloatingPct + 1.5) {
+    verdict = "HOLD_GOLD";
+    verdictTitle = "Ưu tiên Giữ Vàng tích sản — Chi phí lãi vay thấp hơn kỳ vọng vàng";
+    verdictDetail = `Kỳ vọng tăng giá vàng (${expectedGoldGrowthPct}%/năm) cao hơn ngưỡng hòa vốn trả nợ thả nổi (${breakEvenGoldGrowthVsFloatingPct}%/năm) và lãi cố định (${skyoneFixedRatePct}%/năm). Chỉ nên bán đúng số chỉ thiếu cho Nội thất Q3/2027.`;
+  } else if (expectedGoldGrowthPct <= breakEvenGoldGrowthVsFloatingPct - 1.5) {
+    verdict = "PREPAY_MORTGAGE";
+    verdictTitle = "Cân nhắc Chốt một phần Vàng để tất toán gốc khi sang lãi thả nổi";
+    verdictDetail = `Lãi vay thả nổi SKYONE (${skyoneFloatingRatePct}%/năm, hòa vốn ${breakEvenGoldGrowthVsFloatingPct}%/năm sau phí phạt) cao hơn kỳ vọng tăng giá vàng (${expectedGoldGrowthPct}%/năm). Bán vàng trả gốc tại mốc 08/2028 mang lại mức tiết kiệm chắc chắn không rủi ro.`;
+  }
+
+  return {
+    weightedAvgHoldingDays,
+    actualSimpleReturnPct,
+    actualAnnualizedReturnPct,
+    skyoneFixedRatePct,
+    skyoneFloatingRatePct,
+    bankDepositRatePct,
+    prepaymentPenaltyPct,
+    currentSpreadPct,
+    breakEvenGoldGrowthVsFloatingPct,
+    breakEvenGoldGrowthVsFixedPct,
+    projectedGoldValue1YrVnd,
+    projectedInterestSaved1YrIfPrepayVnd,
+    netAdvantageHoldingGold1YrVnd,
+    verdict,
+    verdictTitle,
+    verdictDetail,
+  };
+}
+
+export interface NetWorthAllocationGuardrail {
+  actualSharePct: number;
+  targetSharePct: number;
+  minBandPct: number;
+  maxBandPct: number;
+  deviationPct: number;
+  status: "UNDERWEIGHT" | "BALANCED" | "OVERWEIGHT";
+  deltaVndToTarget: number;
+  deltaChiToTarget: number;
+  headline: string;
+}
+
+export function computeNetWorthAllocationGuardrail(
+  goldBidValueVnd: number,
+  totalHouseholdNetWorthVnd: number,
+  targetPct: number,
+  nhan9999BidPerChiVnd: number
+): NetWorthAllocationGuardrail {
+  const safeNetWorth = Math.max(0, totalHouseholdNetWorthVnd);
+  const safeTarget = Math.max(5, Math.min(50, targetPct || 15));
+  const minBandPct = Math.max(0, safeTarget - 5);
+  const maxBandPct = Math.min(60, safeTarget + 5);
+  const actualSharePct =
+    safeNetWorth > 0 ? Number(((goldBidValueVnd / safeNetWorth) * 100).toFixed(1)) : 0;
+  const deviationPct = Number((actualSharePct - safeTarget).toFixed(1));
+
+  const targetGoldVnd = Math.round(safeNetWorth * (safeTarget / 100));
+  const deltaVndToTarget = targetGoldVnd - goldBidValueVnd; // >0 cần mua thêm, <0 đang dư tỷ trọng
+  const deltaChiToTarget =
+    nhan9999BidPerChiVnd > 0
+      ? Number((Math.abs(deltaVndToTarget) / nhan9999BidPerChiVnd).toFixed(2))
+      : 0;
+
+  let status: NetWorthAllocationGuardrail["status"] = "BALANCED";
+  let headline = `Tỷ trọng Vàng (${actualSharePct}%) nằm trong vùng an toàn ${minBandPct}% – ${maxBandPct}% Tài sản ròng.`;
+  if (actualSharePct < minBandPct) {
+    status = "UNDERWEIGHT";
+    headline = `Tỷ trọng Vàng (${actualSharePct}%) thấp hơn mục tiêu ${safeTarget}% — có thể DCA thêm khoảng ${deltaChiToTarget} chỉ.`;
+  } else if (actualSharePct > maxBandPct) {
+    status = "OVERWEIGHT";
+    headline = `Tỷ trọng Vàng (${actualSharePct}%) vượt trần ${maxBandPct}% — thuận lợi chốt lời ~${deltaChiToTarget} chỉ cho Quỹ nhận nhà.`;
+  }
+
+  return {
+    actualSharePct,
+    targetSharePct: safeTarget,
+    minBandPct,
+    maxBandPct,
+    deviationPct,
+    status,
+    deltaVndToTarget,
+    deltaChiToTarget,
+    headline,
+  };
+}
+
+function escapeGoldCsv(val: string): string {
+  return `"${val.replace(/"/g, '""')}"`;
+}
+
+export function exportGoldVaultToCsv(
+  portfolio: GoldPortfolioState,
+  metricsInput?: GoldPortfolioMetrics
+): void {
+  const metrics = metricsInput ?? computeGoldPortfolioMetrics(portfolio);
+  const headers = [
+    "STT",
+    "Phân loại",
+    "Thương hiệu",
+    "Độ tinh khiết",
+    "Số seri",
+    "Mã hóa đơn/Chứng nhận",
+    "Cửa hàng mua",
+    "Ngày mua",
+    "Số chỉ gốc",
+    "Còn nắm giữ (chỉ)",
+    "Giá mua/chỉ (VND)",
+    "Tiền công (VND)",
+    "Giá vốn còn lại (VND)",
+    "Giá Bid hiện tại/chỉ (VND)",
+    "Giá trị thu mua Bid (VND)",
+    "Lãi/Lỗ tạm tính (VND)",
+    "Lãi/Lỗ (%)",
+    "Nơi cất giữ",
+    "Ghi chú",
+  ];
+
+  const rows = metrics.lotEvaluations.map((ev, idx) =>
+    [
+      String(idx + 1),
+      escapeGoldCsv(GOLD_CATEGORY_META[ev.lot.category].label),
+      escapeGoldCsv(ev.lot.brand),
+      escapeGoldCsv(ev.lot.purityLabel || ""),
+      escapeGoldCsv(ev.lot.serialNumber || ""),
+      escapeGoldCsv(ev.lot.certificateCode || ""),
+      escapeGoldCsv(ev.lot.storeName || ""),
+      escapeGoldCsv(ev.lot.purchaseDate),
+      String(ev.lot.quantityChi),
+      String(ev.lot.remainingChi),
+      String(ev.lot.unitBuyPricePerChi),
+      String(ev.lot.makingFee || 0),
+      String(ev.remainingCostBasis),
+      String(ev.currentBidPerChi),
+      String(ev.liquidationValueBid),
+      String(ev.unrealizedPnl),
+      `${ev.unrealizedPnlPct}%`,
+      escapeGoldCsv(GOLD_STORAGE_LABELS[ev.lot.storageLocation]),
+      escapeGoldCsv(ev.lot.invoiceNote || ""),
+    ].join(",")
+  );
+
+  rows.push(
+    [
+      "",
+      escapeGoldCsv("TỔNG CỘNG DANH MỤC ĐANG NẮM GIỮ"),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      String(metrics.totalRemainingChi),
+      String(metrics.weightedAvgCostPerChi),
+      "",
+      String(metrics.totalCostBasis),
+      String(metrics.weightedBidPerChi),
+      String(metrics.totalLiquidationValueBid),
+      String(metrics.unrealizedPnl),
+      `${metrics.unrealizedPnlPct}%`,
+      "",
+      "",
+    ].join(",")
+  );
+
+  if (portfolio.sales.length > 0) {
+    rows.push("");
+    rows.push(escapeGoldCsv("LỊCH SỬ BÁN / CHỐT LỜI ĐÃ THỰC HIỆN"));
+    rows.push(
+      [
+        "Ngày bán",
+        "Loại vàng",
+        "Số chỉ bán",
+        "Giá bán Bid/chỉ (VND)",
+        "Tiền thu về (VND)",
+        "Giá vốn phân bổ (VND)",
+        "Lãi/Lỗ thực nhận (VND)",
+        "Mục đích",
+        "Ghi chú",
+      ]
+        .map(escapeGoldCsv)
+        .join(",")
+    );
+    for (const s of portfolio.sales) {
+      rows.push(
+        [
+          escapeGoldCsv(s.saleDate),
+          escapeGoldCsv(GOLD_CATEGORY_META[s.category].label),
+          String(s.totalSoldChi),
+          String(s.unitSellPricePerChi),
+          String(s.totalProceeds),
+          String(s.costBasisAllocated),
+          String(s.realizedPnl),
+          escapeGoldCsv(s.purpose),
+          escapeGoldCsv(s.note || ""),
+        ].join(",")
+      );
+    }
+  }
+
+  const csvContent = "\uFEFF" + [headers.map(escapeGoldCsv).join(","), ...rows].join("\r\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `gold_vault_audit_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+

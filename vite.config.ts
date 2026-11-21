@@ -7,9 +7,32 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'lucide-react',
+        'recharts',
+        'clsx',
+        'tailwind-merge',
+        'zod',
+        '@supabase/supabase-js',
+        'three',
+        'three/examples/jsm/controls/OrbitControls.js',
+        'three/examples/jsm/environments/RoomEnvironment.js',
+        'three/examples/jsm/geometries/RoundedBoxGeometry.js',
+        'three/examples/jsm/loaders/GLTFLoader.js',
+        'html2canvas-pro',
+        'jspdf',
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

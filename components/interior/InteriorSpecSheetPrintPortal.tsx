@@ -15,6 +15,7 @@ import {
 } from "@/lib/interiorFloorplan";
 import {
   BOQ_GROUP_META,
+  EXECUTION_PHASE_META,
   ErgonomicWarning,
   ScenarioBoqSummary,
 } from "@/lib/interiorBoqEngine";
@@ -245,6 +246,8 @@ export function InteriorSpecSheetPrintPortal({
                 <div>Dự phòng ({scenario.contingencyPercent}%): <strong>{formatVNDMasked(boq.contingencyAmount, isPrivacyMode)}</strong></div>
                 <div>Đã thanh toán/cọc: <strong className="text-emerald-700">{formatVNDMasked(boq.paidOrDepositedVnd, isPrivacyMode)}</strong></div>
                 <div>Còn phải trả: <strong className="text-teal-700">{formatVNDMasked(boq.remainingToPayVnd, isPrivacyMode)}</strong></div>
+                <div>GĐ 1 (Nhận nhà): <strong>{formatVNDMasked(boq.phase1GrandTotalWithContingency, isPrivacyMode)}</strong></div>
+                <div>GĐ 2 (Nâng cấp sau): <strong>{formatVNDMasked(boq.phase2DeferredTotal, isPrivacyMode)}</strong></div>
               </div>
               <p className="text-[10px] text-slate-600 pt-1 border-t border-slate-200">
                 Kiểm tra công thái học: {warnings.length === 0 ? "Đạt 100% chuẩn lối đi & không chồng lấn." : `${warnings.length} lưu ý kỹ thuật cần rà soát tại công trình.`}
@@ -282,6 +285,11 @@ export function InteriorSpecSheetPrintPortal({
                   </td>
                   <td className="py-1.5 px-2 whitespace-nowrap">
                     {BOQ_GROUP_META[r.boqGroup].shortLabel}
+                    {r.source !== "DEVELOPER_INCLUDED" && (
+                      <span className="block text-[9px] text-slate-500">
+                        {EXECUTION_PHASE_META[r.executionPhase].shortLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="py-1.5 px-2 text-[9.5px] text-slate-600">
                     {r.vendorName || "—"}
@@ -320,6 +328,28 @@ export function InteriorSpecSheetPrintPortal({
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* 4-Milestone Construction Payment Schedule */}
+        <div className="border border-slate-300 rounded-lg p-2.5">
+          <p className="text-[11px] font-black uppercase text-slate-900 mb-1.5">
+            5. Dự kiến Lịch Giải Ngân Thi Công 4 Đợt (30% · 40% · 20% · 10%)
+          </p>
+          <div className="grid grid-cols-4 gap-2 text-[10px] tabular-nums">
+            {[
+              { label: "Đợt 1 (30%) · Ký HĐ & Đặt cọc xưởng", pct: 0.3 },
+              { label: "Đợt 2 (40%) · Giao gỗ tới công trình", pct: 0.4 },
+              { label: "Đợt 3 (20%) · Lắp đặt & Điện máy", pct: 0.2 },
+              { label: "Đợt 4 (10%) · Nghiệm thu bàn giao", pct: 0.1 },
+            ].map((m) => (
+              <div key={m.label} className="p-2 rounded bg-slate-50 border border-slate-200">
+                <p className="font-bold text-slate-700 leading-tight">{m.label}</p>
+                <p className="text-xs font-black text-teal-800 mt-1">
+                  {formatVNDMasked(Math.round(boq.grandTotalWithContingency * m.pct), isPrivacyMode)}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* MEP Schedule Table */}

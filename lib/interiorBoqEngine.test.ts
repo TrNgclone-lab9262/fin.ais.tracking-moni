@@ -7,11 +7,14 @@ import {
   resolveFinishForStylePreset,
 } from "./interiorFloorplan";
 import {
+  calculateConstructionMilestones,
   calculateHandoverReadiness,
   calculateScenarioBoq,
   compareInteriorScenarios,
+  evaluateArchitecturalAudit,
   evaluateErgonomicClearances,
 } from "./interiorBoqEngine";
+import { createDefaultGoldPortfolio } from "./goldEngine";
 import { InteriorDesignScenarioSchema } from "./validations";
 
 test("Scenario A (~118M) and Scenario B Dual Growth Studio (~140M) both fit inside 100-150M turnkey budget", () => {
@@ -257,4 +260,66 @@ test("Architecture customization (Glass partition, Accent Wall, Sliding door, He
   assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_door_")));
   assert.ok(customBoq.rows.some((r) => r.id.startsWith("arch_floor_")));
 });
+
+test("Value Engineering splits BOQ cleanly into Phase 1 (Move-in) and Phase 2 (Deferred Upgrade)", () => {
+  const scB = createScenarioBDualGrowthStudio();
+  const fullBoq = calculateScenarioBoq(scB);
+  assert.equal(fullBoq.phase2ItemCount, 0);
+  assert.equal(fullBoq.phase1GrandTotalWithContingency, fullBoq.grandTotalWithContingency);
+
+  // Defer 2 new-purchase items to PHASE_2_UPGRADE
+  const newPurchaseItems = scB.items.filter((i) => i.source === "NEW_PURCHASE");
+  assert.ok(newPurchaseItems.length >= 2);
+  newPurchaseItems[0].executionPhase = "PHASE_2_UPGRADE";
+  newPurchaseItems[1].executionPhase = "PHASE_2_UPGRADE";
+
+  const splitBoq = calculateScenarioBoq(scB);
+  assert.equal(splitBoq.phase2ItemCount, 2);
+  assert.ok(splitBoq.phase2DeferredTotal > 0);
+  assert.equal(splitBoq.phase1Subtotal + splitBoq.phase2DeferredTotal, splitBoq.subtotalNewPurchase);
+  assert.ok(splitBoq.phase1GrandTotalWithContingency < splitBoq.grandTotalWithContingency);
+});
+
+test("evaluateArchitecturalAudit runs 6 quantitative ergonomic checks and scores Scenario A & B", () => {
+  const scA = createScenarioAGuestBedroom();
+  const scB = createScenarioBDualGrowthStudio();
+
+  const auditA = evaluateArchitecturalAudit(scA);
+  const auditB = evaluateArchitecturalAudit(scB);
+
+  assert.equal(auditA.totalChecks, 6);
+  assert.equal(auditB.totalChecks, 6);
+  assert.equal(auditA.passCount + auditA.warningCount + auditA.dangerCount, 6);
+  assert.ok(auditB.footprintCoveragePct > 10 && auditB.footprintCoveragePct < 60);
+
+  const diff = compareInteriorScenarios(scA, scB);
+  assert.equal(diff.ergonomicPassCountA, auditA.passCount);
+  assert.equal(diff.ergonomicPassCountB, auditB.passCount);
+  assert.equal(diff.ergonomicTotalChecks, 6);
+});
+
+test("calculateConstructionMilestones distributes 30/40/20/10 schedule and links shortfall to Gold Vault", () => {
+  const goldPortfolio = createDefaultGoldPortfolio();
+  const plan = calculateConstructionMilestones({
+    boqTotalVnd: 140_000_000,
+    boqPaidVnd: 10_000_000,
+    currentLiquidCashVnd: 20_000_000,
+    monthlyNetSurplusVnd: 8_000_000,
+    monthsUntilHandover: 9,
+    goldPortfolio,
+  });
+
+  assert.equal(plan.milestones.length, 4);
+  assert.deepEqual(
+    plan.milestones.map((m) => m.weightPct),
+    [30, 40, 20, 10]
+  );
+  const sumAmounts = plan.milestones.reduce((s, m) => s + m.milestoneAmountVnd, 0);
+  assert.equal(sumAmounts, 140_000_000);
+  assert.equal(plan.milestones[0].alreadyPaidCoveredVnd, 10_000_000);
+  assert.equal(plan.totalNetDueVnd, 130_000_000);
+  assert.ok(plan.totalGoldNeededVnd > 0);
+  assert.ok(plan.totalGoldChiToSell > 0);
+});
+
 

@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Coins, Layers } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { InteriorDesignScenario } from "@/types/finance";
 import {
   ScenarioBoqSummary,
+  calculateConstructionMilestones,
   calculateHandoverReadiness,
 } from "@/lib/interiorBoqEngine";
 import { computeGoldPortfolioMetrics, formatChiWeight } from "@/lib/goldEngine";
@@ -20,7 +21,13 @@ export function HandoverReadinessTab({
   activeScenario,
   activeBoq,
 }: HandoverReadinessTabProps) {
-  const { goldPortfolio, summary, isPrivacyMode, switchSubApp } = useFinance();
+  const {
+    goldPortfolio,
+    summary,
+    isPrivacyMode,
+    switchSubApp,
+    setGoldSimulatorPresetTarget,
+  } = useFinance();
 
   const [monthlySurplusInput, setMonthlySurplusInput] = useState<number>(() =>
     Math.max(
@@ -31,8 +38,15 @@ export function HandoverReadinessTab({
   );
   const [monthsUntilHandover, setMonthsUntilHandover] = useState<number>(9);
   const [includePinkBook5Pct, setIncludePinkBook5Pct] = useState<boolean>(false);
+  const [boqScopeMode, setBoqScopeMode] = useState<"FULL" | "PHASE_1">("FULL");
 
   const goldMetrics = useMemo(() => computeGoldPortfolioMetrics(goldPortfolio), [goldPortfolio]);
+  const nhanBidPerChi = goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000;
+
+  const effectiveBoqTotal =
+    boqScopeMode === "PHASE_1"
+      ? activeBoq.phase1GrandTotalWithContingency
+      : activeBoq.grandTotalWithContingency;
 
   const readiness = useMemo(
     () =>
@@ -40,9 +54,8 @@ export function HandoverReadinessTab({
         liquidCashVnd: summary.currentBalance,
         monthlyNetSurplusVnd: monthlySurplusInput,
         goldLiquidationValueBidVnd: goldMetrics.totalLiquidationValueBid,
-        goldNhan9999BidPerChiVnd:
-          goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000,
-        interiorBoqTotalVnd: activeBoq.grandTotalWithContingency,
+        goldNhan9999BidPerChiVnd: nhanBidPerChi,
+        interiorBoqTotalVnd: effectiveBoqTotal,
         interiorBoqPaidVnd: activeBoq.paidOrDepositedVnd,
         includePinkBook5Pct,
         monthsUntilHandover,
@@ -51,13 +64,38 @@ export function HandoverReadinessTab({
       summary.currentBalance,
       monthlySurplusInput,
       goldMetrics.totalLiquidationValueBid,
-      goldPortfolio.quotes,
-      activeBoq.grandTotalWithContingency,
+      nhanBidPerChi,
+      effectiveBoqTotal,
       activeBoq.paidOrDepositedVnd,
       includePinkBook5Pct,
       monthsUntilHandover,
     ]
   );
+
+  const milestonesPlan = useMemo(
+    () =>
+      calculateConstructionMilestones({
+        boqTotalVnd: effectiveBoqTotal,
+        boqPaidVnd: activeBoq.paidOrDepositedVnd,
+        currentLiquidCashVnd: summary.currentBalance,
+        monthlyNetSurplusVnd: monthlySurplusInput,
+        monthsUntilHandover,
+        goldPortfolio,
+      }),
+    [
+      effectiveBoqTotal,
+      activeBoq.paidOrDepositedVnd,
+      summary.currentBalance,
+      monthlySurplusInput,
+      monthsUntilHandover,
+      goldPortfolio,
+    ]
+  );
+
+  const handleOpenGoldSimulatorForAmount = (amountVnd: number, label: string) => {
+    setGoldSimulatorPresetTarget({ amountVnd: Math.max(0, Math.round(amountVnd)), label });
+    switchSubApp("GOLD", { goldTab: "SIMULATOR" });
+  };
 
   return (
     <div className="space-y-5">
@@ -83,7 +121,8 @@ export function HandoverReadinessTab({
                 : `Cần tăng tích lũy thêm ${formatShortVNDMasked(Math.abs(readiness.combinedSurplusOrGapVnd), isPrivacyMode)} trước Q3/2027`}
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-300 tabular-nums">
-            Đang áp dụng phương án <strong>{activeScenario.name}</strong> (Tổng BOQ{" "}
+            Đang áp dụng <strong>{activeScenario.name}</strong> (
+            {boqScopeMode === "PHASE_1" ? "BOQ Giai đoạn 1" : "BOQ Trọn gói"}{" "}
             {formatShortVNDMasked(readiness.interiorBoqGrossTotalVnd, isPrivacyMode)}
             {readiness.interiorBoqPaidVnd > 0
               ? ` · đã chi ${formatShortVNDMasked(readiness.interiorBoqPaidVnd, isPrivacyMode)} · còn phải chuẩn bị ${formatShortVNDMasked(readiness.interiorBoqTotalVnd, isPrivacyMode)}`
@@ -95,7 +134,14 @@ export function HandoverReadinessTab({
         <div className="flex flex-wrap gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => switchSubApp("GOLD", { goldTab: "SIMULATOR" })}
+            onClick={() =>
+              handleOpenGoldSimulatorForAmount(
+                readiness.cashOnlyGapVnd > 0
+                  ? readiness.cashOnlyGapVnd
+                  : readiness.interiorBoqTotalVnd,
+                `Bù thiếu Nhận nhà Q3/2027 (${activeScenario.shortLabel})`
+              )
+            }
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-extrabold bg-amber-500 hover:bg-amber-600 text-stone-950 cursor-pointer"
           >
             <span>Mở Mô phỏng Bán Vàng</span>
@@ -112,64 +158,217 @@ export function HandoverReadinessTab({
         </div>
       </div>
 
-      {/* Interactive Controls */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs">
+      {/* Interactive Controls + BOQ Scope Switch */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="inline-flex items-center gap-2 text-xs">
+            <Layers className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             <span className="font-bold text-slate-700 dark:text-slate-200">
-              Thặng dư tiết kiệm / tháng
-            </span>
-            <span className="font-black text-teal-700 dark:text-teal-300 tabular-nums">
-              {formatShortVNDMasked(monthlySurplusInput, isPrivacyMode)}
+              Phạm vi dự toán nội thất áp dụng:
             </span>
           </div>
-          <input
-            type="range"
-            min={5_000_000}
-            max={45_000_000}
-            step={1_000_000}
-            value={monthlySurplusInput}
-            onChange={(e) => setMonthlySurplusInput(Number(e.target.value))}
-            className="w-full accent-teal-600"
-          />
+          <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
+            <button
+              type="button"
+              onClick={() => setBoqScopeMode("FULL")}
+              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer tabular-nums ${
+                boqScopeMode === "FULL"
+                  ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400"
+              }`}
+            >
+              BOQ Trọn gói ({formatShortVNDMasked(activeBoq.grandTotalWithContingency, isPrivacyMode)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setBoqScopeMode("PHASE_1")}
+              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer tabular-nums ${
+                boqScopeMode === "PHASE_1"
+                  ? "bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-300 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400"
+              }`}
+            >
+              Chỉ GĐ 1 ({formatShortVNDMasked(activeBoq.phase1GrandTotalWithContingency, isPrivacyMode)})
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="font-bold text-slate-700 dark:text-slate-200">
-              Số tháng tích lũy tới Q3/2027
-            </span>
-            <span className="font-black text-teal-700 dark:text-teal-300 tabular-nums">
-              {monthsUntilHandover} tháng
-            </span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="font-bold text-slate-700 dark:text-slate-200">
+                Thặng dư tiết kiệm / tháng
+              </span>
+              <span className="font-black text-teal-700 dark:text-teal-300 tabular-nums">
+                {formatShortVNDMasked(monthlySurplusInput, isPrivacyMode)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={5_000_000}
+              max={45_000_000}
+              step={1_000_000}
+              value={monthlySurplusInput}
+              onChange={(e) => setMonthlySurplusInput(Number(e.target.value))}
+              className="w-full accent-teal-600"
+            />
           </div>
-          <input
-            type="range"
-            min={3}
-            max={18}
-            step={1}
-            value={monthsUntilHandover}
-            onChange={(e) => setMonthsUntilHandover(Number(e.target.value))}
-            className="w-full accent-teal-600"
-          />
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="font-bold text-slate-700 dark:text-slate-200">
+                Số tháng tích lũy tới Q3/2027
+              </span>
+              <span className="font-black text-teal-700 dark:text-teal-300 tabular-nums">
+                {monthsUntilHandover} tháng
+              </span>
+            </div>
+            <input
+              type="range"
+              min={3}
+              max={18}
+              step={1}
+              value={monthsUntilHandover}
+              onChange={(e) => setMonthsUntilHandover(Number(e.target.value))}
+              className="w-full accent-teal-600"
+            />
+          </div>
+
+          <label className="flex items-center gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includePinkBook5Pct}
+              onChange={(e) => setIncludePinkBook5Pct(e.target.checked)}
+              className="w-4 h-4 accent-teal-600"
+            />
+            <div className="text-xs">
+              <p className="font-bold text-slate-800 dark:text-slate-100">
+                Gộp luôn 5% Sổ hồng (72,3 tr)
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Mặc định đóng riêng khi có thông báo làm sổ
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {/* 4-Milestone Construction Payment Schedule (30% / 40% / 20% / 10%) linked to Cashflow & Gold */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white">
+              Lịch Giải Ngân Thi Công 4 Đợt (30% · 40% · 20% · 10%) Liên Thông Dòng Tiền & Kho Vàng
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+              Phân bổ {formatShortVNDMasked(milestonesPlan.totalBoqTargetVnd, isPrivacyMode)} theo tiến độ xưởng gỗ & nghiệm thu · Tổng cần trích Kho Vàng:{" "}
+              <strong className="text-amber-700 dark:text-amber-300">
+                {milestonesPlan.totalGoldNeededVnd > 0
+                  ? `${formatShortVNDMasked(milestonesPlan.totalGoldNeededVnd, isPrivacyMode)} (~${formatChiWeight(milestonesPlan.totalGoldChiToSell, isPrivacyMode)})`
+                  : "0 đ (đủ 100% tiền mặt)"}
+              </strong>
+            </p>
+          </div>
+          {milestonesPlan.totalGoldNeededVnd > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                handleOpenGoldSimulatorForAmount(
+                  milestonesPlan.totalGoldNeededVnd,
+                  `Tổng vàng cần bán cho 4 đợt thi công (${activeScenario.shortLabel})`
+                )
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 hover:bg-amber-100 cursor-pointer"
+            >
+              <Coins className="w-3.5 h-3.5" />
+              <span>Mô phỏng bán tổng {formatChiWeight(milestonesPlan.totalGoldChiToSell, isPrivacyMode)}</span>
+            </button>
+          )}
         </div>
 
-        <label className="flex items-center gap-2.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includePinkBook5Pct}
-            onChange={(e) => setIncludePinkBook5Pct(e.target.checked)}
-            className="w-4 h-4 accent-teal-600"
-          />
-          <div className="text-xs">
-            <p className="font-bold text-slate-800 dark:text-slate-100">
-              Gộp luôn 5% Sổ hồng (72,3 tr)
-            </p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Mặc định đóng riêng khi có thông báo làm sổ
-            </p>
-          </div>
-        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {milestonesPlan.milestones.map((m) => {
+            const isFullyPaid = m.netCashDueVnd === 0 && m.milestoneAmountVnd > 0;
+            const statusTone = isFullyPaid
+              ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20"
+              : m.fundingStatus === "COVERED_BY_CASH"
+                ? "border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40"
+                : m.fundingStatus === "NEED_GOLD_LIQUIDATION"
+                  ? "border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20"
+                  : "border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20";
+
+            return (
+              <div
+                key={m.id}
+                className={`rounded-xl border p-3.5 flex flex-col justify-between gap-3 ${statusTone}`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black text-slate-900 dark:text-white">
+                      {m.title}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                      T+{m.monthsFromNow} tháng
+                    </span>
+                  </div>
+                  <p className="text-base font-black text-slate-900 dark:text-white tabular-nums">
+                    {formatShortVNDMasked(m.milestoneAmountVnd, isPrivacyMode)}
+                  </p>
+                  <div className="space-y-0.5 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">
+                    {m.alreadyPaidCoveredVnd > 0 && (
+                      <p className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                        Đã chi: {formatShortVNDMasked(m.alreadyPaidCoveredVnd, isPrivacyMode)}
+                      </p>
+                    )}
+                    <p>
+                      Tiền mặt dùng: <strong>{formatShortVNDMasked(m.cashUsedVnd, isPrivacyMode)}</strong>
+                    </p>
+                    <p>
+                      Vàng cần trích:{" "}
+                      <strong
+                        className={
+                          m.goldNeededVnd > 0
+                            ? "text-amber-700 dark:text-amber-300"
+                            : "text-emerald-700 dark:text-emerald-400"
+                        }
+                      >
+                        {m.goldNeededVnd > 0
+                          ? `${formatShortVNDMasked(m.goldNeededVnd, isPrivacyMode)} (${formatChiWeight(m.suggestedGoldChiToSell, isPrivacyMode)})`
+                          : "0 đ"}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                  {isFullyPaid ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Đã thanh toán xong
+                    </span>
+                  ) : m.goldNeededVnd > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleOpenGoldSimulatorForAmount(
+                          m.goldNeededVnd,
+                          `${m.title} · ${activeScenario.shortLabel}`
+                        )
+                      }
+                      className="w-full inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold bg-amber-500 hover:bg-amber-600 text-stone-950 cursor-pointer"
+                    >
+                      <span>Mô phỏng bán vàng Đợt này</span>
+                      <ArrowUpRight className="w-3 h-3" />
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 dark:text-teal-300">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Đủ tiền mặt · giữ nguyên Vàng
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 2-Column Ledger: Needs vs Resources */}
@@ -199,7 +398,10 @@ export function HandoverReadinessTab({
             {/* Zero double-counting breakdown for BOQ */}
             <div className="py-2 border-b border-slate-100 dark:border-slate-800 space-y-1.5">
               <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                <span>Tổng BOQ trọn gói ({activeScenario.shortLabel})</span>
+                <span>
+                  {boqScopeMode === "PHASE_1" ? "BOQ Giai đoạn 1" : "Tổng BOQ trọn gói"} (
+                  {activeScenario.shortLabel})
+                </span>
                 <span className="tabular-nums">
                   {formatVNDMasked(readiness.interiorBoqGrossTotalVnd, isPrivacyMode)}
                 </span>
@@ -298,3 +500,4 @@ export function HandoverReadinessTab({
     </div>
   );
 }
+

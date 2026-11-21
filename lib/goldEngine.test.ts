@@ -3,10 +3,16 @@ import assert from "node:assert/strict";
 import {
   allocateFifoGoldSale,
   allocateSpecificLotSale,
+  buildGoldNavHistorySeries,
   computeDomesticPremium,
   computeGoldPortfolioMetrics,
+  computeGoldVsMortgageBenchmark,
+  computeNetWorthAllocationGuardrail,
   createDefaultGoldPortfolio,
+  createGoldPriceSnapshot,
+  evaluateGoldAlerts,
   simulateGoldLiquidation,
+  upsertGoldPriceSnapshot,
 } from "./goldEngine";
 
 test("createDefaultGoldPortfolio seeds Nhẫn 9999 holdings and Bid valuation", () => {
@@ -68,3 +74,74 @@ test("simulateGoldLiquidation calculates chỉ needed for Q3/2027 handover targe
   assert.ok(sim.totalProceedsVnd >= 45_000_000);
   assert.ok(sim.steps.length > 0);
 });
+
+test("buildGoldNavHistorySeries constructs deterministic chronological NAV points and overlays daily snapshots", () => {
+  const portfolio = createDefaultGoldPortfolio();
+  const snap = createGoldPriceSnapshot(portfolio, "2026-10-01T08:00:00.000Z");
+  portfolio.priceHistory = upsertGoldPriceSnapshot(portfolio.priceHistory, snap);
+
+  const series = buildGoldNavHistorySeries(portfolio);
+  assert.ok(series.length >= 4);
+  for (let i = 1; i < series.length; i++) {
+    assert.ok(series[i].date >= series[i - 1].date);
+  }
+  const latest = series[series.length - 1];
+  const metrics = computeGoldPortfolioMetrics(portfolio);
+  assert.equal(latest.source, "CURRENT");
+  assert.equal(latest.bidValueVnd, metrics.totalLiquidationValueBid);
+  assert.equal(latest.costBasisVnd, metrics.totalCostBasis);
+});
+
+test("evaluateGoldAlerts triggers TARGET_BID_ABOVE and SPREAD_ABOVE_PCT when quotes cross thresholds", () => {
+  const portfolio = createDefaultGoldPortfolio();
+  portfolio.quotes.NHAN_9999.buyPricePerChi = 9_750_000;
+  portfolio.quotes.NHAN_9999.sellPricePerChi = 9_920_000;
+  portfolio.quotes.SJC_BAR.buyPricePerChi = 9_000_000;
+  portfolio.quotes.SJC_BAR.sellPricePerChi = 9_400_000; // ~4.25% spread
+
+  const alerts = evaluateGoldAlerts(portfolio);
+  const targetBidAlert = alerts.find((a) => a.rule.condition === "TARGET_BID_ABOVE");
+  const spreadAlert = alerts.find((a) => a.rule.condition === "SPREAD_ABOVE_PCT");
+
+  assert.ok(targetBidAlert);
+  assert.equal(targetBidAlert.triggered, true);
+  assert.ok(spreadAlert);
+  assert.equal(spreadAlert.triggered, true);
+});
+
+test("computeGoldVsMortgageBenchmark computes break-even rate and switches verdict cleanly", () => {
+  const portfolio = createDefaultGoldPortfolio();
+  const metrics = computeGoldPortfolioMetrics(portfolio);
+
+  const holdCase = computeGoldVsMortgageBenchmark(portfolio, metrics, null, {
+    expectedGoldGrowthPct: 12.0,
+    prepaymentPenaltyPct: 1.0,
+    referenceDateIso: "2026-11-20T08:00:00.000Z",
+  });
+  assert.equal(holdCase.breakEvenGoldGrowthVsFloatingPct, 9.5);
+  assert.equal(holdCase.verdict, "HOLD_GOLD");
+  assert.ok(holdCase.netAdvantageHoldingGold1YrVnd > 0);
+
+  const prepayCase = computeGoldVsMortgageBenchmark(portfolio, metrics, null, {
+    expectedGoldGrowthPct: 6.0,
+    prepaymentPenaltyPct: 1.0,
+    referenceDateIso: "2026-11-20T08:00:00.000Z",
+  });
+  assert.equal(prepayCase.verdict, "PREPAY_MORTGAGE");
+  assert.ok(prepayCase.netAdvantageHoldingGold1YrVnd < 0);
+});
+
+test("computeNetWorthAllocationGuardrail classifies UNDERWEIGHT, BALANCED, and OVERWEIGHT accurately", () => {
+  const under = computeNetWorthAllocationGuardrail(50_000_000, 1_000_000_000, 15, 9_050_000);
+  assert.equal(under.status, "UNDERWEIGHT");
+  assert.equal(under.actualSharePct, 5);
+  assert.ok(under.deltaVndToTarget > 0);
+
+  const balanced = computeNetWorthAllocationGuardrail(160_000_000, 1_000_000_000, 15, 9_050_000);
+  assert.equal(balanced.status, "BALANCED");
+
+  const over = computeNetWorthAllocationGuardrail(260_000_000, 1_000_000_000, 15, 9_050_000);
+  assert.equal(over.status, "OVERWEIGHT");
+  assert.ok(over.deltaVndToTarget < 0);
+});
+

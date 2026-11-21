@@ -18,16 +18,19 @@ import {
   InteriorBoqGroup,
   InteriorBoqPaymentStage,
   InteriorDesignScenario,
+  InteriorExecutionPhase,
   InteriorProcurementStatus,
 } from "@/types/finance";
 import {
   BOQ_GROUP_META,
   BOQ_PAYMENT_STAGE_META,
   BoqUnifiedRow,
+  EXECUTION_PHASE_META,
   ScenarioBoqSummary,
   compareInteriorScenarios,
   exportBoqToCsv,
 } from "@/lib/interiorBoqEngine";
+import { formatChiWeight } from "@/lib/goldEngine";
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 
 const PROCUREMENT_STATUS_META: Record<
@@ -63,10 +66,12 @@ export function BoqProcurementTab({
     updateBoqItemStatus,
     recordBoqPaymentToFinance,
     accounts,
+    goldPortfolio,
     isPrivacyMode,
   } = useFinance();
 
   const [boqGroupFilter, setBoqGroupFilter] = useState<InteriorBoqGroup | "ALL">("ALL");
+  const [phaseFilter, setPhaseFilter] = useState<InteriorExecutionPhase | "ALL">("ALL");
   const [expandedVendorRowKey, setExpandedVendorRowKey] = useState<string | null>(null);
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState<boolean>(false);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
@@ -98,12 +103,16 @@ export function BoqProcurementTab({
   const [payNote, setPayNote] = useState("");
   const [payNotice, setPayNotice] = useState<string | null>(null);
 
+  const nhanBidPerChi = goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000;
+
   const filteredRows = useMemo(
     () =>
-      boqGroupFilter === "ALL"
-        ? activeBoq.rows
-        : activeBoq.rows.filter((r) => r.boqGroup === boqGroupFilter),
-    [activeBoq.rows, boqGroupFilter]
+      activeBoq.rows.filter((r) => {
+        const groupOk = boqGroupFilter === "ALL" || r.boqGroup === boqGroupFilter;
+        const phaseOk = phaseFilter === "ALL" || r.executionPhase === phaseFilter;
+        return groupOk && phaseOk;
+      }),
+    [activeBoq.rows, boqGroupFilter, phaseFilter]
   );
 
   const compareTargetScenario = useMemo(() => {
@@ -213,6 +222,17 @@ export function BoqProcurementTab({
     }
   };
 
+  const handleToggleRowPhase = (row: BoqUnifiedRow) => {
+    if (row.source === "DEVELOPER_INCLUDED") return;
+    const nextPhase: InteriorExecutionPhase =
+      row.executionPhase === "PHASE_2_UPGRADE" ? "PHASE_1_MOVE_IN" : "PHASE_2_UPGRADE";
+    if (row.origin === "3D_ITEM") {
+      updateInteriorFurnitureItem(row.id, { executionPhase: nextPhase });
+    } else {
+      updateInteriorExtraBoqItem(row.id, { executionPhase: nextPhase });
+    }
+  };
+
   return (
     <div className="space-y-5">
       {payNotice && (
@@ -279,6 +299,60 @@ export function BoqProcurementTab({
             </div>
           );
         })}
+      </div>
+
+      {/* Value Engineering Split Strip (Phase 1 Move-In vs Phase 2 Upgrade) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Value Engineering · GĐ 1 Nhận nhà ở ngay
+          </p>
+          <p className="text-lg font-black text-teal-700 dark:text-teal-300 tabular-nums mt-0.5">
+            {formatShortVNDMasked(activeBoq.phase1GrandTotalWithContingency, isPrivacyMode)}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+            Đã gồm {activeScenario.contingencyPercent}% dự phòng · ưu tiên ở ngay Q3/2027
+          </p>
+        </div>
+
+        <div className="md:border-l md:border-slate-200 dark:md:border-slate-800 md:pl-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            GĐ 2 Hoãn nâng cấp sau ({activeBoq.phase2ItemCount} hạng mục)
+          </p>
+          <p className="text-lg font-black text-amber-700 dark:text-amber-300 tabular-nums mt-0.5">
+            {activeBoq.phase2DeferredTotal > 0
+              ? `Tiết kiệm ngay ${formatShortVNDMasked(activeBoq.phase2DeferredTotal, isPrivacyMode)}`
+              : "Chưa hoãn hạng mục nào"}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+            {activeBoq.phase2DeferredTotal > 0
+              ? `Giữ lại ~${formatChiWeight(activeBoq.phase2DeferredTotal / nhanBidPerChi, isPrivacyMode)} vàng không phải bán sớm`
+              : "Chạm nút GĐ 1 ở từng dòng bên dưới để chuyển sang GĐ 2"}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center md:justify-end gap-1.5">
+          {(
+            [
+              { id: "ALL", label: "Cả 2 GĐ" },
+              { id: "PHASE_1_MOVE_IN", label: "Chỉ GĐ 1" },
+              { id: "PHASE_2_UPGRADE", label: `Chỉ GĐ 2 (${activeBoq.phase2ItemCount})` },
+            ] as { id: InteriorExecutionPhase | "ALL"; label: string }[]
+          ).map((pf) => (
+            <button
+              key={pf.id}
+              type="button"
+              onClick={() => setPhaseFilter(pf.id)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap transition-colors cursor-pointer ${
+                phaseFilter === pf.id
+                  ? "bg-teal-600 border-teal-600 text-white"
+                  : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+              }`}
+            >
+              {pf.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Action Bar & BOQ Table */}
@@ -365,7 +439,23 @@ export function BoqProcurementTab({
                       <td className="py-3 pr-3">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
+                              {row.source !== "DEVELOPER_INCLUDED" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleRowPhase(row)}
+                                  title="Chuyển giữa Giai đoạn 1 (Nhận nhà) và Giai đoạn 2 (Hoãn nâng cấp)"
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border whitespace-nowrap cursor-pointer transition-colors ${
+                                    row.executionPhase === "PHASE_2_UPGRADE"
+                                      ? "bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+                                      : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-400"
+                                  }`}
+                                >
+                                  {EXECUTION_PHASE_META[row.executionPhase].shortLabel}
+                                </button>
+                              )}
+                            </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
                               {BOQ_GROUP_META[row.boqGroup].shortLabel}
                               {row.vendorName ? ` · NCC: ${row.vendorName}` : ""}
@@ -616,23 +706,29 @@ export function BoqProcurementTab({
             </div>
 
             <div className="p-5 overflow-y-auto space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-xs tabular-nums">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs tabular-nums">
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70">
                   <span className="text-slate-500 block">{activeScenario.shortLabel}</span>
-                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                  <span className="text-sm font-black text-slate-900 dark:text-white block">
                     {formatShortVNDMasked(diffSummary.baseTotalVnd, isPrivacyMode)}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    GĐ 1: {formatShortVNDMasked(diffSummary.basePhase1TotalVnd, isPrivacyMode)} · Công thái học {diffSummary.ergonomicPassCountA}/{diffSummary.ergonomicTotalChecks}
                   </span>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70">
                   <span className="text-slate-500 block">{compareTargetScenario.shortLabel}</span>
-                  <span className="text-sm font-black text-slate-900 dark:text-white">
+                  <span className="text-sm font-black text-slate-900 dark:text-white block">
                     {formatShortVNDMasked(diffSummary.compareTotalVnd, isPrivacyMode)}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    GĐ 1: {formatShortVNDMasked(diffSummary.comparePhase1TotalVnd, isPrivacyMode)} · Công thái học {diffSummary.ergonomicPassCountB}/{diffSummary.ergonomicTotalChecks}
                   </span>
                 </div>
                 <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800">
-                  <span className="text-teal-700 dark:text-teal-300 block">Chênh lệch ròng</span>
+                  <span className="text-teal-700 dark:text-teal-300 block">Chênh lệch ròng (Trọn gói)</span>
                   <span
-                    className={`text-sm font-black ${
+                    className={`text-sm font-black block ${
                       diffSummary.netDeltaVnd > 0
                         ? "text-rose-600 dark:text-rose-400"
                         : "text-emerald-700 dark:text-emerald-300"
@@ -640,6 +736,9 @@ export function BoqProcurementTab({
                   >
                     {diffSummary.netDeltaVnd > 0 ? "+" : ""}
                     {formatShortVNDMasked(diffSummary.netDeltaVnd, isPrivacyMode)}
+                  </span>
+                  <span className="text-[10px] text-teal-800 dark:text-teal-300 block mt-0.5">
+                    ≈ {formatChiWeight(Math.abs(diffSummary.netDeltaVnd) / nhanBidPerChi, isPrivacyMode)} vàng · GĐ 1: {diffSummary.phase1DeltaVnd > 0 ? "+" : ""}{formatShortVNDMasked(diffSummary.phase1DeltaVnd, isPrivacyMode)}
                   </span>
                 </div>
               </div>

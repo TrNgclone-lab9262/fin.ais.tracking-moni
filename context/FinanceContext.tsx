@@ -48,6 +48,7 @@ import {
   MortgagePeriodCashflowOverride,
   QuickAuthViewId,
   SavingsChallenge,
+  GoldAlertRule,
   GoldCategory,
   GoldDcaPlan,
   GoldLot,
@@ -130,7 +131,10 @@ import {
   allocateFifoGoldSale,
   allocateSpecificLotSale,
   computeGoldPortfolioMetrics,
+  createDefaultGoldAlerts,
   createDefaultGoldPortfolio,
+  createGoldPriceSnapshot,
+  upsertGoldPriceSnapshot,
 } from "@/lib/goldEngine";
 import {
   DEFAULT_LIGHTING_ZONES,
@@ -476,6 +480,11 @@ interface FinanceContextType {
   updateGoldMacro: (patch: Partial<Pick<GoldMacroContext, "worldXauUsdPerOz" | "usdVndRate">>) => void;
   updateGoldDcaPlan: (patch: Partial<GoldDcaPlan>) => void;
   toggleGoldIncludeInNetWorth: (include: boolean) => void;
+  addGoldAlertRule: (rule: Omit<GoldAlertRule, "id" | "createdAt">) => void;
+  toggleGoldAlertRule: (id: string) => void;
+  deleteGoldAlertRule: (id: string) => void;
+  goldSimulatorPresetTarget: { amountVnd: number; label: string } | null;
+  setGoldSimulatorPresetTarget: (preset: { amountVnd: number; label: string } | null) => void;
   fetchReferenceGoldPrices: (force?: boolean) => Promise<{ ok: boolean; mode?: string; note?: string; error?: string }>;
   resetGoldPortfolio: () => void;
 
@@ -632,6 +641,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   );
   const [interiorUndoStack, setInteriorUndoStack] = useState<InteriorStudioState[]>([]);
   const [interiorRedoStack, setInteriorRedoStack] = useState<InteriorStudioState[]>([]);
+  const [goldSimulatorPresetTarget, setGoldSimulatorPresetTarget] = useState<{
+    amountVnd: number;
+    label: string;
+  } | null>(null);
   const [skyoneAutoSyncedNotice, setSkyoneAutoSyncedNotice] = useState<string | null>(null);
   const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
@@ -3119,12 +3132,26 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // KHO TÍCH SẢN VÀNG (GOLD SUB-APP) ACTIONS
   // =========================================================================
   const updateGoldPortfolioState = useCallback(
-    (updater: (prev: GoldPortfolioState) => GoldPortfolioState) => {
+    (
+      updater: (prev: GoldPortfolioState) => GoldPortfolioState,
+      options?: { recordSnapshot?: boolean }
+    ) => {
       setGoldPortfolio((prev) => {
-        const next = {
+        const nowIso = new Date().toISOString();
+        const draft: GoldPortfolioState = {
           ...updater(prev),
-          updatedAt: new Date().toISOString(),
+          updatedAt: nowIso,
         };
+        const shouldSnap = options?.recordSnapshot !== false;
+        const next: GoldPortfolioState = shouldSnap
+          ? {
+              ...draft,
+              priceHistory: upsertGoldPriceSnapshot(
+                draft.priceHistory,
+                createGoldPriceSnapshot(draft, nowIso)
+              ),
+            }
+          : draft;
         queueCloudMutation({ type: "UPSERT_GOLD_PORTFOLIO", payload: next });
         return next;
       });
@@ -3323,10 +3350,64 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const toggleGoldIncludeInNetWorth = useCallback(
     (include: boolean) => {
-      updateGoldPortfolioState((prev) => ({
-        ...prev,
-        includeInNetWorth: include,
-      }));
+      updateGoldPortfolioState(
+        (prev) => ({
+          ...prev,
+          includeInNetWorth: include,
+        }),
+        { recordSnapshot: false }
+      );
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const addGoldAlertRule = useCallback(
+    (rule: Omit<GoldAlertRule, "id" | "createdAt">) => {
+      const nowIso = new Date().toISOString();
+      const created: GoldAlertRule = {
+        ...rule,
+        id: `gold_alert_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        createdAt: nowIso,
+      };
+      updateGoldPortfolioState(
+        (prev) => ({
+          ...prev,
+          alerts: [created, ...(prev.alerts ?? createDefaultGoldAlerts(prev.updatedAt))],
+        }),
+        { recordSnapshot: false }
+      );
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const toggleGoldAlertRule = useCallback(
+    (id: string) => {
+      updateGoldPortfolioState(
+        (prev) => {
+          const base = prev.alerts ?? createDefaultGoldAlerts(prev.updatedAt);
+          return {
+            ...prev,
+            alerts: base.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)),
+          };
+        },
+        { recordSnapshot: false }
+      );
+    },
+    [updateGoldPortfolioState]
+  );
+
+  const deleteGoldAlertRule = useCallback(
+    (id: string) => {
+      updateGoldPortfolioState(
+        (prev) => {
+          const base = prev.alerts ?? createDefaultGoldAlerts(prev.updatedAt);
+          return {
+            ...prev,
+            alerts: base.filter((a) => a.id !== id),
+          };
+        },
+        { recordSnapshot: false }
+      );
     },
     [updateGoldPortfolioState]
   );
@@ -5038,6 +5119,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     updateGoldMacro,
     updateGoldDcaPlan,
     toggleGoldIncludeInNetWorth,
+    addGoldAlertRule,
+    toggleGoldAlertRule,
+    deleteGoldAlertRule,
+    goldSimulatorPresetTarget,
+    setGoldSimulatorPresetTarget,
     fetchReferenceGoldPrices,
     resetGoldPortfolio,
     interiorStudio,

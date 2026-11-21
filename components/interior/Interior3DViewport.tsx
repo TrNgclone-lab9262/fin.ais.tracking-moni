@@ -20,6 +20,9 @@ import {
   Aperture,
   Armchair,
   Hammer,
+  Ruler,
+  Sparkles,
+  X,
 } from "lucide-react";
 import {
   InteriorCameraSnapshot,
@@ -29,6 +32,7 @@ import {
 import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 import { DEFAULT_LIGHTING_ZONES } from "@/lib/interiorFloorplan";
 import {
+  Interior3DMeasurement,
   InteriorArchTarget,
   InteriorCameraPreset,
   InteriorInteractionMode,
@@ -41,6 +45,7 @@ import { useFinance } from "@/context/FinanceContext";
 export interface Interior3DViewportHandle {
   captureSnapshotPng: () => string | null;
   captureHighResPng: (scale?: number) => string | null;
+  focusCameraPreset: (preset: InteriorCameraPreset) => void;
 }
 
 interface Interior3DViewportProps {
@@ -101,6 +106,36 @@ const FOV_PRESETS: { label: string; fov: number }[] = [
   { label: "36°", fov: 36 },
   { label: "44°", fov: 44 },
   { label: "54°", fov: 54 },
+];
+
+const SCENE_MOOD_PRESETS: {
+  id: string;
+  label: string;
+  timeOfDay: InteriorTimeOfDay;
+  curtainOpenRatio: number;
+  lightingZones: InteriorLightingZones;
+}[] = [
+  {
+    id: "BRIGHT_MORNING",
+    label: "Sáng thoáng",
+    timeOfDay: "MORNING_08",
+    curtainOpenRatio: 0.9,
+    lightingZones: { living: false, kitchen: false, master: false, room05: false },
+  },
+  {
+    id: "WARM_AFTERNOON",
+    label: "Chiều ấm",
+    timeOfDay: "AFTERNOON_1630",
+    curtainOpenRatio: 0.52,
+    lightingZones: { living: true, kitchen: true, master: false, room05: true },
+  },
+  {
+    id: "EVENING_LED",
+    label: "Tối LED 3000K",
+    timeOfDay: "EVENING_20",
+    curtainOpenRatio: 0.12,
+    lightingZones: { living: true, kitchen: true, master: true, room05: true },
+  },
 ];
 
 /**
@@ -245,6 +280,8 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     const [cameraFov, setCameraFov] = useState<number>(initialCameraState?.fov ?? 44);
     const [dockExpanded, setDockExpanded] = useState<boolean>(true);
     const [snapshotFlash, setSnapshotFlash] = useState<boolean>(false);
+    const [measureMode, setMeasureMode] = useState<boolean>(false);
+    const [measurement3D, setMeasurement3D] = useState<Interior3DMeasurement | null>(null);
 
     const isDarkMode = themeMode === "dark";
     const lightingZones: InteriorLightingZones = {
@@ -274,6 +311,10 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
             return null;
           }
         },
+        focusCameraPreset: (preset: InteriorCameraPreset) => {
+          setActivePreset(preset);
+          controllerRef.current?.applyCameraPreset(preset);
+        },
       }),
       []
     );
@@ -295,6 +336,7 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               callbacksRef.current.onSelectArchTarget?.(target),
             onCameraChanged: (snapshot) =>
               callbacksRef.current.onCameraStateChange?.(snapshot),
+            onMeasurementChange: (m) => setMeasurement3D(m),
             onContextLost: () => {
               setWebglError(
                 "Trình duyệt tạm giải phóng ngữ cảnh WebGL 3D. Bạn có thể chuyển sang Bản vẽ 2D CAD."
@@ -388,7 +430,28 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
 
     const handleToggleNavMode = (mode: InteriorNavMode) => {
       setNavMode(mode);
+      if (mode === "WALKTHROUGH" && measureMode) {
+        setMeasureMode(false);
+        controllerRef.current?.setMeasureMode(false);
+      }
       controllerRef.current?.setNavMode(mode);
+    };
+
+    const handleToggleMeasureMode = () => {
+      const next = !measureMode;
+      setMeasureMode(next);
+      if (next && navMode === "WALKTHROUGH") {
+        setNavMode("ORBIT");
+        controllerRef.current?.setNavMode("ORBIT");
+      }
+      controllerRef.current?.setMeasureMode(next);
+    };
+
+    const handleApplySceneMood = (mood: (typeof SCENE_MOOD_PRESETS)[number]) => {
+      setTimeOfDay(mood.timeOfDay);
+      controllerRef.current?.setTimeOfDay(mood.timeOfDay);
+      onUpdateCurtainOpenRatio?.(mood.curtainOpenRatio);
+      onUpdateLightingZones?.(mood.lightingZones);
     };
 
     const handleToggleCutaway = () => {
@@ -449,14 +512,66 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               Đi bộ 1.60m · Tự hiện trần LED & bầu trời tầng 12A · Kéo tay xoay góc nhìn
             </div>
           )}
-          {interactionMode === "ARCHITECTURE" && navMode === "ORBIT" && (
+          {interactionMode === "ARCHITECTURE" && navMode === "ORBIT" && !measureMode && (
             <div className="bg-amber-950 text-amber-100 px-2.5 py-1 rounded-md text-[10px] font-bold border border-amber-700">
               Chế độ Kết cấu · Chạm vào tường hoặc cửa để đổi vách kính, lam gỗ, Accent Wall hoặc cửa lùa
             </div>
           )}
+          {measureMode && (
+            <div className="bg-amber-950 text-amber-100 px-2.5 py-1 rounded-md text-[10px] font-bold border border-amber-600">
+              {measurement3D?.distanceMm != null
+                ? `Thước Laser 3D · ${measurement3D.distanceMm.toLocaleString("vi-VN")} mm (${(measurement3D.distanceMm / 10).toFixed(1)} cm) · Chạm điểm mới để đo lại`
+                : measurement3D?.p1
+                  ? "Thước Laser 3D · Đã chấm điểm 1, chạm điểm thứ 2 trên đồ/tường/sàn..."
+                  : "Thước Laser 3D · Chạm 2 điểm bất kỳ trong không gian 3D để đo mm"}
+            </div>
+          )}
         </div>
 
-        {/* Top-Right Compact Mode + HD Snapshot + Fullscreen + Dock Collapse */}
+        {/* 3D Laser Measurement Semantic Floating Readout (Solid surface, no backdrop-filter) */}
+        {measureMode && measurement3D?.distanceMm != null && (
+          <div
+            className="absolute z-20 pointer-events-auto"
+            style={
+              measurement3D.labelScreen
+                ? {
+                    left: `${Math.max(16, Math.min(measurement3D.labelScreen.x, 760))}px`,
+                    top: `${Math.max(72, Math.min(measurement3D.labelScreen.y - 44, 420))}px`,
+                    transform: "translateX(-50%)",
+                  }
+                : { top: "76px", left: "50%", transform: "translateX(-50%)" }
+            }
+          >
+            <div className="bg-slate-900 text-white border border-amber-500 rounded-lg px-2.5 py-1.5 shadow-lg flex items-center gap-2 text-[11px] tabular-nums whitespace-nowrap">
+              <Ruler className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <div>
+                <p className="font-black leading-tight">
+                  {measurement3D.distanceMm.toLocaleString("vi-VN")} mm{" "}
+                  <span className="text-amber-300 font-bold">
+                    ({(measurement3D.distanceMm / 10).toFixed(0)} cm)
+                  </span>
+                </p>
+                <p className="text-[10px] text-slate-300 leading-tight mt-0.5">
+                  {measurement3D.distanceMm >= 800
+                    ? "Đạt lối đi chính (≥ 800 mm)"
+                    : measurement3D.distanceMm >= 600
+                      ? "Lối đi phụ (600–799 mm)"
+                      : "Khoảng hẹp (< 600 mm)"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => controllerRef.current?.clearMeasurement()}
+                title="Xóa đường đo"
+                className="p-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Top-Right Compact Mode + 3D Measure + HD Snapshot + Fullscreen + Dock Collapse */}
         <div className="absolute top-3 right-3 flex flex-wrap items-center justify-end gap-1.5">
           {onChangeInteractionMode && (
             <div className="inline-flex rounded-lg bg-white dark:bg-slate-900 p-0.5 border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -488,6 +603,20 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               </button>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={handleToggleMeasureMode}
+            title="Thước Laser 3D đo khoảng cách thực (mm)"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border shadow-sm whitespace-nowrap cursor-pointer ${
+              measureMode
+                ? "bg-amber-500 border-amber-500 text-stone-950"
+                : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+            }`}
+          >
+            <Ruler className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{measureMode ? "Đang đo mm" : "Thước 3D"}</span>
+          </button>
 
           <button
             type="button"
@@ -646,33 +775,58 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               </div>
             </div>
 
-            {/* Row 3: 4-Zone Smart Lights + Curtains + Camera Lens FOV */}
+            {/* Row 3: 1-Click Scene Moods + 4-Zone Smart Lights + Curtains + Camera Lens FOV */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
-              {onUpdateLightingZones && (
-                <div className="flex items-center gap-1 overflow-x-auto">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 shrink-0">
-                    <Lightbulb className="w-3 h-3 text-amber-500" />
-                    <span>Đèn</span>
-                  </span>
-                  {LIGHTING_ZONE_BUTTONS.map((z) => {
-                    const isOn = lightingZones[z.key];
+              <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
+                <div className="inline-flex items-center gap-1 pr-1.5 border-r border-slate-200 dark:border-slate-700">
+                  <Sparkles className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
+                  {SCENE_MOOD_PRESETS.map((mood) => {
+                    const active =
+                      timeOfDay === mood.timeOfDay &&
+                      Math.abs(curtainRatio - mood.curtainOpenRatio) < 0.2;
                     return (
                       <button
-                        key={z.key}
+                        key={mood.id}
                         type="button"
-                        onClick={() => onUpdateLightingZones({ [z.key]: !isOn })}
+                        onClick={() => handleApplySceneMood(mood)}
                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
-                          isOn
-                            ? "bg-amber-100 dark:bg-amber-950/60 border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-200"
-                            : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 line-through"
+                          active
+                            ? "bg-teal-600 border-teal-600 text-white"
+                            : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400"
                         }`}
                       >
-                        {z.label}
+                        {mood.label}
                       </button>
                     );
                   })}
                 </div>
-              )}
+
+                {onUpdateLightingZones && (
+                  <div className="flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 shrink-0">
+                      <Lightbulb className="w-3 h-3 text-amber-500" />
+                      <span>Đèn</span>
+                    </span>
+                    {LIGHTING_ZONE_BUTTONS.map((z) => {
+                      const isOn = lightingZones[z.key];
+                      return (
+                        <button
+                          key={z.key}
+                          type="button"
+                          onClick={() => onUpdateLightingZones({ [z.key]: !isOn })}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap transition-colors cursor-pointer ${
+                            isOn
+                              ? "bg-amber-100 dark:bg-amber-950/60 border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-200"
+                              : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 line-through"
+                          }`}
+                        >
+                          {z.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 {onUpdateCurtainOpenRatio && (

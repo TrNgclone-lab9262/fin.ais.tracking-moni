@@ -317,6 +317,10 @@ export interface GoldLot {
   makingFee: number;             // Phí gia công / công chế tác (VND)
   memberId: FamilyMember;
   storageLocation: GoldStorageLocation;
+  serialNumber?: string;         // Số seri vỉ / miếng SJC, PNJ
+  certificateCode?: string;      // Mã hóa đơn / giấy đảm bảo vàng
+  storeName?: string;            // Cửa hàng / chi nhánh mua
+  purityLabel?: string;          // VD: 999.9 (24K), 750 (18K)
   invoiceNote?: string;
   linkedTransactionId?: string;
   status: GoldLotStatus;
@@ -370,6 +374,36 @@ export interface GoldDcaPlan {
   targetReserveChiFor2027: number;
 }
 
+export interface GoldPriceSnapshot {
+  date: string;                  // YYYY-MM-DD
+  recordedAt: string;            // ISO timestamp
+  nhan9999BidPerChi: number;
+  nhan9999AskPerChi: number;
+  sjcBidPerChi: number;
+  sjcAskPerChi: number;
+  worldXauUsdPerOz: number;
+  usdVndRate: number;
+  portfolioBidValueVnd: number;
+  portfolioCostBasisVnd: number;
+  totalRemainingChi: number;
+}
+
+export type GoldAlertCondition =
+  | 'TARGET_BID_ABOVE'
+  | 'WORLD_PREMIUM_BELOW_PCT'
+  | 'SPREAD_ABOVE_PCT'
+  | 'UNREALIZED_PNL_PCT_ABOVE';
+
+export interface GoldAlertRule {
+  id: string;
+  label: string;
+  category: GoldCategory;
+  condition: GoldAlertCondition;
+  threshold: number;             // VND/chỉ cho TARGET_BID_ABOVE, % cho các điều kiện còn lại
+  enabled: boolean;
+  createdAt: string;
+}
+
 export interface GoldPortfolioState {
   lots: GoldLot[];
   sales: GoldSaleEvent[];
@@ -377,6 +411,8 @@ export interface GoldPortfolioState {
   macro: GoldMacroContext;
   dcaPlan: GoldDcaPlan;
   includeInNetWorth: boolean;
+  priceHistory?: GoldPriceSnapshot[];
+  alerts?: GoldAlertRule[];
   updatedAt: string;
 }
 
@@ -411,6 +447,8 @@ export type InteriorItemSource = 'DEVELOPER_INCLUDED' | 'NEW_PURCHASE';
 export type InteriorProcurementStatus = 'PLANNED' | 'QUOTED' | 'DEPOSITED' | 'INSTALLED';
 
 export type InteriorPricingRule = 'FIXED_UNIT' | 'PER_LINEAR_METER' | 'PER_SQUARE_METER';
+
+export type InteriorExecutionPhase = 'PHASE_1_MOVE_IN' | 'PHASE_2_UPGRADE';
 
 export type InteriorCatalogKey =
   | 'sofa_3seat'
@@ -557,6 +595,7 @@ export interface InteriorFurnitureItem {
   pricingRule: InteriorPricingRule;
   unitPriceVnd: number;
   boqGroup: InteriorBoqGroup;
+  executionPhase?: InteriorExecutionPhase; // Value Engineering: Giai đoạn 1 (Nhận nhà) / Giai đoạn 2 (Nâng cấp sau)
   procurementStatus: InteriorProcurementStatus;
   linkedTransactionId?: string;
   payments?: InteriorBoqPaymentRecord[];
@@ -571,6 +610,7 @@ export interface InteriorExtraBoqItem {
   name: string;
   roomId: string;
   boqGroup: InteriorBoqGroup;
+  executionPhase?: InteriorExecutionPhase;
   source: InteriorItemSource;
   unit: string;
   quantity: number;

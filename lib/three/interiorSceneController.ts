@@ -124,17 +124,28 @@ const TIME_LIGHTING: Record<InteriorTimeOfDay, TimeLightingConfig> = {
   },
 };
 
+export interface Interior3DMeasurement {
+  p1: [number, number, number];
+  p2: [number, number, number] | null;
+  distanceMm: number | null;
+  dxMm: number | null;
+  dyMm: number | null;
+  dzMm: number | null;
+  labelScreen: { x: number; y: number } | null;
+}
+
 export interface InteriorSceneCallbacks {
   onSelectItem: (id: string | null) => void;
   onItemMoved: (id: string, x: number, z: number, elevationCm?: number) => void;
   onSelectArchitecture?: (target: InteriorArchTarget | null) => void;
   onCameraChanged?: (snapshot: InteriorCameraSnapshot) => void;
+  onMeasurementChange?: (measurement: Interior3DMeasurement | null) => void;
   onContextLost?: () => void;
 }
 
 function disposeObjectTree(root: THREE.Object3D, keepSharedMaterials = true): void {
   root.traverse((obj) => {
-    if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments || obj instanceof THREE.Line) {
       obj.geometry.dispose();
       if (!keepSharedMaterials) {
         if (Array.isArray(obj.material)) {
@@ -205,6 +216,7 @@ export class InteriorSceneController {
   private ceilingGroup = new THREE.Group();
   private furnitureGroup = new THREE.Group();
   private mepGroup = new THREE.Group();
+  private measureGroup = new THREE.Group();
   private skyDomeMesh: THREE.Mesh;
   private skyDomeMat: THREE.MeshBasicMaterial;
   private wallMeshRecords: { mesh: THREE.Object3D; cutawaySide?: WallSegmentSpec["cutawaySide"] }[] = [];
@@ -238,13 +250,25 @@ export class InteriorSceneController {
   private currentLightingZones: InteriorLightingZones = { ...DEFAULT_LIGHTING_ZONES };
   private currentCurtainOpenRatio = 0.85;
 
-  // Lights
+  // Lights & Smooth Lighting Transition Targets
   private sunLight: THREE.DirectionalLight;
   private hemiLight: THREE.HemisphereLight;
+  private targetSunPos = new THREE.Vector3(7.8, 4.8, -8.8);
+  private targetSunColor = new THREE.Color("#FFE6C2");
+  private targetSunIntensity = 2.35;
+  private targetHemiSky = new THREE.Color("#F2F7FF");
+  private targetHemiGround = new THREE.Color("#C9B9A6");
+  private targetHemiIntensity = 0.72;
+  private targetIndoorIntensity = 0.42;
+  private targetExposure = 1.06;
+  private lightingAnimating = false;
 
   // Interactive & Navigation state
   private navMode: InteriorNavMode = "ORBIT";
   private interactionMode: InteriorInteractionMode = "FURNITURE";
+  private measureMode = false;
+  private measurePoints: THREE.Vector3[] = [];
+  private lastEmittedMeasureScreen: { x: number; y: number } | null = null;
   private autoCutaway = true;
   private showMepLayer = false;
   private selectedItemId: string | null = null;
@@ -401,9 +425,10 @@ export class InteriorSceneController {
     this.scene.add(this.furnitureGroup);
     this.mepGroup.visible = this.showMepLayer;
     this.scene.add(this.mepGroup);
+    this.scene.add(this.measureGroup);
 
     this.syncScenario(initialScenario);
-    this.setTimeOfDay("MORNING_08");
+    this.setTimeOfDay("MORNING_08", true);
 
     const dom = this.renderer.domElement;
     dom.addEventListener("pointerdown", this.handlePointerDown);
@@ -486,7 +511,7 @@ export class InteriorSceneController {
         this.setAutoCutaway(snapshot.autoCutaway);
       }
       if (snapshot.timeOfDay) {
-        this.setTimeOfDay(snapshot.timeOfDay);
+        this.setTimeOfDay(snapshot.timeOfDay, true);
       }
       if (snapshot.preset) {
         this.activePreset = snapshot.preset;
@@ -632,7 +657,63 @@ export class InteriorSceneController {
       }
     }
 
+    if (this.lightingAnimating) {
+      const lAlpha = 1 - Math.exp(-7 * dt);
+      this.sunLight.position.lerp(this.targetSunPos, lAlpha);
+      this.sunLight.color.lerp(this.targetSunColor, lAlpha);
+      this.sunLight.intensity = THREE.MathUtils.lerp(
+        this.sunLight.intensity,
+        this.targetSunIntensity,
+        lAlpha
+      );
+      this.hemiLight.color.lerp(this.targetHemiSky, lAlpha);
+      this.hemiLight.groundColor.lerp(this.targetHemiGround, lAlpha);
+      this.hemiLight.intensity = THREE.MathUtils.lerp(
+        this.hemiLight.intensity,
+        this.targetHemiIntensity,
+        lAlpha
+      );
+      this.renderer.toneMappingExposure = THREE.MathUtils.lerp(
+        this.renderer.toneMappingExposure,
+        this.targetExposure,
+        lAlpha
+      );
+
+      let zoneDelta = 0;
+      (Object.keys(this.zoneLightMap) as (keyof InteriorLightingZones)[]).forEach((zoneKey) => {
+        const targetInt = this.currentLightingZones[zoneKey] ? this.targetIndoorIntensity : 0;
+        const nextInt = THREE.MathUtils.lerp(this.zoneLightMap[zoneKey].intensity, targetInt, lAlpha);
+        this.zoneLightMap[zoneKey].intensity = nextInt;
+        zoneDelta = Math.max(zoneDelta, Math.abs(nextInt - targetInt));
+      });
+
+      const settled =
+        this.sunLight.position.distanceTo(this.targetSunPos) < 0.04 &&
+        Math.abs(this.sunLight.intensity - this.targetSunIntensity) < 0.015 &&
+        Math.abs(this.hemiLight.intensity - this.targetHemiIntensity) < 0.015 &&
+        Math.abs(this.renderer.toneMappingExposure - this.targetExposure) < 0.005 &&
+        zoneDelta < 0.015;
+
+      if (settled) {
+        this.sunLight.position.copy(this.targetSunPos);
+        this.sunLight.color.copy(this.targetSunColor);
+        this.sunLight.intensity = this.targetSunIntensity;
+        this.hemiLight.color.copy(this.targetHemiSky);
+        this.hemiLight.groundColor.copy(this.targetHemiGround);
+        this.hemiLight.intensity = this.targetHemiIntensity;
+        this.renderer.toneMappingExposure = this.targetExposure;
+        this.applyLightingZonesToScene();
+        this.lightingAnimating = false;
+      } else {
+        keepRendering = true;
+      }
+    }
+
     this.renderer.render(this.scene, this.camera);
+
+    if (this.measurePoints.length === 2) {
+      this.emitMeasurement(false);
+    }
 
     if (keepRendering) {
       this.afterDraw(() => this.requestRender());
@@ -1674,21 +1755,153 @@ export class InteriorSceneController {
     this.scene.add(this.selectionBoxHelper);
   }
 
-  public setTimeOfDay(tod: InteriorTimeOfDay): void {
+  public setMeasureMode(active: boolean): void {
+    this.measureMode = active;
+    if (!active) {
+      this.clearMeasurement();
+    } else {
+      this.renderer.domElement.style.cursor = "crosshair";
+      this.requestRender();
+    }
+  }
+
+  public clearMeasurement(): void {
+    this.measurePoints = [];
+    this.lastEmittedMeasureScreen = null;
+    disposeObjectTree(this.measureGroup, false);
+    this.measureGroup.clear();
+    this.renderer.domElement.style.cursor = "";
+    this.callbacks.onMeasurementChange?.(null);
+    this.requestRender();
+  }
+
+  private rebuildMeasureOverlay(): void {
+    disposeObjectTree(this.measureGroup, false);
+    this.measureGroup.clear();
+
+    const pinGeo = new THREE.SphereGeometry(0.055, 14, 10);
+    const pinMat = new THREE.MeshBasicMaterial({
+      color: 0xd97706,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.96,
+    });
+
+    for (const pt of this.measurePoints) {
+      const pin = new THREE.Mesh(pinGeo.clone(), pinMat.clone());
+      pin.position.copy(pt);
+      pin.renderOrder = 999;
+      this.measureGroup.add(pin);
+    }
+    pinGeo.dispose();
+    pinMat.dispose();
+
+    if (this.measurePoints.length === 2) {
+      const [a, b] = this.measurePoints;
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0xf59e0b,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.98,
+      });
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.renderOrder = 998;
+      this.measureGroup.add(line);
+    }
+  }
+
+  private projectPointToScreen(pt: THREE.Vector3): { x: number; y: number } | null {
+    const projected = pt.clone().project(this.camera);
+    if (projected.z < -1 || projected.z > 1) return null;
+    const width = this.container.clientWidth || 1;
+    const height = this.container.clientHeight || 1;
+    return {
+      x: Math.round(((projected.x + 1) / 2) * width),
+      y: Math.round(((-projected.y + 1) / 2) * height),
+    };
+  }
+
+  private emitMeasurement(force: boolean): void {
+    if (!this.callbacks.onMeasurementChange) return;
+    if (this.measurePoints.length === 0) {
+      this.callbacks.onMeasurementChange(null);
+      return;
+    }
+    const p1 = this.measurePoints[0];
+    const p2 = this.measurePoints.length >= 2 ? this.measurePoints[1] : null;
+    if (!p2) {
+      this.callbacks.onMeasurementChange({
+        p1: [Number(p1.x.toFixed(3)), Number(p1.y.toFixed(3)), Number(p1.z.toFixed(3))],
+        p2: null,
+        distanceMm: null,
+        dxMm: null,
+        dyMm: null,
+        dzMm: null,
+        labelScreen: this.projectPointToScreen(p1),
+      });
+      return;
+    }
+
+    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+    const screen = this.projectPointToScreen(mid);
+    if (
+      !force &&
+      screen &&
+      this.lastEmittedMeasureScreen &&
+      Math.abs(screen.x - this.lastEmittedMeasureScreen.x) < 2 &&
+      Math.abs(screen.y - this.lastEmittedMeasureScreen.y) < 2
+    ) {
+      return;
+    }
+    this.lastEmittedMeasureScreen = screen;
+
+    const dxMm = Math.round(Math.abs(p2.x - p1.x) * 1000);
+    const dyMm = Math.round(Math.abs(p2.y - p1.y) * 1000);
+    const dzMm = Math.round(Math.abs(p2.z - p1.z) * 1000);
+    const distanceMm = Math.round(p1.distanceTo(p2) * 1000);
+
+    this.callbacks.onMeasurementChange({
+      p1: [Number(p1.x.toFixed(3)), Number(p1.y.toFixed(3)), Number(p1.z.toFixed(3))],
+      p2: [Number(p2.x.toFixed(3)), Number(p2.y.toFixed(3)), Number(p2.z.toFixed(3))],
+      distanceMm,
+      dxMm,
+      dyMm,
+      dzMm,
+      labelScreen: screen,
+    });
+  }
+
+  public setTimeOfDay(tod: InteriorTimeOfDay, immediate = false): void {
     this.timeOfDay = tod;
     const cfg = TIME_LIGHTING[tod];
-    this.sunLight.position.set(...cfg.sunPos);
-    this.sunLight.color.set(cfg.sunColor);
-    this.sunLight.intensity = cfg.sunIntensity;
-    this.hemiLight.color.set(cfg.hemiSky);
-    this.hemiLight.groundColor.set(cfg.hemiGround);
-    this.hemiLight.intensity = cfg.hemiIntensity;
-    this.renderer.toneMappingExposure = cfg.exposure;
+    this.targetSunPos.set(...cfg.sunPos);
+    this.targetSunColor.set(cfg.sunColor);
+    this.targetSunIntensity = cfg.sunIntensity;
+    this.targetHemiSky.set(cfg.hemiSky);
+    this.targetHemiGround.set(cfg.hemiGround);
+    this.targetHemiIntensity = cfg.hemiIntensity;
+    this.targetIndoorIntensity = cfg.indoorIntensity;
+    this.targetExposure = cfg.exposure;
 
     this.skyDomeMat.map = this.materialLib.skyDomeTextures[tod];
     this.skyDomeMat.needsUpdate = true;
 
-    this.applyLightingZonesToScene();
+    if (immediate || this.isSoftwareGl) {
+      this.lightingAnimating = false;
+      this.sunLight.position.copy(this.targetSunPos);
+      this.sunLight.color.copy(this.targetSunColor);
+      this.sunLight.intensity = this.targetSunIntensity;
+      this.hemiLight.color.copy(this.targetHemiSky);
+      this.hemiLight.groundColor.copy(this.targetHemiGround);
+      this.hemiLight.intensity = this.targetHemiIntensity;
+      this.renderer.toneMappingExposure = this.targetExposure;
+      this.applyLightingZonesToScene();
+    } else {
+      this.lightingAnimating = true;
+      this.lastFrameTime = performance.now();
+    }
+
     this.requestRender();
     this.scheduleCameraEmit();
   }
@@ -1829,6 +2042,37 @@ export class InteriorSceneController {
 
     const ndc = this.getPointerNdc(e);
     this.raycaster.setFromCamera(ndc, this.camera);
+
+    // 3D Laser Tape Measure Mode: pick 2 points on furniture, architecture, or floor
+    if (this.measureMode) {
+      let picked: THREE.Vector3 | null = null;
+      const furnHits = this.raycaster
+        .intersectObjects(this.furnitureGroup.children, true)
+        .filter((h) => h.object.visible);
+      const archHits = this.raycaster
+        .intersectObjects(this.architectureGroup.children, true)
+        .filter((h) => h.object.visible);
+      const allHits = [...furnHits, ...archHits].sort((a, b) => a.distance - b.distance);
+      if (allHits.length > 0) {
+        picked = allHits[0].point.clone();
+      } else {
+        const floorPt = new THREE.Vector3();
+        if (this.raycaster.ray.intersectPlane(this.floorPlane, floorPt)) {
+          picked = floorPt;
+        }
+      }
+      if (picked) {
+        if (this.measurePoints.length >= 2) {
+          this.measurePoints = [picked];
+        } else {
+          this.measurePoints.push(picked);
+        }
+        this.rebuildMeasureOverlay();
+        this.emitMeasurement(true);
+        this.requestRender();
+      }
+      return;
+    }
 
     // Architecture Editor Mode: click walls or customizable doors directly in 3D
     if (this.interactionMode === "ARCHITECTURE") {
@@ -2112,6 +2356,7 @@ export class InteriorSceneController {
     disposeObjectTree(this.ceilingGroup, true);
     disposeObjectTree(this.furnitureGroup, true);
     disposeObjectTree(this.mepGroup, true);
+    disposeObjectTree(this.measureGroup, false);
     this.skyDomeMesh.geometry.dispose();
     this.skyDomeMat.dispose();
     this.materialLib.dispose();

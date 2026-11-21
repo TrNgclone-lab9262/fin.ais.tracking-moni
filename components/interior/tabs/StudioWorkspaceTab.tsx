@@ -37,11 +37,16 @@ import {
   SKYONE_A2_BOUNDS,
   SKYONE_A2_ROOMS,
 } from "@/lib/interiorFloorplan";
-import { ErgonomicWarning, ScenarioBoqSummary } from "@/lib/interiorBoqEngine";
+import {
+  ErgonomicWarning,
+  ScenarioBoqSummary,
+  evaluateArchitecturalAudit,
+} from "@/lib/interiorBoqEngine";
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 import { saveCustomGlbFile } from "@/lib/interiorGlbVault";
 import {
   InteriorArchTarget,
+  InteriorCameraPreset,
   InteriorInteractionMode,
 } from "@/lib/three/interiorSceneController";
 import { FullscreenToggle } from "@/components/common/FullscreenToggle";
@@ -184,6 +189,11 @@ export function StudioWorkspaceTab({
   const dangerCount = useMemo(
     () => warnings.filter((w) => w.severity === "DANGER").length,
     [warnings]
+  );
+
+  const architecturalAudit = useMemo(
+    () => evaluateArchitecturalAudit(activeScenario),
+    [activeScenario]
   );
 
   const handleChangeInteractionMode = (mode: InteriorInteractionMode) => {
@@ -410,8 +420,24 @@ export function StudioWorkspaceTab({
   const handleApplyStyleToAllFurniture = () => {
     const presetMeta = INTERIOR_STYLE_PRESETS[activeScenario.stylePreset];
     applyInteriorStylePaletteToAllFurniture(activeScenario.id, activeScenario.stylePreset);
-    setPaletteToast(`Đã đồng bộ vật liệu toàn bộ đồ nội thất theo phong cách ${presetMeta.name}.`);
-    window.setTimeout(() => setPaletteToast(null), 3200);
+    const targetFloorPattern =
+      activeScenario.stylePreset === "WARM_SCANDINAVIAN" || activeScenario.stylePreset === "MODERN_WARM"
+        ? "HERRINGBONE"
+        : "STRAIGHT";
+    updateInteriorFloorPattern("room_master_bedroom", targetFloorPattern);
+    updateInteriorFloorPattern("room_05_multi", targetFloorPattern);
+    setPaletteToast(
+      `Đã đồng bộ trọn bộ Style Kit ${presetMeta.name} (vật liệu nội thất + vân sàn phòng ngủ). Nhấn Ctrl+Z để hoàn tác.`
+    );
+    window.setTimeout(() => setPaletteToast(null), 3600);
+  };
+
+  const handleFocusAuditCheck = (itemId: string | undefined, preset: InteriorCameraPreset) => {
+    onChangeInteractionMode("FURNITURE");
+    if (itemId) {
+      onSelectItem(itemId);
+    }
+    viewport3DRef.current?.focusCameraPreset(preset);
   };
 
   const handleItemMoved = (id: string, x: number, z: number, elevationCm?: number) => {
@@ -662,11 +688,11 @@ export function StudioWorkspaceTab({
             <button
               type="button"
               onClick={handleApplyStyleToAllFurniture}
-              title="Đồng bộ vật liệu gỗ/vải cho toàn bộ đồ nội thất mới theo phong cách đang chọn"
+              title="Đồng bộ trọn bộ vật liệu đồ nội thất + kiểu lát sàn phòng ngủ theo Style Kit đang chọn (Ctrl+Z để hoàn tác)"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border border-teal-300 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/60 whitespace-nowrap transition-colors cursor-pointer"
             >
               <Paintbrush className="w-3 h-3" />
-              <span>Áp màu cho toàn bộ đồ</span>
+              <span>Đồng bộ Style Kit 1 chạm</span>
             </button>
           </div>
 
@@ -1200,31 +1226,63 @@ export function StudioWorkspaceTab({
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              Kiểm tra Công thái học & Vách ngăn (A.12A.07)
-            </h3>
-            {warnings.length === 0 ? (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Đạt chuẩn lối đi
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                Kiểm định Công thái học & Kiến trúc (6 quy chuẩn mm / %)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+                Độ phủ nội thất {architecturalAudit.footprintCoveragePct}% / 51.0 m² · Chạm từng mục để xoay camera 3D kiểm tra
+              </p>
+            </div>
+            {architecturalAudit.dangerCount === 0 && architecturalAudit.warningCount === 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Đạt {architecturalAudit.passCount}/{architecturalAudit.totalChecks} chuẩn
               </span>
-            ) : dangerCount > 0 ? (
+            ) : architecturalAudit.dangerCount > 0 ? (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 dark:text-rose-400 tabular-nums">
-                <AlertTriangle className="w-3.5 h-3.5" /> {dangerCount} lỗi đè vách/cửa · {warnings.length} tổng
+                <AlertTriangle className="w-3.5 h-3.5" /> {architecturalAudit.passCount}/{architecturalAudit.totalChecks} đạt · {architecturalAudit.dangerCount} cần sửa
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                <AlertTriangle className="w-3.5 h-3.5" /> {warnings.length} lưu ý
+                <AlertTriangle className="w-3.5 h-3.5" /> {architecturalAudit.passCount}/{architecturalAudit.totalChecks} đạt · {architecturalAudit.warningCount} lưu ý
               </span>
             )}
           </div>
-          {warnings.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Tất cả đồ nội thất nằm gọn trong mặt bằng 51.0 m², không đè vách ngăn hay hộp gen kỹ thuật, không chắn cung mở 90° cửa Lecmax/Master/Phòng 05/WC và đạt chuẩn khoảng nhìn TV & mở tủ.
-            </p>
-          ) : (
-            <div className="space-y-1.5 max-h-28 overflow-y-auto">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {architecturalAudit.checks.map((chk) => {
+              const statusTone =
+                chk.status === "PASS"
+                  ? "border-emerald-200 dark:border-emerald-900/70 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300"
+                  : chk.status === "WARNING"
+                    ? "border-amber-200 dark:border-amber-900/70 bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200"
+                    : "border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200";
+              return (
+                <button
+                  key={chk.id}
+                  type="button"
+                  onClick={() => handleFocusAuditCheck(chk.itemId, chk.cameraPreset)}
+                  title={chk.detail}
+                  className={`text-left px-2.5 py-2 rounded-lg border transition-colors hover:brightness-95 cursor-pointer ${statusTone}`}
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="font-bold truncate">{chk.title}</span>
+                    <span className="font-black tabular-nums whitespace-nowrap">
+                      {chk.measuredLabel}
+                    </span>
+                  </div>
+                  <p className="text-[10px] opacity-80 mt-0.5 truncate">
+                    Chuẩn: {chk.targetLabel} · {chk.status === "PASS" ? "Đạt" : chk.status === "WARNING" ? "Lưu ý" : "Cần sửa"}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 max-h-24 overflow-y-auto">
               {warnings.map((w) => {
                 const isDanger = w.severity === "DANGER";
                 return (
@@ -1235,10 +1293,10 @@ export function StudioWorkspaceTab({
                       onChangeInteractionMode("FURNITURE");
                       onSelectItem(w.itemId);
                     }}
-                    className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors ${
+                    className={`w-full text-left text-[11px] px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors ${
                       isDanger
-                        ? "bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-950/70 font-semibold"
-                        : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/60"
+                        ? "bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 font-semibold"
+                        : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200"
                     }`}
                   >
                     {w.message}

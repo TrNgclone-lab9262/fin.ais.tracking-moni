@@ -1,10 +1,14 @@
 import {
+  GoldPortfolioState,
   InteriorBoqGroup,
   InteriorBoqPaymentRecord,
+  InteriorCameraPresetId,
   InteriorDesignScenario,
+  InteriorExecutionPhase,
   InteriorFurnitureItem,
   InteriorPricingRule,
 } from "@/types/finance";
+import { simulateGoldLiquidation } from "./goldEngine";
 import {
   DOOR_MODE_META,
   FLOOR_PATTERN_META,
@@ -93,12 +97,29 @@ function resolveRowPaidAmountVnd(
   return 0;
 }
 
+export const EXECUTION_PHASE_META: Record<
+  InteriorExecutionPhase,
+  { label: string; shortLabel: string; description: string }
+> = {
+  PHASE_1_MOVE_IN: {
+    label: "GĐ 1 · Nhận nhà bắt buộc",
+    shortLabel: "GĐ 1 (Nhận nhà)",
+    description: "Hạng mục thiết yếu để dọn vào ở ngay Q3/2027",
+  },
+  PHASE_2_UPGRADE: {
+    label: "GĐ 2 · Nâng cấp sau 6–12 tháng",
+    shortLabel: "GĐ 2 (Hoãn mua)",
+    description: "Có thể trì hoãn để giữ lại tiền mặt & Kho Vàng lúc nhận nhà",
+  },
+};
+
 export interface BoqUnifiedRow {
   id: string;
   origin: "3D_ITEM" | "EXTRA_LINE";
   name: string;
   roomId: string;
   boqGroup: InteriorBoqGroup;
+  executionPhase: InteriorExecutionPhase;
   source: InteriorFurnitureItem["source"];
   specLabel: string;
   pricingRule?: InteriorPricingRule;
@@ -128,6 +149,12 @@ export interface ScenarioBoqSummary {
   subtotalNewPurchase: number;
   contingencyAmount: number;
   grandTotalWithContingency: number;
+  /** Value Engineering: chỉ các hạng mục Giai đoạn 1 (Nhận nhà bắt buộc) */
+  phase1Subtotal: number;
+  phase1ContingencyAmount: number;
+  phase1GrandTotalWithContingency: number;
+  phase2DeferredTotal: number;
+  phase2ItemCount: number;
   paidOrDepositedVnd: number;
   remainingToPayVnd: number;
   targetBudgetMinVnd: number;
@@ -177,6 +204,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
       name: item.name,
       roomId: item.roomId,
       boqGroup: item.boqGroup,
+      executionPhase: item.executionPhase ?? "PHASE_1_MOVE_IN",
       source: item.source,
       specLabel: `${dimText}${ruleTag}`,
       pricingRule: item.pricingRule,
@@ -214,6 +242,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
       name: ex.name,
       roomId: ex.roomId,
       boqGroup: ex.boqGroup,
+      executionPhase: ex.executionPhase ?? "PHASE_1_MOVE_IN",
       source: ex.source,
       specLabel: `${ex.quantity} ${ex.unit}`,
       unitPriceVnd: ex.unitPriceVnd,
@@ -250,6 +279,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
             name: `Cải tạo ${wall.label}: ${meta.label}`,
             roomId: wall.id === "w_kitchen_shield" ? "room_kitchen" : "room_05",
             boqGroup: "FINISHING_DECOR",
+            executionPhase: "PHASE_1_MOVE_IN",
             source: "NEW_PURCHASE",
             specLabel: "1 hệ vách (tự động từ 3D)",
             unitPriceVnd: meta.estimatedCostVnd,
@@ -275,6 +305,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
             name: `Ốp điểm nhấn ${wall.label}: ${acc.label}`,
             roomId: "room_living_dining",
             boqGroup: "FINISHING_DECOR",
+            executionPhase: "PHASE_1_MOVE_IN",
             source: "NEW_PURCHASE",
             specLabel: "1 mảng tường (tự động từ 3D)",
             unitPriceVnd: acc.estimatedCostVnd,
@@ -310,6 +341,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
                 ? "room_wc"
                 : "room_05",
           boqGroup: "FINISHING_DECOR",
+          executionPhase: "PHASE_1_MOVE_IN",
           source: "NEW_PURCHASE",
           specLabel: "1 bộ cửa (tự động từ 3D)",
           unitPriceVnd: meta.estimatedCostVnd,
@@ -339,6 +371,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
           name: `Nâng cấp sàn ${room?.shortName ?? roomId}: ${meta.label}`,
           roomId,
           boqGroup: "FINISHING_DECOR",
+          executionPhase: "PHASE_1_MOVE_IN",
           source: "NEW_PURCHASE",
           specLabel: "1 phòng (tự động từ 3D)",
           unitPriceVnd: meta.estimatedCostVnd,
@@ -355,12 +388,27 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
     }
   }
 
+  const allRows = [...itemRows, ...extraRows, ...archRenovationRows];
   const subtotalNewPurchase =
     byGroup.WOOD_FURNITURE + byGroup.APPLIANCES + byGroup.FINISHING_DECOR;
-  const contingencyAmount = Math.round(
-    subtotalNewPurchase * ((scenario.contingencyPercent || 0) / 100)
-  );
+  const contingencyRate = (scenario.contingencyPercent || 0) / 100;
+  const contingencyAmount = Math.round(subtotalNewPurchase * contingencyRate);
   const grandTotalWithContingency = subtotalNewPurchase + contingencyAmount;
+
+  let phase1Subtotal = 0;
+  let phase2DeferredTotal = 0;
+  let phase2ItemCount = 0;
+  for (const row of allRows) {
+    if (row.source === "DEVELOPER_INCLUDED" || row.totalPriceVnd <= 0) continue;
+    if (row.executionPhase === "PHASE_2_UPGRADE") {
+      phase2DeferredTotal += row.totalPriceVnd;
+      phase2ItemCount += 1;
+    } else {
+      phase1Subtotal += row.totalPriceVnd;
+    }
+  }
+  const phase1ContingencyAmount = Math.round(phase1Subtotal * contingencyRate);
+  const phase1GrandTotalWithContingency = phase1Subtotal + phase1ContingencyAmount;
 
   let budgetStatus: ScenarioBoqSummary["budgetStatus"] = "IN_TARGET_RANGE";
   if (grandTotalWithContingency < scenario.targetBudgetMinVnd) {
@@ -371,7 +419,7 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
 
   return {
     scenarioId: scenario.id,
-    rows: [...itemRows, ...extraRows, ...archRenovationRows],
+    rows: allRows,
     byGroup,
     woodFurnitureTotal: byGroup.WOOD_FURNITURE,
     appliancesTotal: byGroup.APPLIANCES,
@@ -380,6 +428,11 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
     subtotalNewPurchase,
     contingencyAmount,
     grandTotalWithContingency,
+    phase1Subtotal,
+    phase1ContingencyAmount,
+    phase1GrandTotalWithContingency,
+    phase2DeferredTotal,
+    phase2ItemCount,
     paidOrDepositedVnd,
     remainingToPayVnd: Math.max(0, grandTotalWithContingency - paidOrDepositedVnd),
     targetBudgetMinVnd: scenario.targetBudgetMinVnd,
@@ -407,6 +460,12 @@ export interface ScenarioDiffSummary {
   baseTotalVnd: number;
   compareTotalVnd: number;
   netDeltaVnd: number;
+  basePhase1TotalVnd: number;
+  comparePhase1TotalVnd: number;
+  phase1DeltaVnd: number;
+  ergonomicPassCountA: number;
+  ergonomicPassCountB: number;
+  ergonomicTotalChecks: number;
   groupDeltas: Record<InteriorBoqGroup, number>;
   entries: ScenarioDiffEntry[];
 }
@@ -420,6 +479,8 @@ export function compareInteriorScenarios(
 ): ScenarioDiffSummary {
   const baseBoq = calculateScenarioBoq(baseScenario);
   const compareBoq = calculateScenarioBoq(compareScenario);
+  const auditA = evaluateArchitecturalAudit(baseScenario);
+  const auditB = evaluateArchitecturalAudit(compareScenario);
 
   const baseMap = new Map<string, BoqUnifiedRow>();
   for (const r of baseBoq.rows) {
@@ -481,6 +542,13 @@ export function compareInteriorScenarios(
     baseTotalVnd: baseBoq.grandTotalWithContingency,
     compareTotalVnd: compareBoq.grandTotalWithContingency,
     netDeltaVnd: compareBoq.grandTotalWithContingency - baseBoq.grandTotalWithContingency,
+    basePhase1TotalVnd: baseBoq.phase1GrandTotalWithContingency,
+    comparePhase1TotalVnd: compareBoq.phase1GrandTotalWithContingency,
+    phase1DeltaVnd:
+      compareBoq.phase1GrandTotalWithContingency - baseBoq.phase1GrandTotalWithContingency,
+    ergonomicPassCountA: auditA.passCount,
+    ergonomicPassCountB: auditB.passCount,
+    ergonomicTotalChecks: auditA.totalChecks,
     groupDeltas: {
       WOOD_FURNITURE: compareBoq.byGroup.WOOD_FURNITURE - baseBoq.byGroup.WOOD_FURNITURE,
       APPLIANCES: compareBoq.byGroup.APPLIANCES - baseBoq.byGroup.APPLIANCES,
@@ -789,6 +857,7 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
     "STT",
     "Hạng mục",
     "Nhóm BOQ",
+    "Giai đoạn (Value Engineering)",
     "Nguồn",
     "Quy cách / Kích thước",
     "Đơn giá (VND)",
@@ -814,6 +883,7 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
       String(idx + 1),
       escapeCsvCell(row.name),
       escapeCsvCell(BOQ_GROUP_META[row.boqGroup].label),
+      escapeCsvCell(EXECUTION_PHASE_META[row.executionPhase].shortLabel),
       escapeCsvCell(row.source === "DEVELOPER_INCLUDED" ? "CĐT Bàn Giao" : "Mua / Đóng mới"),
       escapeCsvCell(row.specLabel),
       String(row.unitPriceVnd),
@@ -836,6 +906,7 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
       "",
       "",
       "",
+      "",
       String(summary.contingencyAmount),
       "",
       "",
@@ -849,7 +920,27 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
   rows.push(
     [
       "",
+      escapeCsvCell("TỔNG DỰ TOÁN GIAI ĐOẠN 1 (NHẬN NHÀ BẮT BUỘC + DỰ PHÒNG)"),
+      "",
+      escapeCsvCell("GĐ 1"),
+      "",
+      "",
+      "",
+      String(summary.phase1GrandTotalWithContingency),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ].join(",")
+  );
+  rows.push(
+    [
+      "",
       escapeCsvCell("TỔNG DỰ TOÁN TRỌN GÓI (VNĐ)"),
+      "",
       "",
       "",
       "",
@@ -876,3 +967,429 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// ============================================================================
+// PRIORITY 2 & 3 — QUANTITATIVE ARCHITECTURAL AUDIT & 4-MILESTONE PAYMENT PLAN
+// ============================================================================
+
+export interface ArchitecturalAuditCheck {
+  id: string;
+  title: string;
+  measuredLabel: string;
+  targetLabel: string;
+  status: "PASS" | "WARNING" | "DANGER";
+  detail: string;
+  itemId?: string;
+  cameraPreset: InteriorCameraPresetId;
+}
+
+export interface ArchitecturalAuditReport {
+  checks: ArchitecturalAuditCheck[];
+  passCount: number;
+  warningCount: number;
+  dangerCount: number;
+  totalChecks: number;
+  footprintCoveragePct: number;
+}
+
+/**
+ * Kiểm định Công thái học & Kiến trúc định lượng (6 tiêu chí đo trực tiếp theo mm và % mặt bằng thực tế).
+ */
+export function evaluateArchitecturalAudit(
+  scenario: InteriorDesignScenario
+): ArchitecturalAuditReport {
+  const warnings = evaluateErgonomicClearances(scenario);
+  const floorItems = scenario.items.filter(
+    (i) => !i.isHidden && !NON_COLLIDING_KEYS.has(i.catalogKey) && !isWallOrSurfaceMounted(i)
+  );
+
+  const checks: ArchitecturalAuditCheck[] = [];
+
+  // 1. Kiểm tra va chạm tường, vượt biên & cung mở cửa 90°
+  const structuralHits = warnings.filter(
+    (w) =>
+      w.id.startsWith("oob_") ||
+      w.id.startsWith("wall_overlap_") ||
+      w.id.startsWith("door_swing_") ||
+      w.id.startsWith("overlap_")
+  );
+  const severeHits = structuralHits.filter((w) => w.severity === "DANGER");
+  checks.push({
+    id: "audit_collisions_doors",
+    title: "Va chạm vật thể, vách ngăn & cung mở cửa 90°",
+    measuredLabel:
+      structuralHits.length === 0 ? "0 xung đột" : `${structuralHits.length} điểm xung đột`,
+    targetLabel: "0 xung đột",
+    status: severeHits.length > 0 ? "DANGER" : structuralHits.length > 0 ? "WARNING" : "PASS",
+    detail:
+      structuralHits.length === 0
+        ? "Tất cả nội thất đặt sàn đều lọt lòng phòng và thông thoáng cung mở cửa."
+        : structuralHits[0].message,
+    itemId: structuralHits[0]?.itemId,
+    cameraPreset: "DOLLHOUSE",
+  });
+
+  // 2. Khoảng cách mắt Sofa ↔ Smart TV (Phòng khách)
+  const sofa = floorItems.find(
+    (i) => i.catalogKey === "sofa_3seat" || i.catalogKey === "sofa_bed_smart"
+  );
+  const tv = scenario.items.find((i) => !i.isHidden && i.catalogKey === "smart_tv");
+  if (sofa && tv) {
+    const distMm = Math.round(
+      Math.hypot(sofa.position.x - tv.position.x, sofa.position.z - tv.position.z) * 1000
+    );
+    const tvStatus: ArchitecturalAuditCheck["status"] =
+      distMm < 1750 ? "DANGER" : distMm < 2000 || distMm > 3200 ? "WARNING" : "PASS";
+    checks.push({
+      id: "audit_sofa_tv",
+      title: 'Khoảng cách nhìn Sofa ↔ Smart TV 55"',
+      measuredLabel: `${distMm.toLocaleString("vi-VN")} mm`,
+      targetLabel: "2.000 – 2.800 mm",
+      status: tvStatus,
+      detail:
+        tvStatus === "PASS"
+          ? "Khoảng cách nhìn chuẩn bảo vệ mắt và góc nhìn rộng 30° cho màn hình 55 inch."
+          : "Nên kéo lùi Sofa hoặc chọn TV 50\"–55\" để đạt khoảng cách 2.000–2.800 mm.",
+      itemId: tv.id,
+      cameraPreset: "LIVING_BALCONY",
+    });
+  } else {
+    checks.push({
+      id: "audit_sofa_tv",
+      title: 'Khoảng cách nhìn Sofa ↔ Smart TV 55"',
+      measuredLabel: "Chưa đủ cặp đồ",
+      targetLabel: "2.000 – 2.800 mm",
+      status: "PASS",
+      detail: "Thêm Sofa và Smart TV để hệ thống tự đo khoảng cách tầm mắt.",
+      cameraPreset: "LIVING_BALCONY",
+    });
+  }
+
+  // 3. Lối đi Sofa ↔ Bàn trà
+  const coffee = floorItems.find((i) => i.catalogKey === "coffee_table");
+  if (sofa && coffee) {
+    const bs = getFootprintBounds(sofa);
+    const bc = getFootprintBounds(coffee);
+    const gapX = Math.max(bs.minX - bc.maxX, bc.minX - bs.maxX);
+    const gapZ = Math.max(bs.minZ - bc.maxZ, bc.minZ - bs.maxZ);
+    const clearMm = Math.round(Math.max(0, Math.max(gapX, gapZ)) * 1000);
+    const coffeeStatus: ArchitecturalAuditCheck["status"] =
+      clearMm < 320 ? "DANGER" : clearMm < 400 || clearMm > 680 ? "WARNING" : "PASS";
+    checks.push({
+      id: "audit_sofa_coffee",
+      title: "Khe để chân Sofa ↔ Bàn trà",
+      measuredLabel: `${clearMm.toLocaleString("vi-VN")} mm`,
+      targetLabel: "400 – 550 mm",
+      status: coffeeStatus,
+      detail:
+        coffeeStatus === "PASS"
+          ? "Lối lách chân và tầm với lấy tách trà vừa vặn thoải mái."
+          : "Điều chỉnh bàn trà cách mép sofa 400–550 mm để dễ đi lại.",
+      itemId: coffee.id,
+      cameraPreset: "LIVING_BALCONY",
+    });
+  } else {
+    checks.push({
+      id: "audit_sofa_coffee",
+      title: "Khe để chân Sofa ↔ Bàn trà",
+      measuredLabel: "Không đặt bàn trà",
+      targetLabel: "400 – 550 mm",
+      status: "PASS",
+      detail: "Không gian phòng khách mở thoáng tối đa.",
+      cameraPreset: "LIVING_BALCONY",
+    });
+  }
+
+  // 4. Khoảng mở cánh Tủ áo Master ↔ Giường Master
+  const masterBed = floorItems.find(
+    (i) => i.catalogKey === "bed_master_160" || i.catalogKey === "bed_compact_140"
+  );
+  const masterWardrobe = floorItems.find(
+    (i) => i.roomId === "room_master" && (i.catalogKey === "wardrobe_tall" || i.catalogKey === "wardrobe_compact")
+  );
+  if (masterBed && masterWardrobe) {
+    const bBed = getFootprintBounds(masterBed);
+    const bWard = getFootprintBounds(masterWardrobe);
+    const gapZ = Math.max(bWard.minZ - bBed.maxZ, bBed.minZ - bWard.maxZ);
+    const gapX = Math.max(bWard.minX - bBed.maxX, bBed.minX - bWard.maxX);
+    const clearMm = Math.round(Math.max(0, Math.max(gapZ, gapX)) * 1000);
+    const wardStatus: ArchitecturalAuditCheck["status"] =
+      clearMm < 450 ? "DANGER" : clearMm < 580 ? "WARNING" : "PASS";
+    checks.push({
+      id: "audit_master_wardrobe",
+      title: "Lối đi & mở cánh Tủ áo Master ↔ Giường",
+      measuredLabel: `${clearMm.toLocaleString("vi-VN")} mm`,
+      targetLabel: "≥ 580 mm (hoặc cửa lùa)",
+      status: wardStatus,
+      detail:
+        wardStatus === "PASS"
+          ? "Đủ không gian đứng thay đồ và mở cánh tủ quần áo."
+          : "Khe tủ áo hơi hẹp — cân nhắc dùng tủ cánh lùa hoặc dịch giường sát vách kính.",
+      itemId: masterWardrobe.id,
+      cameraPreset: "MASTER_BEDROOM",
+    });
+  } else {
+    checks.push({
+      id: "audit_master_wardrobe",
+      title: "Lối đi & mở cánh Tủ áo Master ↔ Giường",
+      measuredLabel: "Thông thoáng",
+      targetLabel: "≥ 580 mm",
+      status: "PASS",
+      detail: "Chưa phát sinh cản trở tủ quần áo tại phòng ngủ Master.",
+      cameraPreset: "MASTER_BEDROOM",
+    });
+  }
+
+  // 5. Tam giác công năng Bếp (Bếp chữ L ↔ Tủ lạnh ↔ Bàn ăn)
+  const kitchen = floorItems.find((i) => i.catalogKey === "kitchen_l_hafele");
+  const fridge = floorItems.find((i) => i.catalogKey === "fridge_inverter");
+  const dining = floorItems.find(
+    (i) => i.catalogKey === "dining_set_4" || i.catalogKey === "folding_dining_table"
+  );
+  if (kitchen && fridge && dining) {
+    const d1 = Math.hypot(kitchen.position.x - fridge.position.x, kitchen.position.z - fridge.position.z);
+    const d2 = Math.hypot(fridge.position.x - dining.position.x, fridge.position.z - dining.position.z);
+    const d3 = Math.hypot(dining.position.x - kitchen.position.x, dining.position.z - kitchen.position.z);
+    const perimeterMm = Math.round((d1 + d2 + d3) * 1000);
+    const kitchenStatus: ArchitecturalAuditCheck["status"] =
+      perimeterMm < 2400 || perimeterMm > 8500 ? "WARNING" : "PASS";
+    checks.push({
+      id: "audit_kitchen_triangle",
+      title: "Chu vi Tam giác Bếp – Tủ lạnh – Bàn ăn",
+      measuredLabel: `${perimeterMm.toLocaleString("vi-VN")} mm`,
+      targetLabel: "2.400 – 8.500 mm",
+      status: kitchenStatus,
+      detail:
+        kitchenStatus === "PASS"
+          ? "Luồng di chuyển lấy thực phẩm, sơ chế và dọn mâm gọn gàng hợp lý."
+          : "Bố cục bếp và bàn ăn khá xa/sát nhau, cân nhắc kéo gọn để tiện thao tác nấu nướng.",
+      itemId: dining.id,
+      cameraPreset: "KITCHEN_DINING",
+    });
+  } else {
+    checks.push({
+      id: "audit_kitchen_triangle",
+      title: "Chu vi Tam giác Bếp – Tủ lạnh – Bàn ăn",
+      measuredLabel: "Đạt cơ bản",
+      targetLabel: "2.400 – 8.500 mm",
+      status: "PASS",
+      detail: "Cụm bếp bàn giao CĐT kết nối trực tiếp khu ăn uống.",
+      cameraPreset: "KITCHEN_DINING",
+    });
+  }
+
+  // 6. Tỷ lệ mật độ chiếm sàn (Footprint Coverage trên 51.0 m² thông thủy)
+  const usableSqm = 51.0;
+  let totalFootprintSqm = 0;
+  for (const item of floorItems) {
+    totalFootprintSqm += (item.dimensionsCm.width / 100) * (item.dimensionsCm.depth / 100);
+  }
+  const footprintCoveragePct = Number(((totalFootprintSqm / usableSqm) * 100).toFixed(1));
+  const densityStatus: ArchitecturalAuditCheck["status"] =
+    footprintCoveragePct > 55 ? "DANGER" : footprintCoveragePct > 48 ? "WARNING" : "PASS";
+  checks.push({
+    id: "audit_floor_density",
+    title: "Mật độ chiếm sàn nội thất (trên 51,0 m²)",
+    measuredLabel: `${footprintCoveragePct}% (${totalFootprintSqm.toFixed(1)} m²)`,
+    targetLabel: "25% – 48% thông thoáng",
+    status: densityStatus,
+    detail:
+      densityStatus === "PASS"
+        ? "Tỷ lệ khoảng trống lưu thông lý tưởng cho căn hộ 2PN 51 m², giữ cảm giác rộng rãi."
+        : "Mật độ đồ đặt sàn cao hơn 48% — nên rút gọn món phụ hoặc ưu tiên nội thất đa năng.",
+    cameraPreset: "DOLLHOUSE",
+  });
+
+  const passCount = checks.filter((c) => c.status === "PASS").length;
+  const warningCount = checks.filter((c) => c.status === "WARNING").length;
+  const dangerCount = checks.filter((c) => c.status === "DANGER").length;
+
+  return {
+    checks,
+    passCount,
+    warningCount,
+    dangerCount,
+    totalChecks: checks.length,
+    footprintCoveragePct,
+  };
+}
+
+export interface ConstructionMilestoneItem {
+  id: string;
+  stageNumber: number;
+  title: string;
+  subtitle: string;
+  weightPct: number;
+  monthsFromNow: number;
+  milestoneAmountVnd: number;
+  alreadyPaidCoveredVnd: number;
+  netCashDueVnd: number;
+  availableCashAtStageVnd: number;
+  cashUsedVnd: number;
+  goldNeededVnd: number;
+  suggestedGoldChiToSell: number;
+  remainingCashAfterStageVnd: number;
+  fundingStatus: "COVERED_BY_CASH" | "NEED_GOLD_LIQUIDATION" | "SHORTFALL";
+}
+
+export interface ConstructionMilestonesPlan {
+  totalBoqTargetVnd: number;
+  alreadyPaidVnd: number;
+  totalNetDueVnd: number;
+  totalGoldNeededVnd: number;
+  totalGoldChiToSell: number;
+  goldPortfolioRemainingChiAfterAll: number;
+  milestones: ConstructionMilestoneItem[];
+}
+
+export interface ConstructionMilestonesInput {
+  boqTotalVnd: number;
+  boqPaidVnd: number;
+  currentLiquidCashVnd: number;
+  monthlyNetSurplusVnd: number;
+  monthsUntilHandover: number;
+  goldPortfolio: GoldPortfolioState;
+}
+
+/**
+ * Lập lịch giải ngân 4 đợt thi công nội thất (30% - 40% - 20% - 10%) liên thông
+ * trực tiếp dòng tiền thặng dư hàng tháng và mô phỏng bán vàng ít tốn Spread nhất.
+ */
+export function calculateConstructionMilestones(
+  input: ConstructionMilestonesInput
+): ConstructionMilestonesPlan {
+  const totalBoq = Math.max(0, Math.round(input.boqTotalVnd));
+  let paidPool = Math.min(totalBoq, Math.max(0, Math.round(input.boqPaidVnd)));
+  const handoverMonth = Math.max(3, Math.round(input.monthsUntilHandover));
+  const monthlySurplus = Math.max(0, Math.round(input.monthlyNetSurplusVnd));
+
+  const stageSpecs = [
+    {
+      id: "ms_1_contract",
+      stageNumber: 1,
+      title: "Đợt 1 · Ký HĐ & Đặt cọc sản xuất xưởng",
+      subtitle: "Chốt bản vẽ 2D/3D, đặt cọc ván gỗ An Cường & phụ kiện",
+      weightPct: 30,
+      monthsFromNow: Math.max(1, handoverMonth - 2),
+    },
+    {
+      id: "ms_2_woodwork",
+      stageNumber: 2,
+      title: "Đợt 2 · Tập kết hàng thô & Lắp đặt gỗ",
+      subtitle: "Thi công tủ bếp, tủ áo, giường, bàn làm việc Phòng 05",
+      weightPct: 40,
+      monthsFromNow: Math.max(2, handoverMonth - 1),
+    },
+    {
+      id: "ms_3_appliances",
+      stageNumber: 3,
+      title: "Đợt 3 · Thiết bị điện máy, Rèm & Đèn",
+      subtitle: "Lắp đặt điều hòa, tủ lạnh, máy giặt sấy, TV & rèm 2 lớp",
+      weightPct: 20,
+      monthsFromNow: handoverMonth,
+    },
+    {
+      id: "ms_4_acceptance",
+      stageNumber: 4,
+      title: "Đợt 4 · Nghiệm thu bàn giao & Bảo hành",
+      subtitle: "Kiểm tra danh mục 8 khu vực, bàn giao hồ sơ hoàn công",
+      weightPct: 10,
+      monthsFromNow: handoverMonth + 1,
+    },
+  ];
+
+  let runningCash = Math.max(0, Math.round(input.currentLiquidCashVnd));
+  let prevMonthMark = 0;
+  let totalGoldNeededVnd = 0;
+  let totalGoldChiToSell = 0;
+
+  // Track virtual gold capacity across milestones using live Bid prices
+  const nhanBid = input.goldPortfolio.quotes.NHAN_9999?.buyPricePerChi || 9_050_000;
+  const fullGoldSim = simulateGoldLiquidation(
+    input.goldPortfolio,
+    totalBoq,
+    "MIN_SPREAD_FIRST"
+  );
+  let remainingGoldBidBudget =
+    fullGoldSim.totalProceedsVnd + fullGoldSim.remainingLiquidationValueVnd;
+  let remainingGoldChi =
+    fullGoldSim.totalSellChi + fullGoldSim.remainingChiAfterSale;
+
+  const milestones: ConstructionMilestoneItem[] = stageSpecs.map((spec, idx) => {
+    const milestoneAmountVnd =
+      idx === stageSpecs.length - 1
+        ? Math.max(
+            0,
+            totalBoq -
+              stageSpecs
+                .slice(0, -1)
+                .reduce((s, prev) => s + Math.round((totalBoq * prev.weightPct) / 100), 0)
+          )
+        : Math.round((totalBoq * spec.weightPct) / 100);
+
+    const alreadyPaidCoveredVnd = Math.min(paidPool, milestoneAmountVnd);
+    paidPool -= alreadyPaidCoveredVnd;
+    const netCashDueVnd = Math.max(0, milestoneAmountVnd - alreadyPaidCoveredVnd);
+
+    const deltaMonths = Math.max(0, spec.monthsFromNow - prevMonthMark);
+    prevMonthMark = spec.monthsFromNow;
+    runningCash += deltaMonths * monthlySurplus;
+
+    const availableCashAtStageVnd = runningCash;
+    const cashUsedVnd = Math.min(availableCashAtStageVnd, netCashDueVnd);
+    runningCash = Math.max(0, availableCashAtStageVnd - cashUsedVnd);
+
+    const cashShortfallVnd = Math.max(0, netCashDueVnd - cashUsedVnd);
+    let goldNeededVnd = 0;
+    let suggestedGoldChiToSell = 0;
+    let fundingStatus: ConstructionMilestoneItem["fundingStatus"] = "COVERED_BY_CASH";
+
+    if (cashShortfallVnd > 0) {
+      if (remainingGoldBidBudget >= cashShortfallVnd) {
+        goldNeededVnd = cashShortfallVnd;
+        suggestedGoldChiToSell =
+          nhanBid > 0 ? Math.min(remainingGoldChi, Math.ceil((cashShortfallVnd / nhanBid) * 2) / 2) : 0;
+        remainingGoldBidBudget = Math.max(0, remainingGoldBidBudget - goldNeededVnd);
+        remainingGoldChi = Math.max(0, Number((remainingGoldChi - suggestedGoldChiToSell).toFixed(3)));
+        fundingStatus = "NEED_GOLD_LIQUIDATION";
+      } else {
+        goldNeededVnd = remainingGoldBidBudget;
+        suggestedGoldChiToSell = remainingGoldChi;
+        remainingGoldBidBudget = 0;
+        remainingGoldChi = 0;
+        fundingStatus = "SHORTFALL";
+      }
+      totalGoldNeededVnd += goldNeededVnd;
+      totalGoldChiToSell = Number((totalGoldChiToSell + suggestedGoldChiToSell).toFixed(3));
+    }
+
+    return {
+      id: spec.id,
+      stageNumber: spec.stageNumber,
+      title: spec.title,
+      subtitle: spec.subtitle,
+      weightPct: spec.weightPct,
+      monthsFromNow: spec.monthsFromNow,
+      milestoneAmountVnd,
+      alreadyPaidCoveredVnd,
+      netCashDueVnd,
+      availableCashAtStageVnd,
+      cashUsedVnd,
+      goldNeededVnd,
+      suggestedGoldChiToSell,
+      remainingCashAfterStageVnd: runningCash,
+      fundingStatus,
+    };
+  });
+
+  return {
+    totalBoqTargetVnd: totalBoq,
+    alreadyPaidVnd: Math.min(totalBoq, Math.max(0, Math.round(input.boqPaidVnd))),
+    totalNetDueVnd: milestones.reduce((s, m) => s + m.netCashDueVnd, 0),
+    totalGoldNeededVnd,
+    totalGoldChiToSell,
+    goldPortfolioRemainingChiAfterAll: Number(Math.max(0, remainingGoldChi).toFixed(3)),
+    milestones,
+  };
+}
+
