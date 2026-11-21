@@ -410,6 +410,43 @@ export const InteriorMaterialFinishSchema = z.enum([
   "BRUSHED_TITANIUM",
 ]);
 
+export const InteriorBoqPaymentStageSchema = z.enum([
+  "DEPOSIT",
+  "DELIVERY",
+  "ACCEPTANCE",
+  "OTHER",
+]);
+
+export const InteriorBoqPaymentRecordSchema = z.object({
+  id: z.string().min(1),
+  stage: InteriorBoqPaymentStageSchema,
+  amountVnd: z.number().positive(),
+  date: z.string().min(1),
+  accountId: z.string().min(1),
+  memberId: FamilyMemberSchema,
+  linkedTransactionId: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const InteriorMepPointKindSchema = z.enum([
+  "OUTLET_DOUBLE",
+  "NETWORK_LAN",
+  "AC_DRAIN",
+  "WATER_DRAIN",
+  "LIGHT_SWITCH",
+]);
+
+export const InteriorMepPointSchema = z.object({
+  id: z.string().min(1),
+  kind: InteriorMepPointKindSchema,
+  label: z.string().min(1),
+  roomId: z.string().min(1),
+  x: z.number(),
+  z: z.number(),
+  heightCm: z.number().min(0).max(300),
+  note: z.string().optional(),
+});
+
 export const InteriorFurnitureItemSchema = z.object({
   id: z.string().min(1),
   catalogKey: InteriorCatalogKeySchema,
@@ -433,6 +470,10 @@ export const InteriorFurnitureItemSchema = z.object({
   boqGroup: InteriorBoqGroupSchema,
   procurementStatus: z.enum(["PLANNED", "QUOTED", "DEPOSITED", "INSTALLED"]),
   linkedTransactionId: z.string().optional(),
+  payments: z.array(InteriorBoqPaymentRecordSchema).optional(),
+  vendorName: z.string().optional(),
+  leadTimeDays: z.number().nonnegative().optional(),
+  warrantyMonths: z.number().nonnegative().optional(),
   note: z.string().optional(),
 });
 
@@ -447,6 +488,10 @@ export const InteriorExtraBoqItemSchema = z.object({
   unitPriceVnd: z.number().nonnegative(),
   procurementStatus: z.enum(["PLANNED", "QUOTED", "DEPOSITED", "INSTALLED"]),
   linkedTransactionId: z.string().optional(),
+  payments: z.array(InteriorBoqPaymentRecordSchema).optional(),
+  vendorName: z.string().optional(),
+  leadTimeDays: z.number().nonnegative().optional(),
+  warrantyMonths: z.number().nonnegative().optional(),
   note: z.string().optional(),
 });
 
@@ -462,6 +507,7 @@ export const InteriorDesignScenarioSchema = z.object({
   contingencyPercent: z.number().min(0).max(50),
   items: z.array(InteriorFurnitureItemSchema),
   extraBoqItems: z.array(InteriorExtraBoqItemSchema),
+  mepPoints: z.array(InteriorMepPointSchema).optional(),
   updatedAt: z.string(),
 });
 

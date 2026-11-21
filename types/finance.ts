@@ -456,6 +456,37 @@ export interface InteriorDimensionsCm {
   height: number;
 }
 
+export type InteriorBoqPaymentStage = 'DEPOSIT' | 'DELIVERY' | 'ACCEPTANCE' | 'OTHER';
+
+export interface InteriorBoqPaymentRecord {
+  id: string;
+  stage: InteriorBoqPaymentStage;
+  amountVnd: number;
+  date: string;
+  accountId: string;
+  memberId: FamilyMember;
+  linkedTransactionId?: string;
+  note?: string;
+}
+
+export type InteriorMepPointKind =
+  | 'OUTLET_DOUBLE'
+  | 'NETWORK_LAN'
+  | 'AC_DRAIN'
+  | 'WATER_DRAIN'
+  | 'LIGHT_SWITCH';
+
+export interface InteriorMepPoint {
+  id: string;
+  kind: InteriorMepPointKind;
+  label: string;
+  roomId: string;
+  x: number;
+  z: number;
+  heightCm: number;
+  note?: string;
+}
+
 export interface InteriorFurnitureItem {
   id: string;
   catalogKey: InteriorCatalogKey;
@@ -472,6 +503,10 @@ export interface InteriorFurnitureItem {
   boqGroup: InteriorBoqGroup;
   procurementStatus: InteriorProcurementStatus;
   linkedTransactionId?: string;
+  payments?: InteriorBoqPaymentRecord[];
+  vendorName?: string;
+  leadTimeDays?: number;
+  warrantyMonths?: number;
   note?: string;
 }
 
@@ -486,6 +521,10 @@ export interface InteriorExtraBoqItem {
   unitPriceVnd: number;
   procurementStatus: InteriorProcurementStatus;
   linkedTransactionId?: string;
+  payments?: InteriorBoqPaymentRecord[];
+  vendorName?: string;
+  leadTimeDays?: number;
+  warrantyMonths?: number;
   note?: string;
 }
 
@@ -501,6 +540,7 @@ export interface InteriorDesignScenario {
   contingencyPercent: number;
   items: InteriorFurnitureItem[];
   extraBoqItems: InteriorExtraBoqItem[];
+  mepPoints?: InteriorMepPoint[];
   updatedAt: string;
 }
 

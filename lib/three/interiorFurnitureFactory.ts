@@ -498,6 +498,25 @@ export function buildFurnitureMeshGroup(
     }
   }
 
+  // Soft ambient grounding Contact Shadow under floor-resting furniture (skipped for wall-mounted items & flat rugs)
+  const NO_CONTACT_SHADOW_KEYS = new Set([
+    "area_rug",
+    "ac_inverter",
+    "smart_tv",
+    "pegboard_goal_wall",
+    "wc_hafele_set",
+  ]);
+  if (!NO_CONTACT_SHADOW_KEYS.has(item.catalogKey)) {
+    const shadowGeo = new THREE.PlaneGeometry(w * 1.16, d * 1.16);
+    const shadowMesh = new THREE.Mesh(shadowGeo, lib.contactShadowMat);
+    shadowMesh.rotation.x = -Math.PI / 2;
+    shadowMesh.position.set(0, 0.004, 0);
+    shadowMesh.renderOrder = 1;
+    shadowMesh.castShadow = false;
+    shadowMesh.receiveShadow = false;
+    group.add(shadowMesh);
+  }
+
   group.position.set(item.position.x, 0, item.position.z);
   group.rotation.y = (item.rotationDeg * Math.PI) / 180;
   tagFurnitureGroup(group, item);

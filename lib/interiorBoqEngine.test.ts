@@ -4,12 +4,15 @@ import {
   createDefaultInteriorStudio,
   createScenarioAGuestBedroom,
   createScenarioBDualGrowthStudio,
+  resolveFinishForStylePreset,
 } from "./interiorFloorplan";
 import {
   calculateHandoverReadiness,
   calculateScenarioBoq,
+  compareInteriorScenarios,
   evaluateErgonomicClearances,
 } from "./interiorBoqEngine";
+import { InteriorDesignScenarioSchema } from "./validations";
 
 test("Scenario A (~118M) and Scenario B Dual Growth Studio (~140M) both fit inside 100-150M turnkey budget", () => {
   const scA = createScenarioAGuestBedroom();
@@ -40,6 +43,7 @@ test("Scenario B Dual Growth Studio contains dual workstation desk and 2 ergonom
   assert.ok(dualDesk);
   assert.equal(dualDesk.roomId, "room_05");
   assert.equal(chairs.length, 2);
+  assert.ok((scB.mepPoints?.length ?? 0) >= 12);
 });
 
 test("Default Scenario A and Scenario B layouts pass ergonomic clearance check without danger errors", () => {
@@ -48,8 +52,8 @@ test("Default Scenario A and Scenario B layouts pass ergonomic clearance check w
 
   const dangerA = evaluateErgonomicClearances(scA).filter((w) => w.severity === "DANGER");
   const dangerB = evaluateErgonomicClearances(scB).filter((w) => w.severity === "DANGER");
-  assert.equal(dangerA.length, 0);
-  assert.equal(dangerB.length, 0);
+  assert.equal(dangerA.length, 0, `Unexpected DANGER in Scenario A: ${dangerA.map((w) => w.message).join("; ")}`);
+  assert.equal(dangerB.length, 0, `Unexpected DANGER in Scenario B: ${dangerB.map((w) => w.message).join("; ")}`);
 });
 
 test("calculateHandoverReadiness bridges FINANCE cash, GOLD Bid, SKYONE PBT 2% and INTERIOR BOQ", () => {
@@ -68,4 +72,134 @@ test("calculateHandoverReadiness bridges FINANCE cash, GOLD Bid, SKYONE PBT 2% a
   assert.ok(readyWithGold.cashOnlyGapVnd > 0);
   assert.ok(readyWithGold.combinedSurplusOrGapVnd > 0);
   assert.ok(readyWithGold.suggestedGoldChiToSell > 0);
+});
+
+test("calculateHandoverReadiness eliminates double-counting when BOQ deposit is paid from liquid cash", () => {
+  const beforePayment = calculateHandoverReadiness({
+    liquidCashVnd: 100_000_000,
+    monthlyNetSurplusVnd: 15_000_000,
+    goldLiquidationValueBidVnd: 80_000_000,
+    goldNhan9999BidPerChiVnd: 9_000_000,
+    interiorBoqTotalVnd: 140_000_000,
+    interiorBoqPaidVnd: 0,
+    includePinkBook5Pct: false,
+    monthsUntilHandover: 9,
+  });
+
+  // User pays 50M deposit from cash: cash drops 100M -> 50M, BOQ paid rises 0 -> 50M
+  const afterPayment = calculateHandoverReadiness({
+    liquidCashVnd: 50_000_000,
+    monthlyNetSurplusVnd: 15_000_000,
+    goldLiquidationValueBidVnd: 80_000_000,
+    goldNhan9999BidPerChiVnd: 9_000_000,
+    interiorBoqTotalVnd: 140_000_000,
+    interiorBoqPaidVnd: 50_000_000,
+    includePinkBook5Pct: false,
+    monthsUntilHandover: 9,
+  });
+
+  assert.equal(afterPayment.interiorBoqGrossTotalVnd, 140_000_000);
+  assert.equal(afterPayment.interiorBoqPaidVnd, 50_000_000);
+  assert.equal(afterPayment.interiorBoqTotalVnd, 90_000_000);
+  assert.equal(afterPayment.cashOnlyGapVnd, beforePayment.cashOnlyGapVnd);
+  assert.equal(afterPayment.combinedSurplusOrGapVnd, beforePayment.combinedSurplusOrGapVnd);
+});
+
+test("Multi-tranche BOQ payments (40% deposit + 40% delivery + 20% acceptance) compute exact paid & remaining", () => {
+  const scB = createScenarioBDualGrowthStudio();
+  const sofa = scB.items.find((i) => i.catalogKey === "sofa_3seat");
+  assert.ok(sofa);
+
+  const totalSofa = sofa.unitPriceVnd; // FIXED_UNIT pricing
+  const dep = Math.round(totalSofa * 0.4);
+  const deliv = Math.round(totalSofa * 0.4);
+
+  sofa.procurementStatus = "DEPOSITED";
+  sofa.payments = [
+    {
+      id: "pay_1",
+      date: "2027-06-01",
+      amountVnd: dep,
+      stage: "DEPOSIT",
+      accountId: "acc_main",
+      memberId: "HUSBAND",
+      linkedTransactionId: "tx_1",
+    },
+    {
+      id: "pay_2",
+      date: "2027-07-01",
+      amountVnd: deliv,
+      stage: "DELIVERY",
+      accountId: "acc_main",
+      memberId: "WIFE",
+      linkedTransactionId: "tx_2",
+    },
+  ];
+
+  const boq = calculateScenarioBoq(scB);
+  const sofaRow = boq.rows.find((r) => r.id === sofa.id);
+  assert.ok(sofaRow);
+  assert.equal(sofaRow.paidAmountVnd, dep + deliv);
+  assert.equal(sofaRow.remainingAmountVnd, totalSofa - dep - deliv);
+  assert.equal(boq.paidOrDepositedVnd, dep + deliv);
+  assert.equal(boq.remainingToPayVnd, boq.grandTotalWithContingency - (dep + deliv));
+});
+
+test("compareInteriorScenarios computes accurate netDeltaVnd and Room 05 differences between PA-A and PA-B", () => {
+  const scA = createScenarioAGuestBedroom();
+  const scB = createScenarioBDualGrowthStudio();
+  const diff = compareInteriorScenarios(scA, scB);
+
+  const boqA = calculateScenarioBoq(scA);
+  const boqB = calculateScenarioBoq(scB);
+
+  assert.equal(diff.baseTotalVnd, boqA.grandTotalWithContingency);
+  assert.equal(diff.compareTotalVnd, boqB.grandTotalWithContingency);
+  assert.equal(diff.netDeltaVnd, boqB.grandTotalWithContingency - boqA.grandTotalWithContingency);
+  assert.ok(diff.entries.length > 0);
+
+  // Dual workstation desk exists only in PA-B
+  const dualDeskDiff = diff.entries.find((e) => e.key === "3D_ITEM_it_pb_dual_desk");
+  assert.ok(dualDeskDiff);
+  assert.equal(dualDeskDiff.kind, "ONLY_IN_COMPARE");
+  assert.ok(dualDeskDiff.deltaVnd > 0);
+});
+
+test("resolveFinishForStylePreset preserves developer finishes and updates wood & fabric finishes", () => {
+  const scB = createScenarioBDualGrowthStudio();
+  const dualDesk = scB.items.find((i) => i.catalogKey === "dual_workstation_desk");
+  const sofa = scB.items.find((i) => i.catalogKey === "sofa_3seat");
+  const kitchen = scB.items.find((i) => i.source === "DEVELOPER_INCLUDED");
+  assert.ok(dualDesk && sofa && kitchen);
+
+  assert.equal(resolveFinishForStylePreset(dualDesk, "MINIMALIST_SLATE"), "LIGHT_WALNUT");
+  assert.equal(resolveFinishForStylePreset(sofa, "WARM_SCANDINAVIAN"), "SAGE_LINEN");
+  // Developer-included items never change finish
+  assert.equal(resolveFinishForStylePreset(kitchen, "MINIMALIST_SLATE"), kitchen.materialFinish);
+});
+
+test("Zod InteriorDesignScenarioSchema validates new MEP, vendor metadata, and multi-tranche payments while staying backwards compatible", () => {
+  const scB = createScenarioBDualGrowthStudio();
+  scB.items[0].vendorName = "Xưởng An Cường";
+  scB.items[0].leadTimeDays = 14;
+  scB.items[0].warrantyMonths = 24;
+  scB.items[0].payments = [
+    {
+      id: "pay_zod_1",
+      date: "2027-05-15",
+      amountVnd: 5_000_000,
+      stage: "DEPOSIT",
+      accountId: "acc_main",
+      memberId: "HUSBAND",
+      linkedTransactionId: "tx_zod_1",
+    },
+  ];
+
+  const parsedModern = InteriorDesignScenarioSchema.safeParse(scB);
+  assert.equal(parsedModern.success, true);
+
+  // Backwards compatibility: strip mepPoints and optional fields
+  const legacyScenario = { ...scB, mepPoints: undefined };
+  const parsedLegacy = InteriorDesignScenarioSchema.safeParse(legacyScenario);
+  assert.equal(parsedLegacy.success, true);
 });

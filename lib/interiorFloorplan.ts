@@ -4,6 +4,8 @@ import {
   InteriorDesignScenario,
   InteriorFurnitureItem,
   InteriorMaterialFinish,
+  InteriorMepPoint,
+  InteriorMepPointKind,
   InteriorStudioState,
   InteriorStylePreset,
 } from "@/types/finance";
@@ -34,16 +36,26 @@ export interface WallSegmentSpec {
   isCurvedCorner?: boolean;
 }
 
+export interface DoorSwingArcSpec {
+  hingeX: number;
+  hingeZ: number;
+  radius: number;
+  startAngleDeg: number; // 0 = +X, 90 = +Z (SVG screen coords)
+  endAngleDeg: number;
+}
+
 export interface OpeningSpec {
   id: string;
   kind: "MAIN_DOOR" | "SLIDING_BALCONY" | "WINDOW" | "INTERIOR_DOOR" | "LOGGIA_DOOR" | "WC_WINDOW";
   label: string;
+  wallId?: string;
   x: number;
   z: number;
   width: number;
   height: number;
   sillHeight: number;
   rotationY: number;
+  swingArc?: DoorSwingArcSpec;
 }
 
 export interface StylePalettePreset {
@@ -143,6 +155,287 @@ export const MATERIAL_FINISH_META: Record<
   WHITE_MARBLE: { label: "Đá vân mây trắng", hex: "#F1F3F5", roughness: 0.22, metalness: 0.08 },
   BRUSHED_TITANIUM: { label: "Kim loại xước", hex: "#64748B", roughness: 0.26, metalness: 0.85 },
 };
+
+/**
+ * Bảng đồng bộ màu hoàn thiện đồ nội thất khi người dùng bấm nút 1 chạm
+ * "Áp màu cho toàn bộ đồ" theo Phong cách thiết kế (Style Preset).
+ */
+export const STYLE_PRESET_FURNITURE_PALETTES: Record<
+  InteriorStylePreset,
+  {
+    wood: InteriorMaterialFinish;
+    cabinet: InteriorMaterialFinish;
+    fabricPrimary: InteriorMaterialFinish;
+    fabricAccent: InteriorMaterialFinish;
+    chairTech: InteriorMaterialFinish;
+    tableTop: InteriorMaterialFinish;
+  }
+> = {
+  MODERN_WARM: {
+    wood: "WARM_OAK",
+    cabinet: "MATTE_CREAM",
+    fabricPrimary: "CREAM_BOUCLE",
+    fabricAccent: "SAGE_LINEN",
+    chairTech: "CHARCOAL_SLATE",
+    tableTop: "WARM_OAK",
+  },
+  JAPANDI: {
+    wood: "WARM_OAK",
+    cabinet: "MATTE_CREAM",
+    fabricPrimary: "CREAM_BOUCLE",
+    fabricAccent: "SAGE_LINEN",
+    chairTech: "LIGHT_WALNUT",
+    tableTop: "WARM_OAK",
+  },
+  MINIMALIST_SLATE: {
+    wood: "LIGHT_WALNUT",
+    cabinet: "CHARCOAL_SLATE",
+    fabricPrimary: "CHARCOAL_SLATE",
+    fabricAccent: "CREAM_BOUCLE",
+    chairTech: "CHARCOAL_SLATE",
+    tableTop: "WHITE_MARBLE",
+  },
+  WARM_SCANDINAVIAN: {
+    wood: "WARM_OAK",
+    cabinet: "MATTE_CREAM",
+    fabricPrimary: "SAGE_LINEN",
+    fabricAccent: "CREAM_BOUCLE",
+    chairTech: "CREAM_BOUCLE",
+    tableTop: "WHITE_MARBLE",
+  },
+};
+
+export function resolveFinishForStylePreset(
+  item: InteriorFurnitureItem,
+  preset: InteriorStylePreset
+): InteriorMaterialFinish {
+  if (item.source === "DEVELOPER_INCLUDED") return item.materialFinish;
+  const pal = STYLE_PRESET_FURNITURE_PALETTES[preset];
+  switch (item.catalogKey) {
+    case "sofa_3seat":
+    case "accent_armchair":
+      return pal.fabricPrimary;
+    case "reading_lounge_chair":
+    case "area_rug":
+      return pal.fabricAccent;
+    case "ergonomic_chair":
+      return pal.chairTech;
+    case "wardrobe_tall":
+    case "wardrobe_compact":
+    case "shoe_cabinet_tall":
+    case "pegboard_goal_wall":
+      return pal.cabinet;
+    case "coffee_table":
+      return pal.tableTop;
+    case "tv_console_slat":
+    case "dining_set_4":
+    case "bed_master_160":
+    case "bed_compact_140":
+    case "nightstand":
+    case "dual_workstation_desk":
+    case "single_desk":
+    case "tall_bookshelf_led":
+      return pal.wood;
+    default:
+      return item.materialFinish;
+  }
+}
+
+export const MEP_KIND_META: Record<
+  InteriorMepPointKind,
+  {
+    label: string;
+    shortLabel: string;
+    symbol: string;
+    colorHex: string;
+    defaultHeightCm: number;
+  }
+> = {
+  OUTLET_DOUBLE: {
+    label: "Ổ cắm điện đôi 220V",
+    shortLabel: "Ổ cắm đôi",
+    symbol: "⚡",
+    colorHex: "#EA580C",
+    defaultHeightCm: 40,
+  },
+  NETWORK_LAN: {
+    label: "Hạt mạng LAN / Cáp quang",
+    shortLabel: "Mạng LAN",
+    symbol: "LAN",
+    colorHex: "#2563EB",
+    defaultHeightCm: 45,
+  },
+  AC_DRAIN: {
+    label: "Ống đồng & Nguồn máy lạnh",
+    shortLabel: "Chờ Máy lạnh",
+    symbol: "AC",
+    colorHex: "#0891B2",
+    defaultHeightCm: 225,
+  },
+  WATER_DRAIN: {
+    label: "Cấp / Thoát nước máy giặt - RO",
+    shortLabel: "Cấp thoát nước",
+    symbol: "H2O",
+    colorHex: "#0284C7",
+    defaultHeightCm: 65,
+  },
+  LIGHT_SWITCH: {
+    label: "Công tắc đèn / Chuông cửa",
+    shortLabel: "Công tắc",
+    symbol: "SW",
+    colorHex: "#CA8A04",
+    defaultHeightCm: 120,
+  },
+};
+
+export function createDefaultSkyOneA2MepPoints(): InteriorMepPoint[] {
+  return [
+    // Phòng 05 (Dual Growth Studio) — 2 ổ cắm PC đôi + 2 hạt LAN tốc độ cao + ống đồng máy lạnh + công tắc
+    {
+      id: "mep_r05_pc_left",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm đôi PC Anh Chuột",
+      roomId: "room_05",
+      x: -2.45,
+      z: 3.46,
+      heightCm: 40,
+      note: "Chạy riêng dây 2.5mm cho dàn PC + màn hình rời",
+    },
+    {
+      id: "mep_r05_pc_right",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm đôi PC Bé Mèo",
+      roomId: "room_05",
+      x: -1.35,
+      z: 3.46,
+      heightCm: 40,
+      note: "Gần vị trí khay đi dây dưới mặt bàn đôi",
+    },
+    {
+      id: "mep_r05_lan",
+      kind: "NETWORK_LAN",
+      label: "Cổng LAN Cat6 Dual Studio",
+      roomId: "room_05",
+      x: -1.9,
+      z: 3.46,
+      heightCm: 45,
+      note: "Kéo từ tủ mạng sảnh vào chia 2 cổng LAN cho 2 máy",
+    },
+    {
+      id: "mep_r05_ac",
+      kind: "AC_DRAIN",
+      label: "Chờ ống đồng máy lạnh P05",
+      roomId: "room_05",
+      x: -1.25,
+      z: 1.52,
+      heightCm: 228,
+      note: "Đấu nối ra cục nóng đặt tại Lô gia 08",
+    },
+    {
+      id: "mep_r05_switch",
+      kind: "LIGHT_SWITCH",
+      label: "Công tắc đèn Phòng 05",
+      roomId: "room_05",
+      x: -0.26,
+      z: 2.38,
+      heightCm: 120,
+      note: "Không đặt kệ sách che khuất công tắc cửa vào",
+    },
+    // Phòng khách & Sảnh vào
+    {
+      id: "mep_liv_tv_power",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm TV & Modem Wifi",
+      roomId: "room_living_dining",
+      x: 0.72,
+      z: -1.35,
+      heightCm: 50,
+      note: "Âm sau kệ TV treo + vách lam sóng",
+    },
+    {
+      id: "mep_liv_lan",
+      kind: "NETWORK_LAN",
+      label: "Cáp quang & LAN Phòng khách",
+      roomId: "room_living_dining",
+      x: 0.72,
+      z: -1.05,
+      heightCm: 50,
+      note: "Đặt Router Wifi 6 trung tâm phủ cả Master & Phòng 05",
+    },
+    {
+      id: "mep_liv_ac",
+      kind: "AC_DRAIN",
+      label: "Chờ máy lạnh Phòng khách 1.5HP",
+      roomId: "room_living_dining",
+      x: 3.52,
+      z: -1.25,
+      heightCm: 230,
+      note: "Phía trên Sofa, tránh thổi thẳng vào bàn ăn",
+    },
+    {
+      id: "mep_ent_switch",
+      kind: "LIGHT_SWITCH",
+      label: "Công tắc tổng Sảnh vào",
+      roomId: "room_corridor",
+      x: 1.16,
+      z: 2.68,
+      heightCm: 120,
+      note: "Bật tắt nhanh đèn sảnh, phòng khách & bếp",
+    },
+    // Phòng ngủ Master
+    {
+      id: "mep_mas_bedside",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm đầu giường Master",
+      roomId: "room_master",
+      x: -2.4,
+      z: -1.55,
+      heightCm: 55,
+      note: "Sạc điện thoại & đèn ngủ tab đầu giường",
+    },
+    {
+      id: "mep_mas_ac",
+      kind: "AC_DRAIN",
+      label: "Chờ máy lạnh PN Master 1.0HP",
+      roomId: "room_master",
+      x: 0.48,
+      z: -2.2,
+      heightCm: 228,
+      note: "Thổi ngang chân giường, tránh phả trực tiếp vào đầu",
+    },
+    // Bếp & Lô gia giặt phơi
+    {
+      id: "mep_kit_fridge",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm riêng Tủ lạnh & Lọc RO",
+      roomId: "room_kitchen",
+      x: 1.58,
+      z: 3.46,
+      heightCm: 65,
+      note: "Ổ điện riêng CB chống giật cho tủ lạnh Inverter",
+    },
+    {
+      id: "mep_log_washer_water",
+      kind: "WATER_DRAIN",
+      label: "Cấp / Thoát nước Máy giặt",
+      roomId: "room_loggia",
+      x: -3.55,
+      z: -2.38,
+      heightCm: 75,
+      note: "Vị trí van cấp nước lạnh & phễu thoát sàn Lô gia 08",
+    },
+    {
+      id: "mep_log_washer_power",
+      kind: "OUTLET_DOUBLE",
+      label: "Ổ cắm chống nước Máy giặt sấy",
+      roomId: "room_loggia",
+      x: -3.55,
+      z: -2.05,
+      heightCm: 115,
+      note: "Có nắp che chống mưa tạt chuẩn IP55",
+    },
+  ];
+}
 
 /**
  * Mặt bằng chuẩn CAD Loại A2 — 2 Phòng ngủ, 1 WC (DT sử dụng 51.0 m², xây dựng 55.3 m²)
@@ -320,6 +613,13 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     height: 2.25,
     sillHeight: 0,
     rotationY: 0,
+    swingArc: {
+      hingeX: 1.05,
+      hingeZ: 3.52,
+      radius: 0.82,
+      startAngleDeg: 180,
+      endAngleDeg: 270,
+    },
   },
   {
     id: "op_balcony_sliding",
@@ -335,13 +635,68 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
   {
     id: "op_master_window",
     kind: "WINDOW",
-    label: "Cửa sổ Master 1.8m",
+    label: "Cửa sổ Master 1.85m",
+    wallId: "w_north_master",
     x: -0.95,
     z: -3.6,
     width: 1.85,
     height: 1.5,
     sillHeight: 0.85,
     rotationY: 0,
+  },
+  {
+    id: "op_master_door",
+    kind: "INTERIOR_DOOR",
+    label: "Cửa phòng ngủ Master",
+    x: 0.2,
+    z: -0.6,
+    width: 0.78,
+    height: 2.15,
+    sillHeight: 0,
+    rotationY: 0,
+    swingArc: {
+      hingeX: 0.54,
+      hingeZ: -0.66,
+      radius: 0.72,
+      startAngleDeg: 180,
+      endAngleDeg: 270,
+    },
+  },
+  {
+    id: "op_wc_door",
+    kind: "INTERIOR_DOOR",
+    label: "Cửa phòng WC 3 phân khu",
+    x: -0.2,
+    z: 0.55,
+    width: 0.76,
+    height: 2.1,
+    sillHeight: 0,
+    rotationY: Math.PI / 2,
+    swingArc: {
+      hingeX: -0.25,
+      hingeZ: 0.18,
+      radius: 0.7,
+      startAngleDeg: 90,
+      endAngleDeg: 180,
+    },
+  },
+  {
+    id: "op_room05_door",
+    kind: "INTERIOR_DOOR",
+    label: "Cửa vào Phòng 05",
+    x: -0.15,
+    z: 1.88,
+    width: 0.84,
+    height: 2.15,
+    sillHeight: 0,
+    rotationY: Math.PI / 2,
+    swingArc: {
+      hingeX: -0.2,
+      hingeZ: 1.46,
+      radius: 0.76,
+      startAngleDeg: 90,
+      endAngleDeg: 180,
+    },
   },
   {
     id: "op_room05_loggia",
@@ -353,11 +708,19 @@ export const SKYONE_A2_OPENINGS: readonly OpeningSpec[] = [
     height: 2.2,
     sillHeight: 0,
     rotationY: 0,
+    swingArc: {
+      hingeX: -2.28,
+      hingeZ: 1.35,
+      radius: 0.74,
+      startAngleDeg: 180,
+      endAngleDeg: 270,
+    },
   },
   {
     id: "op_wc_window",
     kind: "WC_WINDOW",
     label: "Cửa sổ lấy gió WC",
+    wallId: "w_wc_loggia",
     x: -2.55,
     z: 0.72,
     width: 0.55,
@@ -862,9 +1225,9 @@ function createCommonBaseItems(): InteriorFurnitureItem[] {
       name: "Tủ giày kịch trần + Hộc chìa khóa",
       roomId: "room_corridor",
       source: "NEW_PURCHASE",
-      position: { x: 0.0, z: 2.02 },
+      position: { x: 0.08, z: 2.86 },
       rotationDeg: 90,
-      dimensionsCm: { width: 95, depth: 32, height: 260 },
+      dimensionsCm: { width: 92, depth: 30, height: 260 },
       materialFinish: "MATTE_CREAM",
       pricingRule: "PER_LINEAR_METER",
       unitPriceVnd: 4_200_000,
@@ -924,7 +1287,7 @@ function createCommonBaseItems(): InteriorFurnitureItem[] {
       name: "Tủ lạnh Inverter 360L",
       roomId: "room_kitchen",
       source: "NEW_PURCHASE",
-      position: { x: 1.58, z: 3.1 },
+      position: { x: 1.65, z: 3.1 },
       rotationDeg: 180,
       dimensionsCm: { width: 62, depth: 64, height: 175 },
       materialFinish: "BRUSHED_TITANIUM",
@@ -1094,6 +1457,7 @@ export function createScenarioAGuestBedroom(): InteriorDesignScenario {
         procurementStatus: "PLANNED",
       },
     ],
+    mepPoints: createDefaultSkyOneA2MepPoints(),
     updatedAt: "2026-11-20T08:00:00.000Z",
   };
 }
@@ -1204,7 +1568,7 @@ export function createScenarioBDualGrowthStudio(): InteriorDesignScenario {
       name: "Ghế đọc sách thư giãn cạnh cửa Lô gia",
       roomId: "room_05",
       source: "NEW_PURCHASE",
-      position: { x: -3.25, z: 1.85 },
+      position: { x: -3.12, z: 1.88 },
       rotationDeg: 35,
       dimensionsCm: { width: 62, depth: 62, height: 82 },
       materialFinish: "SAGE_LINEN",
@@ -1292,6 +1656,7 @@ export function createScenarioBDualGrowthStudio(): InteriorDesignScenario {
         procurementStatus: "PLANNED",
       },
     ],
+    mepPoints: createDefaultSkyOneA2MepPoints(),
     updatedAt: "2026-11-20T08:00:00.000Z",
   };
 }

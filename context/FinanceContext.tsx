@@ -56,11 +56,15 @@ import {
   GoldPriceQuote,
   GoldSaleEvent,
   GoldSalePurpose,
+  InteriorBoqPaymentRecord,
+  InteriorBoqPaymentStage,
   InteriorDesignScenario,
   InteriorExtraBoqItem,
   InteriorFurnitureItem,
+  InteriorMepPoint,
   InteriorProcurementStatus,
   InteriorStudioState,
+  InteriorStylePreset,
 } from "@/types/finance";
 import {
   loadStoredDataV3,
@@ -124,7 +128,12 @@ import {
   computeGoldPortfolioMetrics,
   createDefaultGoldPortfolio,
 } from "@/lib/goldEngine";
-import { createDefaultInteriorStudio } from "@/lib/interiorFloorplan";
+import {
+  createDefaultInteriorStudio,
+  createDefaultSkyOneA2MepPoints,
+  resolveFinishForStylePreset,
+} from "@/lib/interiorFloorplan";
+import { calculateFurnitureItemCostVnd } from "@/lib/interiorBoqEngine";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   supabaseService,
@@ -501,9 +510,23 @@ interface FinanceContextType {
     accountId: string;
     memberId: FamilyMember;
     date: string;
-    statusAfter: "DEPOSITED" | "INSTALLED";
+    stage?: InteriorBoqPaymentStage;
+    statusAfter?: "DEPOSITED" | "INSTALLED";
     note?: string;
   }) => Transaction;
+  applyInteriorStylePaletteToAllFurniture: (
+    scenarioId: string,
+    preset: InteriorStylePreset
+  ) => void;
+  addInteriorMepPoint: (point: Omit<InteriorMepPoint, "id">) => InteriorMepPoint;
+  updateInteriorMepPoint: (
+    id: string,
+    patch: Partial<InteriorMepPoint>,
+    options?: { skipUndoHistory?: boolean }
+  ) => void;
+  deleteInteriorMepPoint: (id: string) => void;
+  resetInteriorMepPoints: () => void;
+  commitInteriorUndoSnapshot: (snapshot: InteriorStudioState) => void;
   toggleHandoverChecklistItem: (id: string) => void;
   updateHandoverChecklistNote: (id: string, note: string) => void;
   undoInteriorChange: () => void;
@@ -3433,8 +3456,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         code: nextCode,
         name: newName?.trim() || `${source.name} (Bản sao)`,
         shortLabel: `Phương án ${nextCode}`,
-        items: source.items.map((it) => ({ ...it, position: { ...it.position }, dimensionsCm: { ...it.dimensionsCm } })),
-        extraBoqItems: source.extraBoqItems.map((ex) => ({ ...ex })),
+        items: source.items.map((it) => ({
+          ...it,
+          position: { ...it.position },
+          dimensionsCm: { ...it.dimensionsCm },
+          payments: it.payments ? it.payments.map((p) => ({ ...p })) : undefined,
+        })),
+        extraBoqItems: source.extraBoqItems.map((ex) => ({
+          ...ex,
+          payments: ex.payments ? ex.payments.map((p) => ({ ...p })) : undefined,
+        })),
+        mepPoints: (source.mepPoints ?? createDefaultSkyOneA2MepPoints()).map((m) => ({ ...m })),
         updatedAt: nowIso,
       };
       updateInteriorState((prev) => ({
@@ -3590,9 +3622,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       accountId: string;
       memberId: FamilyMember;
       date: string;
-      statusAfter: "DEPOSITED" | "INSTALLED";
+      stage?: InteriorBoqPaymentStage;
+      statusAfter?: "DEPOSITED" | "INSTALLED";
       note?: string;
     }): Transaction => {
+      const stage: InteriorBoqPaymentStage = input.stage ?? "DEPOSIT";
+      const stagePrefix =
+        stage === "DEPOSIT"
+          ? "Đặt cọc"
+          : stage === "DELIVERY"
+            ? "Giao hàng"
+            : stage === "ACCEPTANCE"
+              ? "Nghiệm thu"
+              : "Thanh toán";
+
       const tx = addTransaction({
         amount: input.amountVnd,
         date: input.date,
@@ -3604,24 +3647,179 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         memberId: input.memberId,
         scope: "FAMILY",
         tag: "NORMAL",
-        note: `[Nội thất A.12A.07] ${input.itemName}${input.note ? ` · ${input.note}` : ""}`,
+        note: `[Nội thất A.12A.07 · ${stagePrefix}] ${input.itemName}${input.note ? ` · ${input.note}` : ""}`,
       });
 
-      if (input.origin === "3D_ITEM") {
-        updateInteriorFurnitureItem(input.itemId, {
-          procurementStatus: input.statusAfter,
-          linkedTransactionId: tx.id,
-        });
-      } else {
-        updateInteriorExtraBoqItem(input.itemId, {
-          procurementStatus: input.statusAfter,
-          linkedTransactionId: tx.id,
-        });
-      }
+      const paymentRecord: InteriorBoqPaymentRecord = {
+        id: `boq_pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        stage,
+        amountVnd: input.amountVnd,
+        date: input.date,
+        accountId: input.accountId,
+        memberId: input.memberId,
+        linkedTransactionId: tx.id,
+        note: input.note,
+      };
+
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          if (input.origin === "3D_ITEM") {
+            return {
+              ...sc,
+              items: sc.items.map((it) => {
+                if (it.id !== input.itemId) return it;
+                const nextPayments = [...(it.payments ?? []), paymentRecord];
+                const totalPaid = nextPayments.reduce((s, p) => s + p.amountVnd, 0);
+                const rowTotal = calculateFurnitureItemCostVnd(it);
+                const computedStatus: InteriorProcurementStatus =
+                  input.statusAfter ??
+                  (rowTotal > 0 && totalPaid >= rowTotal ? "INSTALLED" : "DEPOSITED");
+                return {
+                  ...it,
+                  payments: nextPayments,
+                  linkedTransactionId: tx.id,
+                  procurementStatus: computedStatus,
+                };
+              }),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return {
+            ...sc,
+            extraBoqItems: sc.extraBoqItems.map((ex) => {
+              if (ex.id !== input.itemId) return ex;
+              const nextPayments = [...(ex.payments ?? []), paymentRecord];
+              const totalPaid = nextPayments.reduce((s, p) => s + p.amountVnd, 0);
+              const rowTotal = Math.round(ex.quantity * ex.unitPriceVnd);
+              const computedStatus: InteriorProcurementStatus =
+                input.statusAfter ??
+                (rowTotal > 0 && totalPaid >= rowTotal ? "INSTALLED" : "DEPOSITED");
+              return {
+                ...ex,
+                payments: nextPayments,
+                linkedTransactionId: tx.id,
+                procurementStatus: computedStatus,
+              };
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+
       return tx;
     },
-    [addTransaction, categories, updateInteriorFurnitureItem, updateInteriorExtraBoqItem]
+    [addTransaction, categories, updateInteriorState]
   );
+
+  const applyInteriorStylePaletteToAllFurniture = useCallback(
+    (scenarioId: string, preset: InteriorStylePreset) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === scenarioId
+            ? {
+                ...sc,
+                stylePreset: preset,
+                items: sc.items.map((it) => ({
+                  ...it,
+                  materialFinish: resolveFinishForStylePreset(it, preset),
+                })),
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const addInteriorMepPoint = useCallback(
+    (point: Omit<InteriorMepPoint, "id">): InteriorMepPoint => {
+      const created: InteriorMepPoint = {
+        ...point,
+        id: `mep_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      };
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) =>
+          sc.id === prev.activeScenarioId
+            ? {
+                ...sc,
+                mepPoints: [...(sc.mepPoints ?? createDefaultSkyOneA2MepPoints()), created],
+                updatedAt: new Date().toISOString(),
+              }
+            : sc
+        ),
+      }));
+      return created;
+    },
+    [updateInteriorState]
+  );
+
+  const updateInteriorMepPoint = useCallback(
+    (
+      id: string,
+      patch: Partial<InteriorMepPoint>,
+      options?: { skipUndoHistory?: boolean }
+    ) => {
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) => {
+            if (sc.id !== prev.activeScenarioId) return sc;
+            const currentMep = sc.mepPoints ?? createDefaultSkyOneA2MepPoints();
+            return {
+              ...sc,
+              mepPoints: currentMep.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }),
+        options
+      );
+    },
+    [updateInteriorState]
+  );
+
+  const deleteInteriorMepPoint = useCallback(
+    (id: string) => {
+      updateInteriorState((prev) => ({
+        ...prev,
+        scenarios: prev.scenarios.map((sc) => {
+          if (sc.id !== prev.activeScenarioId) return sc;
+          const currentMep = sc.mepPoints ?? createDefaultSkyOneA2MepPoints();
+          return {
+            ...sc,
+            mepPoints: currentMep.filter((m) => m.id !== id),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    },
+    [updateInteriorState]
+  );
+
+  const resetInteriorMepPoints = useCallback(() => {
+    updateInteriorState((prev) => ({
+      ...prev,
+      scenarios: prev.scenarios.map((sc) =>
+        sc.id === prev.activeScenarioId
+          ? {
+              ...sc,
+              mepPoints: createDefaultSkyOneA2MepPoints(),
+              updatedAt: new Date().toISOString(),
+            }
+          : sc
+      ),
+    }));
+  }, [updateInteriorState]);
+
+  const commitInteriorUndoSnapshot = useCallback((snapshot: InteriorStudioState) => {
+    setInteriorUndoStack((stack) => [...stack.slice(-24), snapshot]);
+    setInteriorRedoStack([]);
+  }, []);
 
   const toggleHandoverChecklistItem = useCallback(
     (id: string) => {
@@ -4714,6 +4912,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     deleteInteriorExtraBoqItem,
     updateBoqItemStatus,
     recordBoqPaymentToFinance,
+    applyInteriorStylePaletteToAllFurniture,
+    addInteriorMepPoint,
+    updateInteriorMepPoint,
+    deleteInteriorMepPoint,
+    resetInteriorMepPoints,
+    commitInteriorUndoSnapshot,
     toggleHandoverChecklistItem,
     updateHandoverChecklistNote,
     undoInteriorChange,

@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { InteriorDesignScenario } from "@/types/finance";
+import {
+  InteriorDesignScenario,
+  InteriorFurnitureItem,
+  InteriorMepPoint,
+} from "@/types/finance";
 import {
   INTERIOR_STYLE_PRESETS,
   SKYONE_A2_BOUNDS,
@@ -9,8 +13,16 @@ import {
   SKYONE_A2_ROOMS,
   SKYONE_A2_WALLS,
   WallSegmentSpec,
+  createDefaultSkyOneA2MepPoints,
 } from "@/lib/interiorFloorplan";
-import { createInteriorMaterialLibrary, InteriorMaterialLibrary } from "./interiorMaterials";
+import {
+  resolveWalkthroughCollision,
+  snapPositionToWalls,
+} from "@/lib/interiorCadEngine";
+import {
+  createInteriorMaterialLibrary,
+  InteriorMaterialLibrary,
+} from "./interiorMaterials";
 import { buildFurnitureMeshGroup } from "./interiorFurnitureFactory";
 
 export type InteriorCameraPreset =
@@ -50,7 +62,6 @@ interface TimeLightingConfig {
   exposure: number;
 }
 
-// Ban công khu 03 hướng Đông / Đông Nam (nắng sáng dịu chiếu sâu từ phía -Z/+X)
 const TIME_LIGHTING: Record<InteriorTimeOfDay, TimeLightingConfig> = {
   MORNING_08: {
     sunPos: [8.5, 5.2, -9.5],
@@ -115,6 +126,13 @@ function disposeObjectTree(root: THREE.Object3D, keepSharedMaterials = true): vo
   });
 }
 
+function computeFurnitureSignature(
+  item: InteriorFurnitureItem,
+  stylePreset: string
+): string {
+  return `${item.catalogKey}|${item.dimensionsCm.width}|${item.dimensionsCm.depth}|${item.dimensionsCm.height}|${item.materialFinish}|${stylePreset}`;
+}
+
 export class InteriorSceneController {
   private container: HTMLElement;
   private callbacks: InteriorSceneCallbacks;
@@ -133,8 +151,13 @@ export class InteriorSceneController {
   private architectureGroup = new THREE.Group();
   private ceilingGroup = new THREE.Group();
   private furnitureGroup = new THREE.Group();
+  private mepGroup = new THREE.Group();
   private wallMeshRecords: { mesh: THREE.Object3D; cutawaySide?: WallSegmentSpec["cutawaySide"] }[] = [];
+
+  // Incremental furniture diff cache
   private furnitureMap = new Map<string, THREE.Group>();
+  private furnitureItemData = new Map<string, InteriorFurnitureItem>();
+  private furnitureSignatureMap = new Map<string, string>();
   private selectionBoxHelper: THREE.BoxHelper | null = null;
 
   // Lights
@@ -145,6 +168,7 @@ export class InteriorSceneController {
   // Interactive & Navigation state
   private navMode: InteriorNavMode = "ORBIT";
   private autoCutaway = true;
+  private showMepLayer = false;
   private selectedItemId: string | null = null;
   private timeOfDay: InteriorTimeOfDay = "MORNING_08";
 
@@ -160,17 +184,21 @@ export class InteriorSceneController {
   private dragOffset = new THREE.Vector3();
   private dragMoved = false;
 
-  // Walkthrough controls
+  // Walkthrough controls (Keyboard + Mobile Touch Joystick)
   private pressedKeys = new Set<string>();
+  private joystickVec = { vx: 0, vz: 0 };
   private walkYaw = 0;
   private walkPitch = 0;
   private isWalkLooking = false;
   private lastLookX = 0;
   private lastLookY = 0;
 
-  // Render loop
+  // Render-on-Demand & SoftwareGL Fence Pacing
   private rafId: number | null = null;
+  private renderScheduled = false;
   private lastFrameTime = performance.now();
+  private prevCamPos = new THREE.Vector3();
+  private prevTargetPos = new THREE.Vector3();
   private resizeObserver: ResizeObserver;
 
   constructor(
@@ -189,11 +217,10 @@ export class InteriorSceneController {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
-      preserveDrawingBuffer: true, // needed for crisp PNG snapshot export
+      preserveDrawingBuffer: false, // Disabled for optimal GPU performance; snapshot renders synchronously before toDataURL
       powerPreference: "high-performance",
     });
 
-    // Software WebGL detection (SwiftShader / llvmpipe / Mesa)
     const gl = this.renderer.getContext();
     const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
     const rendererStr = debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : "";
@@ -215,7 +242,6 @@ export class InteriorSceneController {
 
     this.scene = new THREE.Scene();
 
-    // PMREM RoomEnvironment for physically grounded reflections on glass/metal/porcelain
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     const roomEnv = new RoomEnvironment();
     this.envRenderTarget = this.pmrem.fromScene(roomEnv, 0.04);
@@ -226,13 +252,14 @@ export class InteriorSceneController {
     this.camera.position.set(...CAMERA_PRESETS.DOLLHOUSE.pos);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.075;
+    this.controls.enableDamping = !this.isSoftwareGl;
+    this.controls.dampingFactor = 0.08;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
     this.controls.minDistance = 1.6;
     this.controls.maxDistance = 16.5;
     this.controls.target.set(...CAMERA_PRESETS.DOLLHOUSE.target);
     this.controls.update();
+    this.controls.addEventListener("change", this.handleControlsChange);
 
     // Lights
     this.hemiLight = new THREE.HemisphereLight("#F2F7FF", "#C9B9A6", 0.72);
@@ -251,7 +278,6 @@ export class InteriorSceneController {
     this.sunLight.shadow.bias = -0.0005;
     this.scene.add(this.sunLight);
 
-    // Warm indoor architectural lights (Living, Kitchen, Master, Room 05 Dual Studio)
     const indoorPositions: [number, number, number][] = [
       [2.1, 2.55, -0.8],
       [2.2, 2.55, 2.2],
@@ -265,20 +291,24 @@ export class InteriorSceneController {
       this.indoorLights.push(pLight);
     }
 
-    // Material library + Architecture + Furniture
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
-    this.materialLib = createInteriorMaterialLibrary(initialScenario.stylePreset, maxAniso);
+    this.materialLib = createInteriorMaterialLibrary(
+      initialScenario.stylePreset,
+      maxAniso,
+      this.isSoftwareGl
+    );
     this.applySceneBackdrop();
 
     this.scene.add(this.architectureGroup);
     this.scene.add(this.ceilingGroup);
     this.scene.add(this.furnitureGroup);
+    this.mepGroup.visible = this.showMepLayer;
+    this.scene.add(this.mepGroup);
 
     this.buildArchitecture();
     this.syncScenario(initialScenario);
     this.setTimeOfDay("MORNING_08");
 
-    // Events
     const dom = this.renderer.domElement;
     dom.addEventListener("pointerdown", this.handlePointerDown);
     dom.addEventListener("pointermove", this.handlePointerMove);
@@ -290,8 +320,110 @@ export class InteriorSceneController {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
 
-    this.startLoop();
+    this.requestRender();
   }
+
+  private handleControlsChange = (): void => {
+    this.requestRender();
+  };
+
+  /**
+   * Software WebGL GPU pacing so continuous camera motion never floods SwiftShader/llvmpipe.
+   */
+  private afterDraw(next: () => void): void {
+    if (!this.isSoftwareGl) {
+      next();
+      return;
+    }
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    if (typeof gl.fenceSync === "function") {
+      const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      if (sync) {
+        gl.flush();
+        const poll = () => {
+          if (this.disposed) {
+            gl.deleteSync(sync);
+            return;
+          }
+          const status = gl.clientWaitSync(sync, 0, 0);
+          if (status === gl.ALREADY_SIGNALED || status === gl.CONDITION_SATISFIED) {
+            gl.deleteSync(sync);
+            next();
+          } else {
+            window.setTimeout(poll, 16);
+          }
+        };
+        poll();
+        return;
+      }
+    }
+    window.setTimeout(next, 32);
+  }
+
+  /**
+   * Coalesced Render-on-Demand scheduler: renders ONLY when camera, furniture, lights, or walkthrough moves.
+   */
+  public requestRender(): void {
+    if (this.disposed || this.renderScheduled) return;
+    this.renderScheduled = true;
+    this.rafId = requestAnimationFrame(this.renderFrame);
+  }
+
+  private renderFrame = (now: number): void => {
+    this.rafId = null;
+    this.renderScheduled = false;
+    if (this.disposed) return;
+
+    const dt = Math.min(0.05, Math.max(0.001, (now - this.lastFrameTime) / 1000));
+    this.lastFrameTime = now;
+
+    let keepRendering = false;
+
+    if (this.navMode === "ORBIT") {
+      this.prevCamPos.copy(this.camera.position);
+      this.prevTargetPos.copy(this.controls.target);
+
+      if (this.animTargetPos && this.animTargetLook) {
+        const alpha = 1 - Math.exp(-8 * dt);
+        this.camera.position.lerp(this.animTargetPos, alpha);
+        this.controls.target.lerp(this.animTargetLook, alpha);
+        if (
+          this.camera.position.distanceTo(this.animTargetPos) < 0.025 &&
+          this.controls.target.distanceTo(this.animTargetLook) < 0.025
+        ) {
+          this.camera.position.copy(this.animTargetPos);
+          this.controls.target.copy(this.animTargetLook);
+          this.animTargetPos = null;
+          this.animTargetLook = null;
+        } else {
+          keepRendering = true;
+        }
+      }
+
+      this.controls.update();
+      this.updateAutoCutaway();
+
+      // If OrbitControls damping is still settling, schedule next frame until stopped
+      if (
+        this.controls.enableDamping &&
+        (this.camera.position.distanceToSquared(this.prevCamPos) > 1e-7 ||
+          this.controls.target.distanceToSquared(this.prevTargetPos) > 1e-7)
+      ) {
+        keepRendering = true;
+      }
+    } else {
+      const moved = this.updateWalkthroughMovement(dt);
+      if (moved || this.isWalkLooking) {
+        keepRendering = true;
+      }
+    }
+
+    this.renderer.render(this.scene, this.camera);
+
+    if (keepRendering) {
+      this.afterDraw(() => this.requestRender());
+    }
+  };
 
   private applySceneBackdrop(): void {
     const preset = INTERIOR_STYLE_PRESETS[this.materialLib.stylePreset];
@@ -303,6 +435,101 @@ export class InteriorSceneController {
   public setDarkMode(dark: boolean): void {
     this.isDarkMode = dark;
     this.applySceneBackdrop();
+    this.requestRender();
+  }
+
+  public setShowMepLayer(visible: boolean): void {
+    this.showMepLayer = visible;
+    this.mepGroup.visible = visible;
+    this.requestRender();
+  }
+
+  /**
+   * Dựng 1 đoạn tường có tự động tách lỗ mở (window/door cutout: trái + phải + bệ dưới + đà trên)
+   * để khắc phục triệt để tình trạng tường đặc chôn chìm khung cửa sổ (ví dụ cửa sổ PN Master & WC).
+   */
+  private buildWallWithCutouts(wall: WallSegmentSpec): THREE.Group {
+    const wallGroup = new THREE.Group();
+    const dx = wall.x2 - wall.x1;
+    const dz = wall.z2 - wall.z1;
+    const length = Math.hypot(dx, dz);
+    const angle = Math.atan2(dz, dx);
+    const dirX = dx / (length || 1);
+    const dirZ = dz / (length || 1);
+
+    // Find openings explicitly attached to this wall
+    const wallOpenings = SKYONE_A2_OPENINGS.filter((op) => op.wallId === wall.id)
+      .map((op) => {
+        const tCenter = (op.x - wall.x1) * dirX + (op.z - wall.z1) * dirZ;
+        return {
+          op,
+          tStart: Math.max(0.05, tCenter - op.width / 2),
+          tEnd: Math.min(length - 0.05, tCenter + op.width / 2),
+        };
+      })
+      .filter((seg) => seg.tEnd > seg.tStart + 0.05)
+      .sort((a, b) => a.tStart - b.tStart);
+
+    const addWallBox = (t0: number, t1: number, y0: number, y1: number) => {
+      const segLen = t1 - t0;
+      const segH = y1 - y0;
+      if (segLen < 0.02 || segH < 0.02) return;
+      const tMid = (t0 + t1) / 2;
+      const geo = new THREE.BoxGeometry(segLen, segH, wall.thickness);
+      const mesh = new THREE.Mesh(geo, this.materialLib.wallMain);
+      mesh.position.set(wall.x1 + dirX * tMid, y0 + segH / 2, wall.z1 + dirZ * tMid);
+      mesh.rotation.y = -angle;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      wallGroup.add(mesh);
+    };
+
+    if (wallOpenings.length === 0) {
+      addWallBox(0, length, 0, wall.height);
+    } else {
+      let cursor = 0;
+      for (const seg of wallOpenings) {
+        if (seg.tStart > cursor) {
+          addWallBox(cursor, seg.tStart, 0, wall.height);
+        }
+        // Sill wall below opening
+        if (seg.op.sillHeight > 0.02) {
+          addWallBox(seg.tStart, seg.tEnd, 0, seg.op.sillHeight);
+        }
+        // Lintel wall above opening
+        const topY = seg.op.sillHeight + seg.op.height;
+        if (wall.height > topY + 0.02) {
+          addWallBox(seg.tStart, seg.tEnd, topY, wall.height);
+        }
+        cursor = seg.tEnd;
+      }
+      if (cursor < length) {
+        addWallBox(cursor, length, 0, wall.height);
+      }
+    }
+
+    if (wall.isCurvedCorner) {
+      const cornerRadius = 0.28;
+      const cornerCyl = new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          cornerRadius,
+          cornerRadius,
+          wall.height,
+          20,
+          1,
+          false,
+          Math.PI,
+          Math.PI / 2
+        ),
+        this.materialLib.wallMain
+      );
+      cornerCyl.position.set(wall.x1, wall.height / 2, wall.z1 - cornerRadius);
+      cornerCyl.castShadow = true;
+      cornerCyl.receiveShadow = true;
+      wallGroup.add(cornerCyl);
+    }
+
+    return wallGroup;
   }
 
   private buildArchitecture(): void {
@@ -340,17 +567,14 @@ export class InteriorSceneController {
       this.architectureGroup.add(mesh);
     }
 
-    // 2. Walls (20 CAD wall segments including curved corner on w_wc_south + balcony railing)
+    // 2. Walls (with segmented real cutouts for Master Window & WC Window)
     for (const wall of SKYONE_A2_WALLS) {
-      const dx = wall.x2 - wall.x1;
-      const dz = wall.z2 - wall.z1;
-      const length = Math.hypot(dx, dz);
-      const midX = (wall.x1 + wall.x2) / 2;
-      const midZ = (wall.z1 + wall.z2) / 2;
-      const angle = Math.atan2(dz, dx);
-
       if (wall.id === "w_north_balcony_rail") {
-        // 1.4m iron balustrade + top rail + technical shaft on left
+        const dx = wall.x2 - wall.x1;
+        const length = Math.abs(dx);
+        const midX = (wall.x1 + wall.x2) / 2;
+        const midZ = (wall.z1 + wall.z2) / 2;
+
         const railGroup = new THREE.Group();
         const topRail = new THREE.Mesh(
           new THREE.BoxGeometry(length, 0.05, 0.07),
@@ -377,7 +601,6 @@ export class InteriorSceneController {
           railGroup.add(bar);
         }
 
-        // Boxed technical pipe shaft at left balcony corner (spec 03)
         const shaft = new THREE.Mesh(
           new THREE.BoxGeometry(0.32, 2.8, 0.34),
           this.materialLib.wallMain
@@ -392,40 +615,18 @@ export class InteriorSceneController {
         continue;
       }
 
-      const wallGroup = new THREE.Group();
-      const geo = new THREE.BoxGeometry(length, wall.height, wall.thickness);
-      const mesh = new THREE.Mesh(geo, this.materialLib.wallMain);
-      mesh.position.set(midX, wall.height / 2, midZ);
-      mesh.rotation.y = -angle;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      wallGroup.add(mesh);
-
-      // Rounded safety corner column on WC-to-Room05 wall (spec 05: "Tường bo góc an toàn cho con trẻ")
-      if (wall.isCurvedCorner) {
-        const cornerRadius = 0.28;
-        const cornerCyl = new THREE.Mesh(
-          new THREE.CylinderGeometry(cornerRadius, cornerRadius, wall.height, 20, 1, false, Math.PI, Math.PI / 2),
-          this.materialLib.wallMain
-        );
-        cornerCyl.position.set(wall.x1, wall.height / 2, wall.z1 - cornerRadius);
-        cornerCyl.castShadow = true;
-        cornerCyl.receiveShadow = true;
-        wallGroup.add(cornerCyl);
-      }
-
+      const wallGroup = this.buildWallWithCutouts(wall);
       this.architectureGroup.add(wallGroup);
       this.wallMeshRecords.push({ mesh: wallGroup, cutawaySide: wall.cutawaySide });
     }
 
-    // 3. Openings (Lecmax 1.2m main door, 2.4m 3-panel balcony sliding door + curtains, Master window, Loggia door, WC window)
+    // 3. Openings (Main door, Balcony sliding, Master window, Interior wood doors, Loggia door, WC window)
     for (const op of SKYONE_A2_OPENINGS) {
       const opGroup = new THREE.Group();
       opGroup.position.set(op.x, 0, op.z);
       opGroup.rotation.y = op.rotationY;
 
       if (op.kind === "MAIN_DOOR") {
-        // Lecmax 2-leaf wood-grain steel fire door + Hafele smart lock
         const leafL = new THREE.Mesh(
           new THREE.BoxGeometry(op.width * 0.68, op.height, 0.06),
           this.materialLib.lecmaxWoodDoor
@@ -438,7 +639,6 @@ export class InteriorSceneController {
         );
         leafR.position.set(op.width * 0.35, op.height / 2, 0);
         opGroup.add(leafR);
-        // Hafele Smart Lock module
         const lock = new THREE.Mesh(
           new THREE.BoxGeometry(0.06, 0.26, 0.09),
           this.materialLib.darkFrameMetal
@@ -447,7 +647,6 @@ export class InteriorSceneController {
         opGroup.add(lock);
         this.wallMeshRecords.push({ mesh: opGroup, cutawaySide: "SOUTH" });
       } else if (op.kind === "SLIDING_BALCONY") {
-        // 3-panel aluminum glass sliding door (2.4m wide)
         const panelW = op.width / 3;
         for (let i = -1; i <= 1; i++) {
           const glass = new THREE.Mesh(
@@ -471,7 +670,6 @@ export class InteriorSceneController {
         header.position.set(0, op.height, 0);
         opGroup.add(header);
 
-        // Soft 2-layer curtains tucked neatly on both edges
         for (const sx of [-1, 1]) {
           const curtain = new THREE.Mesh(
             new THREE.BoxGeometry(0.28, op.height + 0.12, 0.12),
@@ -481,34 +679,98 @@ export class InteriorSceneController {
           opGroup.add(curtain);
         }
         this.wallMeshRecords.push({ mesh: opGroup, cutawaySide: "NORTH" });
+      } else if (op.kind === "INTERIOR_DOOR") {
+        // Architectural door jambs + header + open wood door leaf pivoted at 35° so rooms stay walkable & legible
+        const jambL = new THREE.Mesh(
+          new THREE.BoxGeometry(0.045, op.height, 0.14),
+          this.materialLib.interiorWoodDoor
+        );
+        jambL.position.set(-op.width / 2 + 0.02, op.height / 2, 0);
+        opGroup.add(jambL);
+
+        const jambR = new THREE.Mesh(
+          new THREE.BoxGeometry(0.045, op.height, 0.14),
+          this.materialLib.interiorWoodDoor
+        );
+        jambR.position.set(op.width / 2 - 0.02, op.height / 2, 0);
+        opGroup.add(jambR);
+
+        const headJamb = new THREE.Mesh(
+          new THREE.BoxGeometry(op.width + 0.04, 0.06, 0.14),
+          this.materialLib.interiorWoodDoor
+        );
+        headJamb.position.set(0, op.height + 0.03, 0);
+        opGroup.add(headJamb);
+
+        // Door leaf hinged open 65 degrees inward so walkthrough camera never clips a closed door
+        const hingePivot = new THREE.Group();
+        hingePivot.position.set(op.width / 2 - 0.04, 0, 0);
+        hingePivot.rotation.y = 1.15;
+        const leafW = op.width - 0.08;
+        const leaf = new THREE.Mesh(
+          new THREE.BoxGeometry(leafW, op.height - 0.03, 0.04),
+          this.materialLib.interiorWoodDoor
+        );
+        leaf.position.set(-leafW / 2, (op.height - 0.03) / 2, 0);
+        leaf.castShadow = true;
+        hingePivot.add(leaf);
+        const handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.11, 0.025, 0.07),
+          this.materialLib.darkFrameMetal
+        );
+        handle.position.set(-leafW + 0.11, 1.0, 0);
+        hingePivot.add(handle);
+        opGroup.add(hingePivot);
       } else {
-        // Windows & Loggia Glass Door
+        // Real open-cutout Windows & Loggia Glass Door with vertical mullions
         const glass = new THREE.Mesh(
-          new THREE.BoxGeometry(op.width - 0.06, op.height - 0.06, 0.025),
+          new THREE.BoxGeometry(op.width - 0.06, op.height - 0.06, 0.022),
           this.materialLib.glassClear
         );
         glass.position.set(0, op.sillHeight + op.height / 2, 0);
         opGroup.add(glass);
 
         const topBar = new THREE.Mesh(
-          new THREE.BoxGeometry(op.width, 0.05, 0.08),
+          new THREE.BoxGeometry(op.width, 0.05, 0.12),
           this.materialLib.darkFrameMetal
         );
         topBar.position.set(0, op.sillHeight + op.height, 0);
         opGroup.add(topBar);
 
         const botBar = new THREE.Mesh(
-          new THREE.BoxGeometry(op.width, 0.05, 0.08),
+          new THREE.BoxGeometry(op.width, 0.05, 0.12),
           this.materialLib.darkFrameMetal
         );
         botBar.position.set(0, op.sillHeight + 0.025, 0);
         opGroup.add(botBar);
+
+        for (const sx of [-1, 1]) {
+          const sideBar = new THREE.Mesh(
+            new THREE.BoxGeometry(0.045, op.height, 0.12),
+            this.materialLib.darkFrameMetal
+          );
+          sideBar.position.set(sx * (op.width / 2 - 0.02), op.sillHeight + op.height / 2, 0);
+          opGroup.add(sideBar);
+        }
+
+        if (op.width >= 1.4) {
+          const mullion = new THREE.Mesh(
+            new THREE.BoxGeometry(0.035, op.height, 0.06),
+            this.materialLib.darkFrameMetal
+          );
+          mullion.position.set(0, op.sillHeight + op.height / 2, 0);
+          opGroup.add(mullion);
+        }
+
+        if (op.wallId === "w_north_master") {
+          this.wallMeshRecords.push({ mesh: opGroup, cutawaySide: "NORTH" });
+        }
       }
 
       this.architectureGroup.add(opGroup);
     }
 
-    // 4. Stepped Living Cove Ceiling (2.85m) + Warm LED strip (visible in Walkthrough mode)
+    // 4. Stepped Living Cove Ceiling (visible in Walkthrough mode)
     const livingCeiling = new THREE.Mesh(
       new THREE.BoxGeometry(3.25, 0.08, 4.9),
       this.materialLib.ceilingMat
@@ -537,39 +799,118 @@ export class InteriorSceneController {
     room05Ceiling.position.set(-1.8, 2.74, 2.5);
     this.ceilingGroup.add(room05Ceiling);
 
-    // Hide ceiling in Orbit Dollhouse mode so user sees clearly inside apartment
     this.ceilingGroup.visible = this.navMode === "WALKTHROUGH";
   }
 
+  private syncMepMarkers(mepPoints: InteriorMepPoint[]): void {
+    disposeObjectTree(this.mepGroup, true);
+    this.mepGroup.clear();
+
+    for (const pt of mepPoints) {
+      const mat = this.materialLib.mepMaterials[pt.kind] || this.materialLib.mepMaterials.OUTLET_DOUBLE;
+      const y = Math.max(0.15, Math.min(2.6, pt.heightCm / 100));
+
+      const holder = new THREE.Group();
+      holder.position.set(pt.x, y, pt.z);
+
+      // Glowing technical node + vertical reference stem down to floor
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.06), mat);
+      holder.add(box);
+
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, y, 8),
+        mat
+      );
+      stem.position.set(0, -y / 2, 0);
+      holder.add(stem);
+
+      const floorRing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 0.012, 14),
+        mat
+      );
+      floorRing.position.set(0, -y + 0.008, 0);
+      holder.add(floorRing);
+
+      this.mepGroup.add(holder);
+    }
+  }
+
+  /**
+   * Incremental Mesh Diffing by `item.id`:
+   * - Position/Rotation changes update transform in-place (zero allocations, 60fps smooth).
+   * - Dimension/Finish/Catalog changes rebuild ONLY that single item.
+   * - Deleted items are cleanly disposed & removed.
+   */
   public syncScenario(scenario: InteriorDesignScenario): void {
     if (this.disposed) return;
 
-    // Rebuild material library if style preset changed
-    if (scenario.stylePreset !== this.materialLib.stylePreset) {
+    const styleChanged = scenario.stylePreset !== this.materialLib.stylePreset;
+    if (styleChanged) {
       const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
       this.materialLib.dispose();
-      this.materialLib = createInteriorMaterialLibrary(scenario.stylePreset, maxAniso);
+      this.materialLib = createInteriorMaterialLibrary(
+        scenario.stylePreset,
+        maxAniso,
+        this.isSoftwareGl
+      );
       this.applySceneBackdrop();
       this.buildArchitecture();
+      // Force rebuild of all furniture so they bind to the fresh material library
+      disposeObjectTree(this.furnitureGroup, true);
+      this.furnitureGroup.clear();
+      this.furnitureMap.clear();
+      this.furnitureSignatureMap.clear();
+      this.furnitureItemData.clear();
     }
 
-    // Clear and rebuild furniture meshes cleanly
-    disposeObjectTree(this.furnitureGroup, true);
-    this.furnitureGroup.clear();
-    this.furnitureMap.clear();
+    const incomingIds = new Set(scenario.items.map((i) => i.id));
 
+    // Remove deleted items
+    for (const [id, group] of this.furnitureMap.entries()) {
+      if (!incomingIds.has(id)) {
+        this.furnitureGroup.remove(group);
+        disposeObjectTree(group, true);
+        this.furnitureMap.delete(id);
+        this.furnitureSignatureMap.delete(id);
+        this.furnitureItemData.delete(id);
+      }
+    }
+
+    // Diff add / update items
     for (const item of scenario.items) {
-      const meshGroup = buildFurnitureMeshGroup(item, this.materialLib);
-      this.furnitureGroup.add(meshGroup);
-      this.furnitureMap.set(item.id, meshGroup);
+      this.furnitureItemData.set(item.id, item);
+      const sig = computeFurnitureSignature(item, scenario.stylePreset);
+      const existing = this.furnitureMap.get(item.id);
+      const prevSig = this.furnitureSignatureMap.get(item.id);
+
+      if (existing && prevSig === sig) {
+        // Fast-path transform update without rebuilding geometry
+        existing.position.set(item.position.x, 0, item.position.z);
+        existing.rotation.y = (item.rotationDeg * Math.PI) / 180;
+        existing.userData.isLocked = Boolean(item.isLocked);
+      } else {
+        if (existing) {
+          this.furnitureGroup.remove(existing);
+          disposeObjectTree(existing, true);
+        }
+        const meshGroup = buildFurnitureMeshGroup(item, this.materialLib);
+        this.furnitureGroup.add(meshGroup);
+        this.furnitureMap.set(item.id, meshGroup);
+        this.furnitureSignatureMap.set(item.id, sig);
+      }
     }
+
+    // Sync 3D MEP markers
+    this.syncMepMarkers(scenario.mepPoints ?? createDefaultSkyOneA2MepPoints());
 
     this.refreshSelectionHelper();
+    this.requestRender();
   }
 
   public setSelectedItem(id: string | null): void {
     this.selectedItemId = id;
     this.refreshSelectionHelper();
+    this.requestRender();
   }
 
   private refreshSelectionHelper(): void {
@@ -599,6 +940,7 @@ export class InteriorSceneController {
       light.intensity = cfg.indoorIntensity;
     }
     this.renderer.toneMappingExposure = cfg.exposure;
+    this.requestRender();
   }
 
   public setAutoCutaway(enabled: boolean): void {
@@ -608,21 +950,22 @@ export class InteriorSceneController {
         rec.mesh.visible = true;
       }
     }
+    this.requestRender();
   }
 
   public setNavMode(mode: InteriorNavMode): void {
     this.navMode = mode;
     this.ceilingGroup.visible = mode === "WALKTHROUGH";
+    this.joystickVec = { vx: 0, vz: 0 };
+    this.pressedKeys.clear();
 
     if (mode === "WALKTHROUGH") {
       this.controls.enabled = false;
       this.animTargetPos = null;
       this.animTargetLook = null;
-      // Show all walls in first-person walkthrough
       for (const rec of this.wallMeshRecords) {
         rec.mesh.visible = true;
       }
-      // Start at living-room eye level looking toward Room 05 & Balcony
       this.camera.position.set(1.55, 1.6, 1.35);
       this.walkYaw = 0.28;
       this.walkPitch = -0.06;
@@ -630,6 +973,16 @@ export class InteriorSceneController {
     } else {
       this.controls.enabled = true;
       this.applyCameraPreset("DOLLHOUSE");
+    }
+    this.requestRender();
+  }
+
+  public setWalkthroughJoystickVector(vx: number, vz: number): void {
+    this.joystickVec.vx = THREE.MathUtils.clamp(vx, -1, 1);
+    this.joystickVec.vz = THREE.MathUtils.clamp(vz, -1, 1);
+    if (Math.abs(vx) > 0.02 || Math.abs(vz) > 0.02) {
+      this.lastFrameTime = performance.now();
+      this.requestRender();
     }
   }
 
@@ -642,10 +995,13 @@ export class InteriorSceneController {
       this.walkYaw = Math.atan2(-dir.x, -dir.z);
       this.walkPitch = THREE.MathUtils.clamp(Math.asin(dir.y), -0.5, 0.5);
       this.applyWalkCameraOrientation();
+      this.requestRender();
       return;
     }
     this.animTargetPos = new THREE.Vector3(...cfg.pos);
     this.animTargetLook = new THREE.Vector3(...cfg.target);
+    this.lastFrameTime = performance.now();
+    this.requestRender();
   }
 
   private applyWalkCameraOrientation(): void {
@@ -654,6 +1010,7 @@ export class InteriorSceneController {
   }
 
   public captureSnapshotPng(): string {
+    // Render synchronously right before reading pixels (safe with preserveDrawingBuffer: false)
     this.renderer.render(this.scene, this.camera);
     return this.renderer.domElement.toDataURL("image/png");
   }
@@ -665,6 +1022,7 @@ export class InteriorSceneController {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.requestRender();
   }
 
   private getPointerNdc(e: PointerEvent): THREE.Vector2 {
@@ -683,10 +1041,10 @@ export class InteriorSceneController {
       this.isWalkLooking = true;
       this.lastLookX = e.clientX;
       this.lastLookY = e.clientY;
+      this.renderer.domElement.setPointerCapture?.(e.pointerId);
       return;
     }
 
-    // Cancel camera animation on manual interaction
     this.animTargetPos = null;
     this.animTargetLook = null;
 
@@ -700,6 +1058,7 @@ export class InteriorSceneController {
         this.selectedItemId = hitId;
         this.refreshSelectionHelper();
         this.callbacks.onSelectItem(hitId);
+        this.requestRender();
 
         const group = this.furnitureMap.get(hitId);
         if (group && !group.userData.isLocked) {
@@ -709,6 +1068,7 @@ export class InteriorSceneController {
             this.dragMoved = false;
             this.dragOffset.copy(group.position).sub(hitPoint);
             this.controls.enabled = false;
+            this.renderer.domElement.setPointerCapture?.(e.pointerId);
           }
         }
         return;
@@ -727,12 +1087,14 @@ export class InteriorSceneController {
       this.walkYaw -= dx * 0.0045;
       this.walkPitch = THREE.MathUtils.clamp(this.walkPitch - dy * 0.004, -0.65, 0.55);
       this.applyWalkCameraOrientation();
+      this.requestRender();
       return;
     }
 
     if (!this.draggingId) return;
     const group = this.furnitureMap.get(this.draggingId);
-    if (!group) return;
+    const itemMeta = this.furnitureItemData.get(this.draggingId);
+    if (!group || !itemMeta) return;
 
     const ndc = this.getPointerNdc(e);
     this.raycaster.setFromCamera(ndc, this.camera);
@@ -740,28 +1102,25 @@ export class InteriorSceneController {
     if (this.raycaster.ray.intersectPlane(this.floorPlane, hitPoint)) {
       const rawX = hitPoint.x + this.dragOffset.x;
       const rawZ = hitPoint.z + this.dragOffset.z;
-      // Snap to 5cm architectural grid & clamp inside A.12A.07 bounds
-      const snappedX = THREE.MathUtils.clamp(
-        Math.round(rawX * 20) / 20,
-        SKYONE_A2_BOUNDS.minX + 0.25,
-        SKYONE_A2_BOUNDS.maxX - 0.25
-      );
-      const snappedZ = THREE.MathUtils.clamp(
-        Math.round(rawZ * 20) / 20,
-        SKYONE_A2_BOUNDS.minZ + 0.25,
-        SKYONE_A2_BOUNDS.maxZ - 0.25
-      );
-      group.position.x = snappedX;
-      group.position.z = snappedZ;
+      const snapped = snapPositionToWalls(itemMeta, rawX, rawZ, { snapToWall: true });
+      group.position.x = snapped.x;
+      group.position.z = snapped.z;
       this.dragMoved = true;
       if (this.selectionBoxHelper) {
         this.selectionBoxHelper.update();
       }
+      this.requestRender();
     }
   };
 
   private handlePointerUp = (e: PointerEvent): void => {
     if (this.disposed) return;
+
+    try {
+      this.renderer.domElement.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore if pointer was not captured
+    }
 
     if (this.navMode === "WALKTHROUGH") {
       this.isWalkLooking = false;
@@ -780,10 +1139,10 @@ export class InteriorSceneController {
           Number(group.position.z.toFixed(2))
         );
       }
+      this.requestRender();
       return;
     }
 
-    // Deselect if clicked empty floor (tiny movement)
     const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
     if (dist < 6) {
       const ndc = this.getPointerNdc(e);
@@ -793,13 +1152,23 @@ export class InteriorSceneController {
         this.selectedItemId = null;
         this.refreshSelectionHelper();
         this.callbacks.onSelectItem(null);
+        this.requestRender();
       }
     }
   };
 
   private handleKeyDown = (e: KeyboardEvent): void => {
     if (this.navMode !== "WALKTHROUGH") return;
+    if (
+      e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement ||
+      e.target instanceof HTMLSelectElement
+    ) {
+      return;
+    }
     this.pressedKeys.add(e.code);
+    this.lastFrameTime = performance.now();
+    this.requestRender();
   };
 
   private handleKeyUp = (e: KeyboardEvent): void => {
@@ -815,7 +1184,6 @@ export class InteriorSceneController {
     if (this.navMode === "WALKTHROUGH" || !this.autoCutaway) return;
 
     const camPos = this.camera.position;
-    // Hide perimeter walls directly between camera and apartment center when viewing in Dollhouse mode
     const hideSouth = camPos.z > 2.6;
     const hideNorth = camPos.z < -2.8;
     const hideEast = camPos.x > 3.2;
@@ -830,71 +1198,38 @@ export class InteriorSceneController {
     }
   }
 
-  private updateWalkthroughMovement(dt: number): void {
-    if (this.navMode !== "WALKTHROUGH" || this.pressedKeys.size === 0) return;
+  private updateWalkthroughMovement(dt: number): boolean {
+    if (this.navMode !== "WALKTHROUGH") return false;
 
-    const speed = 2.4 * dt;
+    let forwardInput = -this.joystickVec.vz; // joystick up = negative Y = move forward
+    let rightInput = this.joystickVec.vx;
+
+    if (this.pressedKeys.has("KeyW") || this.pressedKeys.has("ArrowUp")) forwardInput += 1;
+    if (this.pressedKeys.has("KeyS") || this.pressedKeys.has("ArrowDown")) forwardInput -= 1;
+    if (this.pressedKeys.has("KeyD") || this.pressedKeys.has("ArrowRight")) rightInput += 1;
+    if (this.pressedKeys.has("KeyA") || this.pressedKeys.has("ArrowLeft")) rightInput -= 1;
+
+    const mag = Math.hypot(forwardInput, rightInput);
+    if (mag < 0.02) return false;
+
+    const normF = mag > 1 ? forwardInput / mag : forwardInput;
+    const normR = mag > 1 ? rightInput / mag : rightInput;
+
+    const speed = 2.35 * dt;
     const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, this.walkYaw, 0));
     const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, this.walkYaw, 0));
 
-    if (this.pressedKeys.has("KeyW") || this.pressedKeys.has("ArrowUp")) {
-      this.camera.position.addScaledVector(forward, speed);
-    }
-    if (this.pressedKeys.has("KeyS") || this.pressedKeys.has("ArrowDown")) {
-      this.camera.position.addScaledVector(forward, -speed);
-    }
-    if (this.pressedKeys.has("KeyD") || this.pressedKeys.has("ArrowRight")) {
-      this.camera.position.addScaledVector(right, speed);
-    }
-    if (this.pressedKeys.has("KeyA") || this.pressedKeys.has("ArrowLeft")) {
-      this.camera.position.addScaledVector(right, -speed);
-    }
+    const prevX = this.camera.position.x;
+    const prevZ = this.camera.position.z;
+    const nextX = prevX + (forward.x * normF + right.x * normR) * speed;
+    const nextZ = prevZ + (forward.z * normF + right.z * normR) * speed;
 
-    this.camera.position.x = THREE.MathUtils.clamp(
-      this.camera.position.x,
-      SKYONE_A2_BOUNDS.minX + 0.35,
-      SKYONE_A2_BOUNDS.maxX - 0.35
-    );
-    this.camera.position.z = THREE.MathUtils.clamp(
-      this.camera.position.z,
-      SKYONE_A2_BOUNDS.minZ + 0.35,
-      SKYONE_A2_BOUNDS.maxZ - 0.35
-    );
+    // Wall collision sliding against SKYONE A2 interior & perimeter walls
+    const resolved = resolveWalkthroughCollision(prevX, prevZ, nextX, nextZ, 0.24);
+    this.camera.position.x = resolved.x;
+    this.camera.position.z = resolved.z;
     this.camera.position.y = 1.6;
-  }
-
-  private startLoop(): void {
-    const tick = (now: number) => {
-      if (this.disposed) return;
-      this.rafId = requestAnimationFrame(tick);
-
-      const dt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
-      this.lastFrameTime = now;
-
-      if (this.navMode === "ORBIT") {
-        if (this.animTargetPos && this.animTargetLook) {
-          this.camera.position.lerp(this.animTargetPos, 0.12);
-          this.controls.target.lerp(this.animTargetLook, 0.12);
-          if (
-            this.camera.position.distanceTo(this.animTargetPos) < 0.04 &&
-            this.controls.target.distanceTo(this.animTargetLook) < 0.04
-          ) {
-            this.camera.position.copy(this.animTargetPos);
-            this.controls.target.copy(this.animTargetLook);
-            this.animTargetPos = null;
-            this.animTargetLook = null;
-          }
-        }
-        this.controls.update();
-        this.updateAutoCutaway();
-      } else {
-        this.updateWalkthroughMovement(dt);
-      }
-
-      this.renderer.render(this.scene, this.camera);
-    };
-
-    this.rafId = requestAnimationFrame(tick);
+    return true;
   }
 
   public dispose(): void {
@@ -906,6 +1241,7 @@ export class InteriorSceneController {
     }
 
     this.resizeObserver.disconnect();
+    this.controls.removeEventListener("change", this.handleControlsChange);
     const dom = this.renderer.domElement;
     dom.removeEventListener("pointerdown", this.handlePointerDown);
     dom.removeEventListener("pointermove", this.handlePointerMove);
@@ -920,6 +1256,7 @@ export class InteriorSceneController {
     disposeObjectTree(this.architectureGroup, true);
     disposeObjectTree(this.ceilingGroup, true);
     disposeObjectTree(this.furnitureGroup, true);
+    disposeObjectTree(this.mepGroup, true);
     this.materialLib.dispose();
     this.envRenderTarget.dispose();
     this.pmrem.dispose();

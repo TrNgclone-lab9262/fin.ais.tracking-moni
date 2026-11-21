@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Menu, Eye, EyeOff } from "lucide-react";
+import { Menu, Eye, EyeOff, Sun, Moon } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { InteriorAppIconSvg } from "@/components/common/SubAppIcons";
 
@@ -10,7 +10,8 @@ interface InteriorMobileHeaderProps {
 }
 
 export function InteriorMobileHeader({ onOpenDrawer }: InteriorMobileHeaderProps) {
-  const { isPrivacyMode, togglePrivacyMode, interiorStudio } = useFinance();
+  const { isPrivacyMode, togglePrivacyMode, themeMode, toggleThemeMode, interiorStudio } =
+    useFinance();
   const activeScenario =
     interiorStudio.scenarios.find((s) => s.id === interiorStudio.activeScenarioId) ||
     interiorStudio.scenarios[0];
@@ -40,14 +41,30 @@ export function InteriorMobileHeader({ onOpenDrawer }: InteriorMobileHeaderProps
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={togglePrivacyMode}
-          aria-label="Ẩn/hiện số tiền"
-          className="p-2 rounded-lg bg-teal-950/70 border border-teal-800/80 text-teal-200 cursor-pointer"
-        >
-          {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={(e) => toggleThemeMode(e)}
+            aria-label={themeMode === "dark" ? "Chuyển sang giao diện Sáng" : "Chuyển sang giao diện Tối"}
+            title={themeMode === "dark" ? "Chế độ Sáng" : "Chế độ Tối"}
+            className="p-2 rounded-lg bg-teal-950/70 border border-teal-800/80 text-teal-200 hover:bg-teal-900/70 transition-colors cursor-pointer"
+          >
+            {themeMode === "dark" ? (
+              <Sun className="w-4 h-4 text-amber-300" />
+            ) : (
+              <Moon className="w-4 h-4 text-teal-200" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={togglePrivacyMode}
+            aria-label="Ẩn/hiện số tiền"
+            className="p-2 rounded-lg bg-teal-950/70 border border-teal-800/80 text-teal-200 hover:bg-teal-900/70 transition-colors cursor-pointer"
+          >
+            {isPrivacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
     </header>
   );

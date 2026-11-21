@@ -1,9 +1,16 @@
 import {
   InteriorBoqGroup,
+  InteriorBoqPaymentRecord,
   InteriorDesignScenario,
   InteriorFurnitureItem,
+  InteriorPricingRule,
 } from "@/types/finance";
 import { SKYONE_A2_BOUNDS } from "./interiorFloorplan";
+import {
+  checkDoorSwingCollision,
+  detectItemWallOverlap,
+  getFootprintBounds,
+} from "./interiorCadEngine";
 import { SKYONE_A12A07_VERIFIED_FACTS } from "@/system_context";
 
 export const BOQ_GROUP_META: Record<
@@ -32,6 +39,16 @@ export const BOQ_GROUP_META: Record<
   },
 };
 
+export const BOQ_PAYMENT_STAGE_META: Record<
+  InteriorBoqPaymentRecord["stage"],
+  { label: string; shortLabel: string }
+> = {
+  DEPOSIT: { label: "Đặt cọc sản xuất", shortLabel: "Cọc" },
+  DELIVERY: { label: "Thanh toán giao hàng", shortLabel: "Giao hàng" },
+  ACCEPTANCE: { label: "Nghiệm thu hoàn công", shortLabel: "Nghiệm thu" },
+  OTHER: { label: "Thanh toán khác", shortLabel: "Khác" },
+};
+
 export function calculateFurnitureItemCostVnd(item: InteriorFurnitureItem): number {
   if (item.source === "DEVELOPER_INCLUDED" || item.boqGroup === "DEVELOPER_INCLUDED") {
     return 0;
@@ -50,6 +67,22 @@ export function calculateFurnitureItemCostVnd(item: InteriorFurnitureItem): numb
   return Math.round(item.unitPriceVnd);
 }
 
+function resolveRowPaidAmountVnd(
+  totalPriceVnd: number,
+  procurementStatus: InteriorFurnitureItem["procurementStatus"],
+  payments?: InteriorBoqPaymentRecord[]
+): number {
+  if (totalPriceVnd <= 0) return 0;
+  if (payments && payments.length > 0) {
+    return payments.reduce((sum, p) => sum + Math.max(0, Math.round(p.amountVnd)), 0);
+  }
+  // Backwards compatibility for legacy items marked DEPOSITED/INSTALLED without payments[]
+  if (procurementStatus === "INSTALLED" || procurementStatus === "DEPOSITED") {
+    return totalPriceVnd;
+  }
+  return 0;
+}
+
 export interface BoqUnifiedRow {
   id: string;
   origin: "3D_ITEM" | "EXTRA_LINE";
@@ -58,9 +91,19 @@ export interface BoqUnifiedRow {
   boqGroup: InteriorBoqGroup;
   source: InteriorFurnitureItem["source"];
   specLabel: string;
+  pricingRule?: InteriorPricingRule;
+  unitPriceVnd: number;
+  quantity?: number;
+  unit?: string;
   totalPriceVnd: number;
+  paidAmountVnd: number;
+  remainingAmountVnd: number;
+  payments: InteriorBoqPaymentRecord[];
   procurementStatus: InteriorFurnitureItem["procurementStatus"];
   linkedTransactionId?: string;
+  vendorName?: string;
+  leadTimeDays?: number;
+  warrantyMonths?: number;
   note?: string;
 }
 
@@ -100,12 +143,15 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
     if (item.source === "DEVELOPER_INCLUDED") {
       developerIncludedCount += 1;
     }
-    if (
-      totalPriceVnd > 0 &&
-      (item.procurementStatus === "DEPOSITED" || item.procurementStatus === "INSTALLED")
-    ) {
-      paidOrDepositedVnd += totalPriceVnd;
-    }
+
+    const payments = item.payments ?? [];
+    const paidAmountVnd = resolveRowPaidAmountVnd(
+      totalPriceVnd,
+      item.procurementStatus,
+      payments
+    );
+    const remainingAmountVnd = Math.max(0, totalPriceVnd - paidAmountVnd);
+    paidOrDepositedVnd += paidAmountVnd;
 
     const dimText = `${item.dimensionsCm.width}×${item.dimensionsCm.depth}×${item.dimensionsCm.height} cm`;
     const ruleTag =
@@ -123,9 +169,17 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
       boqGroup: item.boqGroup,
       source: item.source,
       specLabel: `${dimText}${ruleTag}`,
+      pricingRule: item.pricingRule,
+      unitPriceVnd: item.unitPriceVnd,
       totalPriceVnd,
+      paidAmountVnd,
+      remainingAmountVnd,
+      payments,
       procurementStatus: item.procurementStatus,
       linkedTransactionId: item.linkedTransactionId,
+      vendorName: item.vendorName,
+      leadTimeDays: item.leadTimeDays,
+      warrantyMonths: item.warrantyMonths,
       note: item.note,
     };
   });
@@ -134,12 +188,15 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
     const totalPriceVnd =
       ex.source === "DEVELOPER_INCLUDED" ? 0 : Math.round(ex.quantity * ex.unitPriceVnd);
     byGroup[ex.boqGroup] += totalPriceVnd;
-    if (
-      totalPriceVnd > 0 &&
-      (ex.procurementStatus === "DEPOSITED" || ex.procurementStatus === "INSTALLED")
-    ) {
-      paidOrDepositedVnd += totalPriceVnd;
-    }
+
+    const payments = ex.payments ?? [];
+    const paidAmountVnd = resolveRowPaidAmountVnd(
+      totalPriceVnd,
+      ex.procurementStatus,
+      payments
+    );
+    const remainingAmountVnd = Math.max(0, totalPriceVnd - paidAmountVnd);
+    paidOrDepositedVnd += paidAmountVnd;
 
     return {
       id: ex.id,
@@ -149,9 +206,18 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
       boqGroup: ex.boqGroup,
       source: ex.source,
       specLabel: `${ex.quantity} ${ex.unit}`,
+      unitPriceVnd: ex.unitPriceVnd,
+      quantity: ex.quantity,
+      unit: ex.unit,
       totalPriceVnd,
+      paidAmountVnd,
+      remainingAmountVnd,
+      payments,
       procurementStatus: ex.procurementStatus,
       linkedTransactionId: ex.linkedTransactionId,
+      vendorName: ex.vendorName,
+      leadTimeDays: ex.leadTimeDays,
+      warrantyMonths: ex.warrantyMonths,
       note: ex.note,
     };
   });
@@ -190,34 +256,114 @@ export function calculateScenarioBoq(scenario: InteriorDesignScenario): Scenario
   };
 }
 
+export interface ScenarioDiffEntry {
+  key: string;
+  name: string;
+  boqGroup: InteriorBoqGroup;
+  kind: "ONLY_IN_BASE" | "ONLY_IN_COMPARE" | "CHANGED_COST";
+  baseCostVnd: number;
+  compareCostVnd: number;
+  deltaVnd: number;
+  baseSpec?: string;
+  compareSpec?: string;
+}
+
+export interface ScenarioDiffSummary {
+  baseScenarioId: string;
+  compareScenarioId: string;
+  baseTotalVnd: number;
+  compareTotalVnd: number;
+  netDeltaVnd: number;
+  groupDeltas: Record<InteriorBoqGroup, number>;
+  entries: ScenarioDiffEntry[];
+}
+
+/**
+ * Đối chiếu chênh lệch chi tiết từng hạng mục giữa 2 Phương án (VD: PA-A vs PA-B).
+ */
+export function compareInteriorScenarios(
+  baseScenario: InteriorDesignScenario,
+  compareScenario: InteriorDesignScenario
+): ScenarioDiffSummary {
+  const baseBoq = calculateScenarioBoq(baseScenario);
+  const compareBoq = calculateScenarioBoq(compareScenario);
+
+  const baseMap = new Map<string, BoqUnifiedRow>();
+  for (const r of baseBoq.rows) {
+    baseMap.set(`${r.origin}_${r.id}`, r);
+  }
+  const compareMap = new Map<string, BoqUnifiedRow>();
+  for (const r of compareBoq.rows) {
+    compareMap.set(`${r.origin}_${r.id}`, r);
+  }
+
+  const entries: ScenarioDiffEntry[] = [];
+  const allKeys = new Set([...baseMap.keys(), ...compareMap.keys()]);
+
+  for (const key of allKeys) {
+    const a = baseMap.get(key);
+    const b = compareMap.get(key);
+    if (a && !b) {
+      entries.push({
+        key,
+        name: a.name,
+        boqGroup: a.boqGroup,
+        kind: "ONLY_IN_BASE",
+        baseCostVnd: a.totalPriceVnd,
+        compareCostVnd: 0,
+        deltaVnd: -a.totalPriceVnd,
+        baseSpec: a.specLabel,
+      });
+    } else if (!a && b) {
+      entries.push({
+        key,
+        name: b.name,
+        boqGroup: b.boqGroup,
+        kind: "ONLY_IN_COMPARE",
+        baseCostVnd: 0,
+        compareCostVnd: b.totalPriceVnd,
+        deltaVnd: b.totalPriceVnd,
+        compareSpec: b.specLabel,
+      });
+    } else if (a && b && a.totalPriceVnd !== b.totalPriceVnd) {
+      entries.push({
+        key,
+        name: b.name,
+        boqGroup: b.boqGroup,
+        kind: "CHANGED_COST",
+        baseCostVnd: a.totalPriceVnd,
+        compareCostVnd: b.totalPriceVnd,
+        deltaVnd: b.totalPriceVnd - a.totalPriceVnd,
+        baseSpec: a.specLabel,
+        compareSpec: b.specLabel,
+      });
+    }
+  }
+
+  entries.sort((x, y) => Math.abs(y.deltaVnd) - Math.abs(x.deltaVnd));
+
+  return {
+    baseScenarioId: baseScenario.id,
+    compareScenarioId: compareScenario.id,
+    baseTotalVnd: baseBoq.grandTotalWithContingency,
+    compareTotalVnd: compareBoq.grandTotalWithContingency,
+    netDeltaVnd: compareBoq.grandTotalWithContingency - baseBoq.grandTotalWithContingency,
+    groupDeltas: {
+      WOOD_FURNITURE: compareBoq.byGroup.WOOD_FURNITURE - baseBoq.byGroup.WOOD_FURNITURE,
+      APPLIANCES: compareBoq.byGroup.APPLIANCES - baseBoq.byGroup.APPLIANCES,
+      FINISHING_DECOR: compareBoq.byGroup.FINISHING_DECOR - baseBoq.byGroup.FINISHING_DECOR,
+      DEVELOPER_INCLUDED: 0,
+    },
+    entries,
+  };
+}
+
 export interface ErgonomicWarning {
   id: string;
   severity: "WARNING" | "DANGER";
   itemId: string;
   itemName: string;
   message: string;
-}
-
-function getFootprintBounds(item: InteriorFurnitureItem): {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-} {
-  const rad = (item.rotationDeg * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(rad));
-  const sin = Math.abs(Math.sin(rad));
-  const wM = item.dimensionsCm.width / 100;
-  const dM = item.dimensionsCm.depth / 100;
-  const effW = wM * cos + dM * sin;
-  const effD = wM * sin + dM * cos;
-
-  return {
-    minX: item.position.x - effW / 2,
-    maxX: item.position.x + effW / 2,
-    minZ: item.position.z - effD / 2,
-    maxZ: item.position.z + effD / 2,
-  };
 }
 
 const NON_COLLIDING_KEYS = new Set([
@@ -233,9 +379,10 @@ export function evaluateErgonomicClearances(
   const warnings: ErgonomicWarning[] = [];
   const floorItems = scenario.items.filter((i) => !NON_COLLIDING_KEYS.has(i.catalogKey));
 
-  // 1. Kiểm tra vượt biên mặt bằng căn hộ A.12A.07
   for (const item of floorItems) {
     const b = getFootprintBounds(item);
+
+    // 1. Vượt biên mặt bằng căn hộ A.12A.07
     if (
       b.minX < SKYONE_A2_BOUNDS.minX - 0.05 ||
       b.maxX > SKYONE_A2_BOUNDS.maxX + 0.05 ||
@@ -251,23 +398,31 @@ export function evaluateErgonomicClearances(
       });
     }
 
-    // 2. Kiểm tra cản trở vùng mở cửa chính Lecmax 1.2m (x: 0.0..1.1, z: 2.8..3.6)
-    if (
-      item.source !== "DEVELOPER_INCLUDED" &&
-      b.maxX > 0.15 &&
-      b.minX < 1.05 &&
-      b.maxZ > 2.85
-    ) {
+    // 2. Đè lên vách ngăn phòng / tường nội bộ (Cảnh báo đỏ theo quyết định thiết kế)
+    const wallHit = detectItemWallOverlap(item);
+    if (wallHit) {
       warnings.push({
-        id: `door_main_${item.id}`,
+        id: `wall_overlap_${item.id}`,
         severity: "DANGER",
         itemId: item.id,
         itemName: item.name,
-        message: `${item.name} đang chắn khoảng mở cánh cửa chính Lecmax 1.2m.`,
+        message: `${item.name} đang đè lên vách ngăn/tường (${wallHit.overlapCm} cm) — kéo nhẹ để hít sát mép tường.`,
       });
     }
 
-    // 3. Kiểm tra cản trở lối mở cửa kính lùa Ban công (x: 1.2..3.2, z: -2.65..-2.15)
+    // 3. Cản trở cung mở cửa 90° (Cửa chính Lecmax, Master, Phòng 05, WC, Lô gia)
+    const doorHit = checkDoorSwingCollision(item);
+    if (doorHit) {
+      warnings.push({
+        id: `door_swing_${doorHit.openingId}_${item.id}`,
+        severity: doorHit.isMainDoor ? "DANGER" : "WARNING",
+        itemId: item.id,
+        itemName: item.name,
+        message: `${item.name} đang chắn cung mở 90° của ${doorHit.openingLabel}.`,
+      });
+    }
+
+    // 4. Cản trở lối mở cửa kính lùa Ban công (x: 1.2..3.2, z: -2.65..-2.15)
     if (
       item.roomId === "room_living_dining" &&
       b.minZ < -2.35 &&
@@ -284,15 +439,16 @@ export function evaluateErgonomicClearances(
     }
   }
 
-  // 4. Kiểm tra va chạm giữa 2 vật thể đặt sàn trong cùng khu vực
+  // 5. Va chạm giữa 2 vật thể đặt sàn
   for (let i = 0; i < floorItems.length; i++) {
     for (let j = i + 1; j < floorItems.length; j++) {
       const a = floorItems[i];
       const bItem = floorItems[j];
-      // Bỏ qua cặp ghế công thái học sát bàn đôi hoặc tab đầu giường sát giường
       const isDeskChairPair =
-        (a.catalogKey === "dual_workstation_desk" && bItem.catalogKey === "ergonomic_chair") ||
-        (bItem.catalogKey === "dual_workstation_desk" && a.catalogKey === "ergonomic_chair");
+        ((a.catalogKey === "dual_workstation_desk" || a.catalogKey === "single_desk") &&
+          bItem.catalogKey === "ergonomic_chair") ||
+        ((bItem.catalogKey === "dual_workstation_desk" || bItem.catalogKey === "single_desk") &&
+          a.catalogKey === "ergonomic_chair");
       if (isDeskChairPair) continue;
 
       const ba = getFootprintBounds(a);
@@ -311,7 +467,7 @@ export function evaluateErgonomicClearances(
     }
   }
 
-  // 5. Kiểm tra lối đi phòng khách (giữa Sofa và Bàn trà)
+  // 6. Công thái học Phòng khách: Sofa ↔ Bàn trà & Mắt ↔ Smart TV 55"
   const sofa = floorItems.find((i) => i.catalogKey === "sofa_3seat");
   const coffee = floorItems.find((i) => i.catalogKey === "coffee_table");
   if (sofa && coffee) {
@@ -329,6 +485,40 @@ export function evaluateErgonomicClearances(
     }
   }
 
+  const tv = scenario.items.find((i) => i.catalogKey === "smart_tv");
+  if (sofa && tv) {
+    const eyeToTvCm = Math.round(
+      Math.hypot(sofa.position.x - tv.position.x, sofa.position.z - tv.position.z) * 100
+    );
+    if (eyeToTvCm < 175) {
+      warnings.push({
+        id: "ergo_tv_too_close",
+        severity: "WARNING",
+        itemId: tv.id,
+        itemName: tv.name,
+        message: `Khoảng cách Sofa ↔ Smart TV 55" chỉ ${eyeToTvCm} cm (nên giữ 200–270 cm để bảo vệ mắt).`,
+      });
+    }
+  }
+
+  // 7. Khoảng mở cánh tủ quần áo Master (>= 55cm tới giường)
+  const masterBed = floorItems.find((i) => i.catalogKey === "bed_master_160");
+  const masterWardrobe = floorItems.find((i) => i.catalogKey === "wardrobe_tall");
+  if (masterBed && masterWardrobe) {
+    const bBed = getFootprintBounds(masterBed);
+    const bWard = getFootprintBounds(masterWardrobe);
+    const gapCm = Math.round((bWard.minZ - bBed.maxZ) * 100);
+    if (gapCm >= 0 && gapCm < 50) {
+      warnings.push({
+        id: "clearance_master_wardrobe",
+        severity: "WARNING",
+        itemId: masterWardrobe.id,
+        itemName: masterWardrobe.name,
+        message: `Khoảng mở cánh Tủ áo Master ↔ Giường chỉ ${gapCm} cm (nên >= 55 cm hoặc đổi sang cánh lùa).`,
+      });
+    }
+  }
+
   return warnings;
 }
 
@@ -337,7 +527,10 @@ export interface HandoverReadinessInput {
   monthlyNetSurplusVnd: number;
   goldLiquidationValueBidVnd: number;
   goldNhan9999BidPerChiVnd: number;
+  /** Tổng dự toán BOQ (Gross) hoặc số còn phải trả nếu không truyền interiorBoqPaidVnd */
   interiorBoqTotalVnd: number;
+  /** Số tiền nội thất đã thanh toán/đặt cọc thực tế (đã trừ khỏi liquidCashVnd) — tránh tính trùng */
+  interiorBoqPaidVnd?: number;
   includePinkBook5Pct: boolean;
   monthsUntilHandover?: number;
 }
@@ -346,6 +539,11 @@ export interface HandoverReadinessResult {
   monthsUntilHandover: number;
   maintenanceFee2PctVnd: number;
   pinkBook5PctVnd: number;
+  /** Tổng BOQ trọn gói (trước khi trừ phần đã chi) */
+  interiorBoqGrossTotalVnd: number;
+  /** Số tiền BOQ đã thanh toán/đặt cọc */
+  interiorBoqPaidVnd: number;
+  /** Phần BOQ còn phải chi thêm (= max(0, gross - paid)) */
   interiorBoqTotalVnd: number;
   totalHandoverNeedVnd: number;
   currentLiquidCashVnd: number;
@@ -364,13 +562,22 @@ export interface HandoverReadinessResult {
 export function calculateHandoverReadiness(
   input: HandoverReadinessInput
 ): HandoverReadinessResult {
-  const monthsUntilHandover = Math.max(1, input.monthsUntilHandover ?? 9); // Từ T11/2026 -> T08/2027 = 9 tháng
+  const monthsUntilHandover = Math.max(1, input.monthsUntilHandover ?? 9);
   const maintenanceFee2PctVnd = SKYONE_A12A07_VERIFIED_FACTS.pricing.maintenanceFee2Pct; // 28.925.479 đ
   const pinkBook5PctVnd = input.includePinkBook5Pct
     ? SKYONE_A12A07_VERIFIED_FACTS.bidvLoan.pinkBook5PctAmount // 72.313.698 đ
     : 0;
+
+  const interiorBoqGrossTotalVnd = Math.max(0, input.interiorBoqTotalVnd);
+  const interiorBoqPaidVnd = Math.min(
+    interiorBoqGrossTotalVnd,
+    Math.max(0, input.interiorBoqPaidVnd ?? 0)
+  );
+  const interiorBoqRemainingVnd = Math.max(0, interiorBoqGrossTotalVnd - interiorBoqPaidVnd);
+
+  // Loại bỏ double-counting: chỉ cộng phần BOQ còn phải chi thêm vào nhu cầu tiền mặt còn lại
   const totalHandoverNeedVnd =
-    maintenanceFee2PctVnd + pinkBook5PctVnd + Math.max(0, input.interiorBoqTotalVnd);
+    maintenanceFee2PctVnd + pinkBook5PctVnd + interiorBoqRemainingVnd;
 
   const safeCash = Math.max(0, input.liquidCashVnd);
   const projectedCashSurplusVnd = Math.max(0, input.monthlyNetSurplusVnd) * monthsUntilHandover;
@@ -383,11 +590,17 @@ export function calculateHandoverReadiness(
 
   const readinessPctCashOnly =
     totalHandoverNeedVnd > 0
-      ? Math.min(100, Number(((projectedCashAtHandoverVnd / totalHandoverNeedVnd) * 100).toFixed(1)))
+      ? Math.min(
+          100,
+          Number(((projectedCashAtHandoverVnd / totalHandoverNeedVnd) * 100).toFixed(1))
+        )
       : 100;
   const readinessPctWithGold =
     totalHandoverNeedVnd > 0
-      ? Math.min(100, Number(((totalResourcesWithGoldVnd / totalHandoverNeedVnd) * 100).toFixed(1)))
+      ? Math.min(
+          100,
+          Number(((totalResourcesWithGoldVnd / totalHandoverNeedVnd) * 100).toFixed(1))
+        )
       : 100;
 
   const suggestedGoldChiToSell =
@@ -408,7 +621,9 @@ export function calculateHandoverReadiness(
     monthsUntilHandover,
     maintenanceFee2PctVnd,
     pinkBook5PctVnd,
-    interiorBoqTotalVnd: Math.max(0, input.interiorBoqTotalVnd),
+    interiorBoqGrossTotalVnd,
+    interiorBoqPaidVnd,
+    interiorBoqTotalVnd: interiorBoqRemainingVnd,
     totalHandoverNeedVnd,
     currentLiquidCashVnd: safeCash,
     projectedCashSurplusVnd,
@@ -435,7 +650,13 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
     "Nhóm BOQ",
     "Nguồn",
     "Quy cách / Kích thước",
+    "Đơn giá (VND)",
     "Thành tiền (VND)",
+    "Đã thanh toán (VND)",
+    "Còn lại (VND)",
+    "Nhà cung cấp",
+    "Lead time (ngày)",
+    "Bảo hành (tháng)",
     "Trạng thái",
     "Ghi chú",
   ];
@@ -454,17 +675,53 @@ export function exportBoqToCsv(scenario: InteriorDesignScenario, summary: Scenar
       escapeCsvCell(BOQ_GROUP_META[row.boqGroup].label),
       escapeCsvCell(row.source === "DEVELOPER_INCLUDED" ? "CĐT Bàn Giao" : "Mua / Đóng mới"),
       escapeCsvCell(row.specLabel),
+      String(row.unitPriceVnd),
       String(row.totalPriceVnd),
+      String(row.paidAmountVnd),
+      String(row.remainingAmountVnd),
+      escapeCsvCell(row.vendorName || ""),
+      row.leadTimeDays ? String(row.leadTimeDays) : "",
+      row.warrantyMonths ? String(row.warrantyMonths) : "",
       escapeCsvCell(statusLabels[row.procurementStatus]),
       escapeCsvCell(row.note || ""),
     ].join(",")
   );
 
   rows.push(
-    ["", escapeCsvCell(`Dự phòng phát sinh (${scenario.contingencyPercent}%)`), "", "", "", String(summary.contingencyAmount), "", ""].join(",")
+    [
+      "",
+      escapeCsvCell(`Dự phòng phát sinh (${scenario.contingencyPercent}%)`),
+      "",
+      "",
+      "",
+      "",
+      String(summary.contingencyAmount),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ].join(",")
   );
   rows.push(
-    ["", escapeCsvCell("TỔNG DỰ TOÁN TRỌN GÓI (VNĐ)"), "", "", "", String(summary.grandTotalWithContingency), "", ""].join(",")
+    [
+      "",
+      escapeCsvCell("TỔNG DỰ TOÁN TRỌN GÓI (VNĐ)"),
+      "",
+      "",
+      "",
+      "",
+      String(summary.grandTotalWithContingency),
+      String(summary.paidOrDepositedVnd),
+      String(summary.remainingToPayVnd),
+      "",
+      "",
+      "",
+      "",
+      "",
+    ].join(",")
   );
 
   const csvContent = "\uFEFF" + [headers.map(escapeCsvCell).join(","), ...rows].join("\r\n");
