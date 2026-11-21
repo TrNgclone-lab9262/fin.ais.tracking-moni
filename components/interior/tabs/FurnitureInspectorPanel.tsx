@@ -16,6 +16,8 @@ import {
   ChevronUp,
   ArrowUpDown,
   Box,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   InteriorFurnitureItem,
@@ -40,6 +42,7 @@ interface FurnitureInspectorPanelProps {
     options?: { skipUndoHistory?: boolean }
   ) => void;
   onCommitUndoSnapshot: (snapshot: InteriorStudioState) => void;
+  onToggleVisibility?: (id: string) => void;
   onDuplicate: (item: InteriorFurnitureItem) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
@@ -68,6 +71,7 @@ export function FurnitureInspectorPanel({
   isPrivacyMode,
   onUpdateItem,
   onCommitUndoSnapshot,
+  onToggleVisibility,
   onDuplicate,
   onDelete,
   onClose,
@@ -431,16 +435,27 @@ export function FurnitureInspectorPanel({
         </div>
       )}
 
-      {/* Actions: Lock, Duplicate, Delete */}
+      {/* Actions: Lock, Visibility, Duplicate, Delete */}
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
         <button
           type="button"
           onClick={() => onUpdateItem(item.id, { isLocked: !item.isLocked })}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
         >
           {item.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
           <span>{item.isLocked ? "Mở khóa" : "Khóa vị trí"}</span>
         </button>
+        {onToggleVisibility && (
+          <button
+            type="button"
+            onClick={() => onToggleVisibility(item.id)}
+            className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+            title={item.isHidden ? "Hiện lại món này trong 3D & 2D" : "Ẩn tạm món này khỏi 3D & 2D (giữ nguyên BOQ)"}
+            aria-label={item.isHidden ? "Hiện lại món nội thất" : "Ẩn tạm món nội thất"}
+          >
+            {item.isHidden ? <Eye className="w-4 h-4 text-teal-600" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onDuplicate(item)}

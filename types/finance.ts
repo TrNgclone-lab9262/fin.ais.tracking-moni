@@ -553,6 +553,7 @@ export interface InteriorFurnitureItem {
   customGlbId?: string; // Tham chiếu khóa file .glb lưu trong IndexedDB
   customGlbName?: string;
   isLocked?: boolean;
+  isHidden?: boolean; // Ẩn tạm trên 3D/2D để soi góc kỹ thuật, vẫn giữ trong BOQ
   pricingRule: InteriorPricingRule;
   unitPriceVnd: number;
   boqGroup: InteriorBoqGroup;
@@ -583,6 +584,16 @@ export interface InteriorExtraBoqItem {
   note?: string;
 }
 
+export interface InteriorCameraSnapshot {
+  position: [number, number, number];
+  target: [number, number, number];
+  preset?: 'DOLLHOUSE' | 'ENTRANCE' | 'LIVING_BALCONY' | 'KITCHEN_DINING' | 'MASTER_BEDROOM' | 'ROOM_05_STUDIO';
+  navMode?: 'ORBIT' | 'WALKTHROUGH';
+  timeOfDay?: 'MORNING_08' | 'NOON_12' | 'AFTERNOON_1630' | 'EVENING_20';
+  fov?: number;
+  autoCutaway?: boolean;
+}
+
 export interface InteriorDesignScenario {
   id: string;
   code: 'A' | 'B' | string;
@@ -601,6 +612,7 @@ export interface InteriorDesignScenario {
   roomFloorOverrides?: Record<string, InteriorFloorPattern>;
   lightingZones?: InteriorLightingZones;
   curtainOpenRatio?: number; // 0 = đóng rèm, 1 = mở thoáng hoàn toàn
+  lastCameraView?: InteriorCameraSnapshot;
   updatedAt: string;
 }
 

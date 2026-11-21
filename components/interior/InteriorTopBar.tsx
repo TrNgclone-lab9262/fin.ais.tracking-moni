@@ -4,6 +4,7 @@ import React from "react";
 import { Eye, EyeOff, Sun, Moon, Database } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { AppSwitcherWaffle } from "@/components/common/AppSwitcherWaffle";
+import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 import { InteriorRouteTab } from "@/types/finance";
 
 interface InteriorTopBarProps {
@@ -45,6 +46,12 @@ export function InteriorTopBar({ onOpenBackupModal }: InteriorTopBarProps) {
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        <FullscreenToggle
+          variant="icon"
+          titleEnter="Toàn màn hình ứng dụng"
+          titleExit="Thoát toàn màn hình (Esc)"
+        />
+
         <button
           type="button"
           onClick={togglePrivacyMode}

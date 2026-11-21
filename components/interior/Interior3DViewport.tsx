@@ -15,8 +15,6 @@ import {
   Layers,
   AlertTriangle,
   Zap,
-  Maximize2,
-  Minimize2,
   Lightbulb,
   Blinds,
   Aperture,
@@ -24,9 +22,11 @@ import {
   Hammer,
 } from "lucide-react";
 import {
+  InteriorCameraSnapshot,
   InteriorDesignScenario,
   InteriorLightingZones,
 } from "@/types/finance";
+import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 import { DEFAULT_LIGHTING_ZONES } from "@/lib/interiorFloorplan";
 import {
   InteriorArchTarget,
@@ -56,6 +56,8 @@ interface Interior3DViewportProps {
   onItemMoved: (id: string, x: number, z: number, elevationCm?: number) => void;
   onUpdateLightingZones?: (patch: Partial<InteriorLightingZones>) => void;
   onUpdateCurtainOpenRatio?: (ratio: number) => void;
+  initialCameraState?: InteriorCameraSnapshot | null;
+  onCameraStateChange?: (snapshot: InteriorCameraSnapshot) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onFallbackTo2D?: () => void;
@@ -201,6 +203,8 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
       onItemMoved,
       onUpdateLightingZones,
       onUpdateCurtainOpenRatio,
+      initialCameraState = null,
+      onCameraStateChange,
       isFullscreen = false,
       onToggleFullscreen,
       onFallbackTo2D,
@@ -211,15 +215,34 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     const { themeMode } = useFinance();
     const mountRef = useRef<HTMLDivElement | null>(null);
     const controllerRef = useRef<InteriorSceneController | null>(null);
-    const callbacksRef = useRef({ onSelectItem, onItemMoved, onSelectArchTarget });
-    callbacksRef.current = { onSelectItem, onItemMoved, onSelectArchTarget };
+    const lastRestoredScenarioIdRef = useRef<string | null>(null);
+    const callbacksRef = useRef({
+      onSelectItem,
+      onItemMoved,
+      onSelectArchTarget,
+      onCameraStateChange,
+    });
+    callbacksRef.current = {
+      onSelectItem,
+      onItemMoved,
+      onSelectArchTarget,
+      onCameraStateChange,
+    };
 
     const [webglError, setWebglError] = useState<string | null>(null);
-    const [activePreset, setActivePreset] = useState<InteriorCameraPreset>("DOLLHOUSE");
-    const [timeOfDay, setTimeOfDay] = useState<InteriorTimeOfDay>("MORNING_08");
-    const [navMode, setNavMode] = useState<InteriorNavMode>("ORBIT");
-    const [autoCutaway, setAutoCutaway] = useState<boolean>(true);
-    const [cameraFov, setCameraFov] = useState<number>(44);
+    const [activePreset, setActivePreset] = useState<InteriorCameraPreset>(
+      initialCameraState?.preset ?? "DOLLHOUSE"
+    );
+    const [timeOfDay, setTimeOfDay] = useState<InteriorTimeOfDay>(
+      initialCameraState?.timeOfDay ?? "MORNING_08"
+    );
+    const [navMode, setNavMode] = useState<InteriorNavMode>(
+      initialCameraState?.navMode ?? "ORBIT"
+    );
+    const [autoCutaway, setAutoCutaway] = useState<boolean>(
+      initialCameraState?.autoCutaway ?? true
+    );
+    const [cameraFov, setCameraFov] = useState<number>(initialCameraState?.fov ?? 44);
     const [dockExpanded, setDockExpanded] = useState<boolean>(true);
     const [snapshotFlash, setSnapshotFlash] = useState<boolean>(false);
 
@@ -270,6 +293,8 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
               callbacksRef.current.onItemMoved(id, x, z, elevationCm),
             onSelectArchitecture: (target) =>
               callbacksRef.current.onSelectArchTarget?.(target),
+            onCameraChanged: (snapshot) =>
+              callbacksRef.current.onCameraStateChange?.(snapshot),
             onContextLost: () => {
               setWebglError(
                 "Trình duyệt tạm giải phóng ngữ cảnh WebGL 3D. Bạn có thể chuyển sang Bản vẽ 2D CAD."
@@ -281,7 +306,12 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
         ctrl.setShowMepLayer(showMepLayer);
         ctrl.setInteractionMode(interactionMode);
         ctrl.setSelectedArchTarget(selectedArchTarget);
-        ctrl.setCameraFov(cameraFov);
+        if (initialCameraState) {
+          ctrl.restoreCameraState(initialCameraState);
+        } else {
+          ctrl.setCameraFov(cameraFov);
+        }
+        lastRestoredScenarioIdRef.current = scenario.id;
         controllerRef.current = ctrl;
         setWebglError(null);
 
@@ -301,6 +331,26 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
     useEffect(() => {
       controllerRef.current?.syncScenario(scenario);
     }, [scenario]);
+
+    // Restore saved camera state when switching between scenarios (PA-A <-> PA-B)
+    useEffect(() => {
+      const ctrl = controllerRef.current;
+      if (!ctrl || lastRestoredScenarioIdRef.current === scenario.id) return;
+      lastRestoredScenarioIdRef.current = scenario.id;
+      if (initialCameraState) {
+        ctrl.restoreCameraState(initialCameraState);
+        if (initialCameraState.preset) setActivePreset(initialCameraState.preset);
+        if (initialCameraState.timeOfDay) setTimeOfDay(initialCameraState.timeOfDay);
+        if (initialCameraState.navMode) setNavMode(initialCameraState.navMode);
+        if (typeof initialCameraState.autoCutaway === "boolean") {
+          setAutoCutaway(initialCameraState.autoCutaway);
+        }
+        if (typeof initialCameraState.fov === "number") {
+          setCameraFov(initialCameraState.fov);
+        }
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scenario.id]);
 
     useEffect(() => {
       controllerRef.current?.setSelectedItem(selectedItemId);
@@ -450,26 +500,13 @@ export const Interior3DViewport = forwardRef<Interior3DViewportHandle, Interior3
           </button>
 
           {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              title={isFullscreen ? "Thu gọn toàn màn hình (Esc)" : "Xem toàn màn hình 3D"}
-              aria-label={isFullscreen ? "Thu gọn toàn màn hình" : "Xem toàn màn hình"}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border shadow-sm whitespace-nowrap cursor-pointer ${
-                isFullscreen
-                  ? "bg-teal-600 border-teal-600 text-white hover:bg-teal-700"
-                  : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-              }`}
-            >
-              {isFullscreen ? (
-                <Minimize2 className="w-3.5 h-3.5" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              )}
-              <span className="hidden sm:inline">
-                {isFullscreen ? "Thu gọn" : "Toàn màn hình"}
-              </span>
-            </button>
+            <FullscreenToggle
+              variant="compact"
+              isFullscreen={isFullscreen}
+              onToggle={onToggleFullscreen}
+              titleEnter="Xem toàn màn hình 3D"
+              titleExit="Thu gọn toàn màn hình (Esc)"
+            />
           )}
 
           <button

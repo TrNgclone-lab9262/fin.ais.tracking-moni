@@ -487,9 +487,10 @@ interface FinanceContextType {
     patch: Partial<
       Pick<
         InteriorDesignScenario,
-        "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent"
+        "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent" | "lastCameraView"
       >
-    >
+    >,
+    options?: { skipUndoHistory?: boolean }
   ) => void;
   duplicateInteriorScenario: (sourceScenarioId: string, newName?: string) => InteriorDesignScenario | null;
   addInteriorFurnitureItem: (item: Omit<InteriorFurnitureItem, "id">) => InteriorFurnitureItem;
@@ -3438,18 +3439,22 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       patch: Partial<
         Pick<
           InteriorDesignScenario,
-          "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent"
+          "name" | "shortLabel" | "description" | "stylePreset" | "targetBudgetMinVnd" | "targetBudgetMaxVnd" | "contingencyPercent" | "lastCameraView"
         >
-      >
+      >,
+      options?: { skipUndoHistory?: boolean }
     ) => {
-      updateInteriorState((prev) => ({
-        ...prev,
-        scenarios: prev.scenarios.map((sc) =>
-          sc.id === scenarioId
-            ? { ...sc, ...patch, updatedAt: new Date().toISOString() }
-            : sc
-        ),
-      }));
+      updateInteriorState(
+        (prev) => ({
+          ...prev,
+          scenarios: prev.scenarios.map((sc) =>
+            sc.id === scenarioId
+              ? { ...sc, ...patch, updatedAt: new Date().toISOString() }
+              : sc
+          ),
+        }),
+        options
+      );
     },
     [updateInteriorState]
   );

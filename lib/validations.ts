@@ -529,6 +529,7 @@ export const InteriorFurnitureItemSchema = z.object({
   customGlbId: z.string().optional(),
   customGlbName: z.string().optional(),
   isLocked: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
   pricingRule: z.enum(["FIXED_UNIT", "PER_LINEAR_METER", "PER_SQUARE_METER"]),
   unitPriceVnd: z.number().nonnegative(),
   boqGroup: InteriorBoqGroupSchema,
@@ -559,6 +560,25 @@ export const InteriorExtraBoqItemSchema = z.object({
   note: z.string().optional(),
 });
 
+export const InteriorCameraSnapshotSchema = z.object({
+  position: z.tuple([z.number(), z.number(), z.number()]),
+  target: z.tuple([z.number(), z.number(), z.number()]),
+  preset: z
+    .enum([
+      "DOLLHOUSE",
+      "ENTRANCE",
+      "LIVING_BALCONY",
+      "KITCHEN_DINING",
+      "MASTER_BEDROOM",
+      "ROOM_05_STUDIO",
+    ])
+    .optional(),
+  navMode: z.enum(["ORBIT", "WALKTHROUGH"]).optional(),
+  timeOfDay: z.enum(["MORNING_08", "NOON_12", "AFTERNOON_1630", "EVENING_20"]).optional(),
+  fov: z.number().min(20).max(90).optional(),
+  autoCutaway: z.boolean().optional(),
+});
+
 export const InteriorDesignScenarioSchema = z.object({
   id: z.string().min(1),
   code: z.string().min(1),
@@ -577,6 +597,7 @@ export const InteriorDesignScenarioSchema = z.object({
   roomFloorOverrides: z.record(z.string(), InteriorFloorPatternSchema).optional(),
   lightingZones: InteriorLightingZonesSchema.optional(),
   curtainOpenRatio: z.number().min(0).max(1).optional(),
+  lastCameraView: InteriorCameraSnapshotSchema.optional(),
   updatedAt: z.string(),
 });
 

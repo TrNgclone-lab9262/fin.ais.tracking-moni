@@ -16,11 +16,10 @@ import {
   Trash2,
   X,
   Scan,
-  Maximize2,
-  Minimize2,
   Armchair,
   Hammer,
 } from "lucide-react";
+import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 import {
   InteriorDesignScenario,
   InteriorFurnitureItem,
@@ -653,26 +652,14 @@ export function Interior2DBlueprint({
           )}
 
           {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              title={isFullscreen ? "Thu gọn toàn màn hình (Esc)" : "Xem toàn màn hình bản vẽ 2D CAD"}
-              aria-label={isFullscreen ? "Thu gọn toàn màn hình 2D" : "Toàn màn hình 2D"}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap cursor-pointer ${
-                isFullscreen
-                  ? "bg-teal-600 border-teal-600 text-white hover:bg-teal-700"
-                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-              }`}
-            >
-              {isFullscreen ? (
-                <Minimize2 className="w-3.5 h-3.5" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              )}
-              <span className="hidden md:inline">
-                {isFullscreen ? "Thu gọn" : "Toàn màn hình"}
-              </span>
-            </button>
+            <FullscreenToggle
+              variant="compact"
+              isFullscreen={isFullscreen}
+              onToggle={onToggleFullscreen}
+              titleEnter="Xem toàn màn hình bản vẽ 2D CAD"
+              titleExit="Thu gọn toàn màn hình (Esc)"
+              className="!py-1 !px-2 !text-[11px]"
+            />
           )}
         </div>
       </div>
@@ -1194,8 +1181,10 @@ export function Interior2DBlueprint({
             );
           })}
 
-          {/* Furniture Items */}
-          {scenario.items.map((item) => {
+          {/* Furniture Items (skip temporarily hidden items) */}
+          {scenario.items
+            .filter((item) => !item.isHidden)
+            .map((item) => {
             const isDraggingThis = dragging?.id === item.id;
             const cx = worldToSvgX(isDraggingThis ? dragging.curX : item.position.x);
             const cy = worldToSvgY(isDraggingThis ? dragging.curZ : item.position.z);

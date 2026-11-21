@@ -4,6 +4,7 @@ import React from "react";
 import { Menu, Eye, EyeOff, Sun, Moon } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import { InteriorAppIconSvg } from "@/components/common/SubAppIcons";
+import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 
 interface InteriorMobileHeaderProps {
   onOpenDrawer: () => void;
@@ -42,6 +43,13 @@ export function InteriorMobileHeader({ onOpenDrawer }: InteriorMobileHeaderProps
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          <FullscreenToggle
+            variant="icon"
+            tone="dark"
+            titleEnter="Toàn màn hình ứng dụng"
+            titleExit="Thoát toàn màn hình"
+          />
+
           <button
             type="button"
             onClick={(e) => toggleThemeMode(e)}

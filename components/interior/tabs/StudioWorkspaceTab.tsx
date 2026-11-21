@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Armchair,
@@ -8,11 +8,10 @@ import {
   CheckCircle2,
   Columns2,
   Copy,
+  Eye,
   FileText,
   Hammer,
   Layers,
-  Maximize2,
-  Minimize2,
   Paintbrush,
   PanelRight,
   Plus,
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 import { useFinance } from "@/context/FinanceContext";
 import {
+  InteriorCameraSnapshot,
   InteriorDesignScenario,
   InteriorFurnitureItem,
   InteriorMountType,
@@ -40,11 +40,11 @@ import {
 import { ErgonomicWarning, ScenarioBoqSummary } from "@/lib/interiorBoqEngine";
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 import { saveCustomGlbFile } from "@/lib/interiorGlbVault";
-import { useFullscreenStage } from "@/lib/useFullscreenStage";
 import {
   InteriorArchTarget,
   InteriorInteractionMode,
 } from "@/lib/three/interiorSceneController";
+import { FullscreenToggle } from "@/components/common/FullscreenToggle";
 import {
   Interior3DViewport,
   Interior3DViewportHandle,
@@ -66,6 +66,19 @@ interface StudioWorkspaceTabProps {
   onSelectItem: (id: string | null) => void;
   showMepLayer: boolean;
   onToggleMepLayer: () => void;
+  interactionMode: InteriorInteractionMode;
+  onChangeInteractionMode: (mode: InteriorInteractionMode) => void;
+  selectedArchTarget: InteriorArchTarget | null;
+  onSelectArchTarget: (target: InteriorArchTarget | null) => void;
+  activeCameraState: InteriorCameraSnapshot | null;
+  onSaveCameraState: (snapshot: InteriorCameraSnapshot) => void;
+  hiddenItemsCount: number;
+  onToggleItemVisibility: (id: string) => void;
+  onShowAllHiddenItems: () => void;
+  stageRef: React.RefObject<HTMLDivElement | null>;
+  isStageFullscreen: boolean;
+  onToggleStageFullscreen: () => void;
+  onExitStageFullscreen: () => void;
   viewport3DRef: React.RefObject<Interior3DViewportHandle | null>;
   onRequestPrintSpecSheet: () => void;
 }
@@ -81,6 +94,19 @@ export function StudioWorkspaceTab({
   onSelectItem,
   showMepLayer,
   onToggleMepLayer,
+  interactionMode,
+  onChangeInteractionMode,
+  selectedArchTarget,
+  onSelectArchTarget,
+  activeCameraState,
+  onSaveCameraState,
+  hiddenItemsCount,
+  onToggleItemVisibility,
+  onShowAllHiddenItems,
+  stageRef,
+  isStageFullscreen,
+  onToggleStageFullscreen,
+  onExitStageFullscreen,
   viewport3DRef,
   onRequestPrintSpecSheet,
 }: StudioWorkspaceTabProps) {
@@ -109,11 +135,10 @@ export function StudioWorkspaceTab({
     isPrivacyMode,
   } = useFinance();
 
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const { isFullscreen, toggleFullscreen, exitFullscreen } = useFullscreenStage(stageRef);
+  const isFullscreen = isStageFullscreen;
+  const toggleFullscreen = onToggleStageFullscreen;
+  const exitFullscreen = onExitStageFullscreen;
 
-  const [interactionMode, setInteractionMode] = useState<InteriorInteractionMode>("FURNITURE");
-  const [selectedArchTarget, setSelectedArchTarget] = useState<InteriorArchTarget | null>(null);
   const [isCatalogOpen, setIsCatalogOpen] = useState<boolean>(false);
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<string>("ALL");
   const [catalogSearch, setCatalogSearch] = useState<string>("");
@@ -162,12 +187,12 @@ export function StudioWorkspaceTab({
   );
 
   const handleChangeInteractionMode = (mode: InteriorInteractionMode) => {
-    setInteractionMode(mode);
+    onChangeInteractionMode(mode);
     if (mode === "ARCHITECTURE") {
       onSelectItem(null);
       if (isFullscreen) setFsDrawerOpen(true);
     } else {
-      setSelectedArchTarget(null);
+      onSelectArchTarget(null);
     }
   };
 
@@ -299,7 +324,7 @@ export function StudioWorkspaceTab({
       elevationCm: tpl.defaultElevationCm ?? 0,
       note: tpl.note,
     });
-    setInteractionMode("FURNITURE");
+    onChangeInteractionMode("FURNITURE");
     onSelectItem(created.id);
     setIsCatalogOpen(false);
   };
@@ -352,7 +377,7 @@ export function StudioWorkspaceTab({
         customGlbName: displayFileName,
         note: `Mô hình 3D cá nhân (${(glbFile.size / (1024 * 1024)).toFixed(2)} MB)`,
       });
-      setInteractionMode("FURNITURE");
+      onChangeInteractionMode("FURNITURE");
       onSelectItem(created.id);
       setGlbFile(null);
       setGlbName("");
@@ -407,7 +432,7 @@ export function StudioWorkspaceTab({
           scenario={activeScenario}
           selectedTarget={selectedArchTarget}
           isPrivacyMode={isPrivacyMode}
-          onSelectTarget={setSelectedArchTarget}
+          onSelectTarget={onSelectArchTarget}
           onUpdateWallOverride={updateInteriorWallOverride}
           onUpdateDoorOverride={updateInteriorDoorOverride}
           onUpdateFloorPattern={updateInteriorFloorPattern}
@@ -415,7 +440,7 @@ export function StudioWorkspaceTab({
             if (isFullscreen) {
               setFsDrawerOpen(false);
             } else {
-              setInteractionMode("FURNITURE");
+              onChangeInteractionMode("FURNITURE");
             }
           }}
           className={panelClassName}
@@ -430,6 +455,7 @@ export function StudioWorkspaceTab({
           isPrivacyMode={isPrivacyMode}
           onUpdateItem={updateInteriorFurnitureItem}
           onCommitUndoSnapshot={commitInteriorUndoSnapshot}
+          onToggleVisibility={onToggleItemVisibility}
           onDuplicate={handleDuplicateSelected}
           onDelete={(id) => {
             deleteInteriorFurnitureItem(id);
@@ -528,25 +554,6 @@ export function StudioWorkspaceTab({
                 );
               })}
             </div>
-
-            {/* Clean Pre-Entry Fullscreen Button right on the Studio Control Strip */}
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              title="Bật chế độ xem toàn màn hình cho không gian 3D & 2D CAD"
-              className={`inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold border whitespace-nowrap transition-colors cursor-pointer ${
-                isFullscreen
-                  ? "bg-teal-600 border-teal-600 text-white"
-                  : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-teal-500 hover:text-teal-700 dark:hover:text-teal-300"
-              }`}
-            >
-              {isFullscreen ? (
-                <Minimize2 className="w-3.5 h-3.5" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              )}
-              <span className="hidden sm:inline">Toàn màn hình</span>
-            </button>
 
             {/* Interaction Mode: Furniture vs Architecture */}
             <button
@@ -1008,6 +1015,17 @@ export function StudioWorkspaceTab({
                 <Redo2 className="w-3.5 h-3.5" />
               </button>
 
+              {hiddenItemsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onShowAllHiddenItems}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 whitespace-nowrap cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Hiện {hiddenItemsCount} món ẩn</span>
+                </button>
+              )}
+
               {hasSideInspector && (
                 <button
                   type="button"
@@ -1023,14 +1041,14 @@ export function StudioWorkspaceTab({
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={exitFullscreen}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-900 dark:bg-teal-600 text-white whitespace-nowrap cursor-pointer"
-              >
-                <Minimize2 className="w-3.5 h-3.5" />
-                <span>Thoát (Esc)</span>
-              </button>
+              <FullscreenToggle
+                variant="compact"
+                isFullscreen={isFullscreen}
+                onToggle={exitFullscreen}
+                labelExit="Thoát (Esc)"
+                titleExit="Thu gọn khung Studio (Esc)"
+                className="!py-1 !text-[11px]"
+              />
             </div>
           </div>
         )}
@@ -1054,13 +1072,15 @@ export function StudioWorkspaceTab({
                 interactionMode={interactionMode}
                 onChangeInteractionMode={handleChangeInteractionMode}
                 selectedArchTarget={selectedArchTarget}
-                onSelectArchTarget={setSelectedArchTarget}
+                onSelectArchTarget={onSelectArchTarget}
                 showMepLayer={showMepLayer}
                 onToggleMepLayer={onToggleMepLayer}
                 onSelectItem={onSelectItem}
                 onItemMoved={handleItemMoved}
                 onUpdateLightingZones={updateInteriorLightingZones}
                 onUpdateCurtainOpenRatio={updateInteriorCurtainOpenRatio}
+                initialCameraState={activeCameraState}
+                onCameraStateChange={onSaveCameraState}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={toggleFullscreen}
                 onFallbackTo2D={() => onChangeViewportMode("2D")}
@@ -1078,7 +1098,7 @@ export function StudioWorkspaceTab({
                 interactionMode={interactionMode}
                 onChangeInteractionMode={handleChangeInteractionMode}
                 selectedArchTarget={selectedArchTarget}
-                onSelectArchTarget={setSelectedArchTarget}
+                onSelectArchTarget={onSelectArchTarget}
                 onSelectItem={onSelectItem}
                 onItemMoved={(id, x, z) =>
                   updateInteriorFurnitureItem(id, { position: { x, z } })
@@ -1107,13 +1127,15 @@ export function StudioWorkspaceTab({
                   interactionMode={interactionMode}
                   onChangeInteractionMode={handleChangeInteractionMode}
                   selectedArchTarget={selectedArchTarget}
-                  onSelectArchTarget={setSelectedArchTarget}
+                  onSelectArchTarget={onSelectArchTarget}
                   showMepLayer={showMepLayer}
                   onToggleMepLayer={onToggleMepLayer}
                   onSelectItem={onSelectItem}
                   onItemMoved={handleItemMoved}
                   onUpdateLightingZones={updateInteriorLightingZones}
                   onUpdateCurtainOpenRatio={updateInteriorCurtainOpenRatio}
+                  initialCameraState={activeCameraState}
+                  onCameraStateChange={onSaveCameraState}
                   isFullscreen={isFullscreen}
                   onToggleFullscreen={toggleFullscreen}
                   onFallbackTo2D={() => onChangeViewportMode("2D")}
@@ -1128,7 +1150,7 @@ export function StudioWorkspaceTab({
                   interactionMode={interactionMode}
                   onChangeInteractionMode={handleChangeInteractionMode}
                   selectedArchTarget={selectedArchTarget}
-                  onSelectArchTarget={setSelectedArchTarget}
+                  onSelectArchTarget={onSelectArchTarget}
                   onSelectItem={onSelectItem}
                   onItemMoved={(id, x, z) =>
                     updateInteriorFurnitureItem(id, { position: { x, z } })
@@ -1210,7 +1232,7 @@ export function StudioWorkspaceTab({
                     key={w.id}
                     type="button"
                     onClick={() => {
-                      setInteractionMode("FURNITURE");
+                      onChangeInteractionMode("FURNITURE");
                       onSelectItem(w.itemId);
                     }}
                     className={`w-full text-left text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors ${

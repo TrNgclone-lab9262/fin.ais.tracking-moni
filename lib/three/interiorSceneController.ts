@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
+  InteriorCameraSnapshot,
   InteriorDesignScenario,
   InteriorDoorMode,
   InteriorFloorPattern,
@@ -127,6 +128,7 @@ export interface InteriorSceneCallbacks {
   onSelectItem: (id: string | null) => void;
   onItemMoved: (id: string, x: number, z: number, elevationCm?: number) => void;
   onSelectArchitecture?: (target: InteriorArchTarget | null) => void;
+  onCameraChanged?: (snapshot: InteriorCameraSnapshot) => void;
   onContextLost?: () => void;
 }
 
@@ -248,6 +250,9 @@ export class InteriorSceneController {
   private selectedItemId: string | null = null;
   private selectedArchTarget: InteriorArchTarget | null = null;
   private timeOfDay: InteriorTimeOfDay = "MORNING_08";
+  private activePreset: InteriorCameraPreset = "DOLLHOUSE";
+  private cameraEmitTimer: number | null = null;
+  private suppressCameraEmit = false;
 
   // Smooth camera transition
   private animTargetPos: THREE.Vector3 | null = null;
@@ -416,7 +421,123 @@ export class InteriorSceneController {
 
   private handleControlsChange = (): void => {
     this.requestRender();
+    this.scheduleCameraEmit();
   };
+
+  private scheduleCameraEmit(): void {
+    if (this.disposed || this.suppressCameraEmit || !this.callbacks.onCameraChanged) return;
+    if (this.cameraEmitTimer !== null) {
+      window.clearTimeout(this.cameraEmitTimer);
+    }
+    this.cameraEmitTimer = window.setTimeout(() => {
+      this.cameraEmitTimer = null;
+      if (this.disposed || this.suppressCameraEmit) return;
+      this.callbacks.onCameraChanged?.(this.getCameraSnapshot());
+    }, 250);
+  }
+
+  public getCameraSnapshot(): InteriorCameraSnapshot {
+    const pos: [number, number, number] = [
+      Number(this.camera.position.x.toFixed(3)),
+      Number(this.camera.position.y.toFixed(3)),
+      Number(this.camera.position.z.toFixed(3)),
+    ];
+
+    let targetVec: THREE.Vector3;
+    if (this.navMode === "WALKTHROUGH") {
+      targetVec = new THREE.Vector3(0, 0, -1)
+        .applyQuaternion(this.camera.quaternion)
+        .multiplyScalar(2)
+        .add(this.camera.position);
+    } else {
+      targetVec = this.controls.target;
+    }
+
+    return {
+      position: pos,
+      target: [
+        Number(targetVec.x.toFixed(3)),
+        Number(targetVec.y.toFixed(3)),
+        Number(targetVec.z.toFixed(3)),
+      ],
+      preset: this.activePreset,
+      navMode: this.navMode,
+      timeOfDay: this.timeOfDay,
+      fov: Math.round(this.camera.fov),
+      autoCutaway: this.autoCutaway,
+    };
+  }
+
+  public restoreCameraState(snapshot: InteriorCameraSnapshot): void {
+    if (this.disposed) return;
+    if (this.cameraEmitTimer !== null) {
+      window.clearTimeout(this.cameraEmitTimer);
+      this.cameraEmitTimer = null;
+    }
+    this.suppressCameraEmit = true;
+    try {
+      this.animTargetPos = null;
+      this.animTargetLook = null;
+
+      if (typeof snapshot.fov === "number" && Number.isFinite(snapshot.fov)) {
+        this.setCameraFov(snapshot.fov);
+      }
+      if (typeof snapshot.autoCutaway === "boolean") {
+        this.setAutoCutaway(snapshot.autoCutaway);
+      }
+      if (snapshot.timeOfDay) {
+        this.setTimeOfDay(snapshot.timeOfDay);
+      }
+      if (snapshot.preset) {
+        this.activePreset = snapshot.preset;
+      }
+
+      const nextNav: InteriorNavMode =
+        snapshot.navMode === "WALKTHROUGH" ? "WALKTHROUGH" : "ORBIT";
+      this.navMode = nextNav;
+      this.joystickVec = { vx: 0, vz: 0 };
+      this.pressedKeys.clear();
+
+      this.camera.position.set(
+        snapshot.position[0],
+        snapshot.position[1],
+        snapshot.position[2]
+      );
+
+      if (nextNav === "WALKTHROUGH") {
+        this.controls.enabled = false;
+        for (const rec of this.wallMeshRecords) {
+          rec.mesh.visible = true;
+        }
+        const look = new THREE.Vector3(
+          snapshot.target[0],
+          snapshot.target[1],
+          snapshot.target[2]
+        );
+        const dir = look.sub(this.camera.position);
+        if (dir.lengthSq() > 1e-5) {
+          dir.normalize();
+          this.walkYaw = Math.atan2(-dir.x, -dir.z);
+          this.walkPitch = THREE.MathUtils.clamp(Math.asin(dir.y), -0.65, 0.55);
+        }
+        this.applyWalkCameraOrientation();
+      } else {
+        this.controls.enabled = true;
+        this.controls.target.set(
+          snapshot.target[0],
+          snapshot.target[1],
+          snapshot.target[2]
+        );
+        this.controls.update();
+        this.updateAutoCutaway();
+      }
+
+      this.updateCeilingAndSkyVisibility();
+      this.requestRender();
+    } finally {
+      this.suppressCameraEmit = false;
+    }
+  }
 
   private afterDraw(next: () => void): void {
     if (!this.isSoftwareGl) {
@@ -486,6 +607,7 @@ export class InteriorSceneController {
           this.controls.target.copy(this.animTargetLook);
           this.animTargetPos = null;
           this.animTargetLook = null;
+          this.scheduleCameraEmit();
         } else {
           keepRendering = true;
         }
@@ -541,6 +663,7 @@ export class InteriorSceneController {
     this.camera.fov = clamped;
     this.camera.updateProjectionMatrix();
     this.requestRender();
+    this.scheduleCameraEmit();
   }
 
   public setInteractionMode(mode: InteriorInteractionMode): void {
@@ -1419,6 +1542,7 @@ export class InteriorSceneController {
       const yElev = (currentMeta.elevationCm ?? 0) / 100;
       loadedGroup.position.set(currentMeta.position.x, yElev, currentMeta.position.z);
       loadedGroup.rotation.y = (currentMeta.rotationDeg * Math.PI) / 180;
+      loadedGroup.visible = !Boolean(currentMeta.isHidden);
       tagFurnitureGroup(loadedGroup, currentMeta);
 
       this.furnitureGroup.remove(existing);
@@ -1498,6 +1622,7 @@ export class InteriorSceneController {
         existing.position.set(item.position.x, yElev, item.position.z);
         existing.rotation.y = (item.rotationDeg * Math.PI) / 180;
         existing.userData.isLocked = Boolean(item.isLocked);
+        existing.visible = !Boolean(item.isHidden);
       } else {
         if (existing) {
           this.furnitureGroup.remove(existing);
@@ -1505,6 +1630,7 @@ export class InteriorSceneController {
           this.customGlbHydratedMap.delete(item.id);
         }
         const meshGroup = buildFurnitureMeshGroup(item, this.materialLib);
+        meshGroup.visible = !Boolean(item.isHidden);
         this.furnitureGroup.add(meshGroup);
         this.furnitureMap.set(item.id, meshGroup);
         this.furnitureSignatureMap.set(item.id, sig);
@@ -1542,7 +1668,7 @@ export class InteriorSceneController {
 
     if (!this.selectedItemId) return;
     const target = this.furnitureMap.get(this.selectedItemId);
-    if (!target) return;
+    if (!target || !target.visible) return;
 
     this.selectionBoxHelper = new THREE.BoxHelper(target, 0x0d9488);
     this.scene.add(this.selectionBoxHelper);
@@ -1564,6 +1690,7 @@ export class InteriorSceneController {
 
     this.applyLightingZonesToScene();
     this.requestRender();
+    this.scheduleCameraEmit();
   }
 
   public setAutoCutaway(enabled: boolean): void {
@@ -1574,6 +1701,7 @@ export class InteriorSceneController {
       }
     }
     this.requestRender();
+    this.scheduleCameraEmit();
   }
 
   public setNavMode(mode: InteriorNavMode): void {
@@ -1598,6 +1726,7 @@ export class InteriorSceneController {
     }
     this.updateCeilingAndSkyVisibility();
     this.requestRender();
+    this.scheduleCameraEmit();
   }
 
   public setWalkthroughJoystickVector(vx: number, vz: number): void {
@@ -1610,6 +1739,7 @@ export class InteriorSceneController {
   }
 
   public applyCameraPreset(preset: InteriorCameraPreset): void {
+    this.activePreset = preset;
     const cfg = CAMERA_PRESETS[preset];
     if (this.navMode === "WALKTHROUGH") {
       this.camera.position.set(cfg.pos[0], 1.6, cfg.pos[2]);
@@ -1620,12 +1750,14 @@ export class InteriorSceneController {
       this.applyWalkCameraOrientation();
       this.updateCeilingAndSkyVisibility();
       this.requestRender();
+      this.scheduleCameraEmit();
       return;
     }
     this.animTargetPos = new THREE.Vector3(...cfg.pos);
     this.animTargetLook = new THREE.Vector3(...cfg.target);
     this.lastFrameTime = performance.now();
     this.requestRender();
+    this.scheduleCameraEmit();
   }
 
   private applyWalkCameraOrientation(): void {
@@ -1717,10 +1849,16 @@ export class InteriorSceneController {
       return;
     }
 
-    // Furniture Mode: pick & drag
+    // Furniture Mode: pick & drag (ignore hidden items)
     const hits = this.raycaster.intersectObjects(this.furnitureGroup.children, true);
-    if (hits.length > 0) {
-      const hitId = hits[0].object.userData?.furnitureId as string | undefined;
+    const visibleHit = hits.find((h) => {
+      const id = h.object.userData?.furnitureId as string | undefined;
+      if (!id) return false;
+      const g = this.furnitureMap.get(id);
+      return Boolean(g && g.visible);
+    });
+    if (visibleHit) {
+      const hitId = visibleHit.object.userData?.furnitureId as string | undefined;
       if (hitId) {
         this.selectedItemId = hitId;
         this.refreshSelectionHelper();
@@ -1805,6 +1943,9 @@ export class InteriorSceneController {
     }
 
     if (this.navMode === "WALKTHROUGH") {
+      if (this.isWalkLooking) {
+        this.scheduleCameraEmit();
+      }
       this.isWalkLooking = false;
       return;
     }
@@ -1834,7 +1975,13 @@ export class InteriorSceneController {
       const ndc = this.getPointerNdc(e);
       this.raycaster.setFromCamera(ndc, this.camera);
       const hits = this.raycaster.intersectObjects(this.furnitureGroup.children, true);
-      if (hits.length === 0 && this.selectedItemId) {
+      const hasVisibleHit = hits.some((h) => {
+        const id = h.object.userData?.furnitureId as string | undefined;
+        if (!id) return false;
+        const g = this.furnitureMap.get(id);
+        return Boolean(g && g.visible);
+      });
+      if (!hasVisibleHit && this.selectedItemId) {
         this.selectedItemId = null;
         this.refreshSelectionHelper();
         this.callbacks.onSelectItem(null);
@@ -1930,12 +2077,17 @@ export class InteriorSceneController {
     this.camera.position.x = resolved.x;
     this.camera.position.z = resolved.z;
     this.camera.position.y = 1.6;
+    this.scheduleCameraEmit();
     return true;
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.cameraEmitTimer !== null) {
+      window.clearTimeout(this.cameraEmitTimer);
+      this.cameraEmitTimer = null;
+    }
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
