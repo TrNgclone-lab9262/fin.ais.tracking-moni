@@ -7,6 +7,7 @@ import {
   computeGoldPortfolioMetrics,
   computeNetWorthAllocationGuardrail,
   evaluateGoldAlerts,
+  verifyGoldPortfolioIntegrity,
 } from "@/lib/goldEngine";
 import {
   calculateConstructionMilestones,
@@ -43,6 +44,7 @@ export function GoldVaultView() {
     toggleGoldAlertRule,
     deleteGoldAlertRule,
     fetchReferenceGoldPrices,
+    reconcileGoldPortfolio,
     goldSimulatorPresetTarget,
     setGoldSimulatorPresetTarget,
     accounts,
@@ -63,6 +65,11 @@ export function GoldVaultView() {
   const evaluatedAlerts = useMemo(
     () => evaluateGoldAlerts(goldPortfolio, metrics),
     [goldPortfolio, metrics]
+  );
+
+  const integrityReport = useMemo(
+    () => verifyGoldPortfolioIntegrity(goldPortfolio),
+    [goldPortfolio]
   );
 
   const activeInteriorScenario = useMemo(
@@ -236,6 +243,7 @@ export function GoldVaultView() {
           goldPortfolio={goldPortfolio}
           metrics={metrics}
           evaluatedAlerts={evaluatedAlerts}
+          integrityReport={integrityReport}
           guardrail={guardrail}
           handoverReadiness={handoverReadiness}
           husbandName={settings.husbandName}
@@ -243,6 +251,7 @@ export function GoldVaultView() {
           isPrivacyMode={isPrivacyMode}
           onOpenAddLot={handleOpenAddLot}
           onOpenSellModal={() => handleOpenSellModal()}
+          onReconcilePortfolio={reconcileGoldPortfolio}
           onPrintVaultAudit={() => setIsPrintPortalOpen(true)}
           onSwitchGoldTab={setGoldTab}
           onSwitchSubApp={switchSubApp}
@@ -253,6 +262,7 @@ export function GoldVaultView() {
         <GoldLotsTab
           goldPortfolio={goldPortfolio}
           metrics={metrics}
+          integrityReport={integrityReport}
           isPrivacyMode={isPrivacyMode}
           onOpenAddLot={handleOpenAddLot}
           onEditLot={handleEditLot}
@@ -266,6 +276,7 @@ export function GoldVaultView() {
           }
           onDeleteLot={deleteGoldLot}
           onUndoSale={undoGoldSale}
+          onReconcilePortfolio={reconcileGoldPortfolio}
           onPrintVaultAudit={() => setIsPrintPortalOpen(true)}
         />
       )}

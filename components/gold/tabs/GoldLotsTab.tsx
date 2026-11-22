@@ -2,11 +2,15 @@
 
 import React, { useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Download,
   FileText,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
+  Scale,
   Search,
   ShieldCheck,
   Trash2,
@@ -21,6 +25,7 @@ import {
 import {
   GOLD_CATEGORY_META,
   GOLD_STORAGE_LABELS,
+  GoldIntegrityAuditReport,
   GoldPortfolioMetrics,
   exportGoldVaultToCsv,
   formatChiWeight,
@@ -28,10 +33,12 @@ import {
 import { formatDateVN, formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { GOLD_CATEGORIES, SALE_PURPOSE_LABELS } from "./goldConstants";
+import { GoldStocktakePanel } from "./GoldStocktakePanel";
 
 interface GoldLotsTabProps {
   goldPortfolio: GoldPortfolioState;
   metrics: GoldPortfolioMetrics;
+  integrityReport: GoldIntegrityAuditReport;
   isPrivacyMode: boolean;
   onOpenAddLot: () => void;
   onEditLot: (lot: GoldLot) => void;
@@ -41,6 +48,11 @@ interface GoldLotsTabProps {
     saleId: string,
     options?: { deleteLinkedFinanceTx?: boolean }
   ) => { ok: boolean; error?: string };
+  onReconcilePortfolio: () => {
+    fixedLotIds: string[];
+    repairedQuoteCategories: GoldCategory[];
+    remainingIssuesCount: number;
+  };
   onPrintVaultAudit: () => void;
 }
 
@@ -49,12 +61,14 @@ type LotSortKey = "DATE_DESC" | "PNL_DESC" | "WEIGHT_DESC";
 export function GoldLotsTab({
   goldPortfolio,
   metrics,
+  integrityReport,
   isPrivacyMode,
   onOpenAddLot,
   onEditLot,
   onSellLot,
   onDeleteLot,
   onUndoSale,
+  onReconcilePortfolio,
   onPrintVaultAudit,
 }: GoldLotsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,6 +78,22 @@ export function GoldLotsTab({
   const [pendingDeleteLot, setPendingDeleteLot] = useState<GoldLot | null>(null);
   const [pendingUndoSale, setPendingUndoSale] = useState<GoldSaleEvent | null>(null);
   const [deleteLinkedTxOnUndo, setDeleteLinkedTxOnUndo] = useState(true);
+  const [isReconcileConfirmOpen, setIsReconcileConfirmOpen] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [isStocktakeOpen, setIsStocktakeOpen] = useState(
+    () => integrityReport.errorCount > 0 || integrityReport.warningCount > 0
+  );
+
+  const hasAuditIssues = integrityReport.errorCount > 0 || integrityReport.warningCount > 0;
+
+  const handleExportCsv = () => {
+    exportGoldVaultToCsv(goldPortfolio, metrics, { maskSensitive: isPrivacyMode });
+    setStatusNotice(
+      isPrivacyMode
+        ? "Đã xuất CSV với số tiền và mã seri được ẩn theo Chế độ Riêng tư."
+        : "Đã xuất bảng kê Sổ Lô Vàng (CSV chuẩn UTF-8)."
+    );
+  };
 
   const filteredEvaluations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -104,22 +134,51 @@ export function GoldLotsTab({
             <h2 className="text-base font-black text-slate-900 dark:text-slate-100">
               Sổ Lô Nắm Giữ & Két Chứng Từ Seri ({metrics.lotEvaluations.length} lô)
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 {documentedLotsCount}/{metrics.lotEvaluations.length} lô có hồ sơ chứng từ / cửa hàng
-              </span>{" "}
-              · Định giá từng lô theo giá tiệm thu mua (Bid)
+              </span>
+              <span>· Định giá từng lô theo giá tiệm thu mua (Bid)</span>
+              {!hasAuditIssues && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>7/7 bất biến</span>
+                </span>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {hasAuditIssues && (
+              <button
+                type="button"
+                onClick={() => setIsReconcileConfirmOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Tự đối soát ({integrityReport.errorCount + integrityReport.warningCount})</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => exportGoldVaultToCsv(goldPortfolio, metrics)}
+              onClick={() => setIsStocktakeOpen((prev) => !prev)}
+              aria-expanded={isStocktakeOpen}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap shrink-0 cursor-pointer ${
+                isStocktakeOpen
+                  ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200"
+                  : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>{isStocktakeOpen ? "Ẩn kiểm đếm két" : "Kiểm đếm két"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCsv}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>CSV</span>
+              <span>{isPrivacyMode ? "CSV (Ẩn số)" : "CSV"}</span>
             </button>
             <button
               type="button"
@@ -139,6 +198,33 @@ export function GoldLotsTab({
             </button>
           </div>
         </div>
+
+        {statusNotice && (
+          <div className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+            <span>{statusNotice}</span>
+            <button
+              type="button"
+              onClick={() => setStatusNotice(null)}
+              className="text-[11px] font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
+        )}
+
+        {hasAuditIssues && (
+          <div className="px-3 py-2 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold">{integrityReport.summary}</p>
+              {integrityReport.issues.slice(0, 2).map((issue, idx) => (
+                <p key={`${issue.code}-${issue.entityId ?? idx}`} className="text-[11px]">
+                  • {issue.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
           <div className="relative">
@@ -189,6 +275,15 @@ export function GoldLotsTab({
           </select>
         </div>
       </div>
+
+      {/* Physical Vault Stocktake & Quantitative Ledger Balance Sheet */}
+      {isStocktakeOpen && (
+        <GoldStocktakePanel
+          goldPortfolio={goldPortfolio}
+          isPrivacyMode={isPrivacyMode}
+          onRequestReconcile={() => setIsReconcileConfirmOpen(true)}
+        />
+      )}
 
       {/* Active Holding Lots Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
@@ -466,6 +561,22 @@ export function GoldLotsTab({
           </label>
         )}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        isOpen={isReconcileConfirmOpen}
+        title="Xác nhận tự đối soát sổ cái vàng?"
+        message="Hệ thống sẽ tự tính lại số chỉ còn lại và trạng thái từng lô từ nhật ký bán gốc, khử trùng lịch sử giá và giữ nguyên mọi giao dịch bán."
+        confirmLabel="Tiến hành đối soát"
+        cancelLabel="Để sau"
+        onCancel={() => setIsReconcileConfirmOpen(false)}
+        onConfirm={() => {
+          const res = onReconcilePortfolio();
+          setIsReconcileConfirmOpen(false);
+          setStatusNotice(
+            `Đã đối soát xong: cập nhật ${res.fixedLotIds.length} lô vàng và ${res.repairedQuoteCategories.length} báo giá (còn ${res.remainingIssuesCount} cảnh báo).`
+          );
+        }}
+      />
     </div>
   );
 }

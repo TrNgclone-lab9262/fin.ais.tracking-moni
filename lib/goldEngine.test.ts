@@ -1,13 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  GoldWeightUnit,
   LY_PER_CHI,
+  MICRO_CHI_SCALE,
   allocateBatchGoldSale,
   allocateFifoGoldSale,
   allocateSpecificLotSale,
   allocateWacGoldSale,
   buildGoldNavHistorySeries,
   buildGoldVaultCsvContent,
+  calculateLedgerIntegrity,
+  chiToLy,
   computeDomesticPremium,
   computeGoldPortfolioMetrics,
   computeGoldStressTestMatrix,
@@ -18,17 +22,29 @@ import {
   createGoldPriceSnapshot,
   decomposeChiToVietnameseUnits,
   evaluateGoldAlerts,
+  fromMicroChi,
   gramsToChi,
+  lyToChi,
   phanToChi,
   reconcileGoldPortfolioIntegrity,
   revertGoldSaleAllocation,
+  roundGoldDecimal,
   simulateGoldLiquidation,
+  subtractChiExact,
+  sumChiExact,
+  toMicroChi,
   troyOzToChi,
   upsertGoldPriceSnapshot,
   verifyGoldPortfolioIntegrity,
 } from "./goldEngine";
 import { computeMonthsUntilHandover } from "./interiorBoqEngine";
-import { GoldLotSchema, parseGoldPortfolioSafely } from "./validations";
+import {
+  GoldLotSchema,
+  GoldPriceQuoteSchema,
+  GoldPriceSnapshotSchema,
+  optionalTrimmedString,
+  parseGoldPortfolioSafely,
+} from "./validations";
 
 test("createDefaultGoldPortfolio seeds Nhẫn 9999 holdings and Bid valuation", () => {
   const portfolio = createDefaultGoldPortfolio();
@@ -414,5 +430,339 @@ test("computeMonthsUntilHandover computes dynamic months relative to 2027-08-31"
   assert.equal(computeMonthsUntilHandover("2027-08-31", "2027-02-28"), 6);
   assert.equal(computeMonthsUntilHandover("2027-08-31", "2027-08-31"), 1);
 });
+
+test("6x6 gold unit round-trip matrix (LUONG, CHI, PHAN, LY, GRAM, TROY_OZ) preserves precision across edge weights", () => {
+  const units: GoldWeightUnit[] = ["LUONG", "CHI", "PHAN", "LY", "GRAM", "TROY_OZ"];
+  const metricUnits = new Set<GoldWeightUnit>(["LUONG", "CHI", "PHAN", "LY", "GRAM"]);
+  const edgeWeightsChi = [0.01, 1.25, 8.2943, 1000];
+
+  for (const weightChi of edgeWeightsChi) {
+    for (const from of units) {
+      const startVal = convertGoldUnit(weightChi, "CHI", from, 8);
+      for (const to of units) {
+        const intermediate = convertGoldUnit(startVal, from, to, 8);
+        const back = convertGoldUnit(intermediate, to, from, 8);
+        const relTolerance = metricUnits.has(from) && metricUnits.has(to) ? 1e-6 : 1e-5;
+        const absDiff = Math.abs(back - startVal);
+        const maxAllowed = Math.max(1e-6, Math.abs(startVal) * relTolerance);
+        assert.ok(
+          absDiff <= maxAllowed,
+          `Round-trip failed for ${weightChi} chỉ (${from} -> ${to} -> ${from}): start=${startVal}, back=${back}, diff=${absDiff}`
+        );
+      }
+    }
+  }
+});
+
+test("multi-event Ledger Conservation lifecycle (FIFO + WAC + Specific-Lot + Undo) maintains 0 errors and 0 warnings", () => {
+  let portfolio = createDefaultGoldPortfolio();
+  const baseBid = portfolio.quotes.NHAN_9999.buyPricePerChi;
+
+  // 1) FIFO sale of 1.5 chỉ
+  const fifoRes = allocateFifoGoldSale(portfolio.lots, "NHAN_9999", 1.5);
+  assert.equal(fifoRes.ok, true);
+  const fifoCost = fifoRes.allocations.reduce((s, a) => s + a.costBasisAllocated, 0);
+  const fifoProceeds = Math.round(1.5 * baseBid);
+  const saleFifo = {
+    id: "sale_lc_fifo",
+    saleDate: "2026-11-15",
+    category: "NHAN_9999" as const,
+    allocationMode: "FIFO" as const,
+    allocations: fifoRes.allocations,
+    totalSoldChi: 1.5,
+    unitSellPricePerChi: baseBid,
+    totalProceeds: fifoProceeds,
+    costBasisAllocated: fifoCost,
+    realizedPnl: fifoProceeds - fifoCost,
+    purpose: "REBALANCE" as const,
+    createdAt: "2026-11-15T10:00:00.000Z",
+  };
+  portfolio = { ...portfolio, lots: fifoRes.updatedLots, sales: [...portfolio.sales, saleFifo] };
+
+  // 2) WAC sale of 1.0 chỉ
+  const wacRes = allocateWacGoldSale(portfolio.lots, "NHAN_9999", 1.0);
+  assert.equal(wacRes.ok, true);
+  const wacCost = wacRes.allocations.reduce((s, a) => s + a.costBasisAllocated, 0);
+  const wacProceeds = Math.round(1.0 * baseBid);
+  const saleWac = {
+    id: "sale_lc_wac",
+    saleDate: "2026-11-18",
+    category: "NHAN_9999" as const,
+    allocationMode: "WAC" as const,
+    allocations: wacRes.allocations,
+    totalSoldChi: 1.0,
+    unitSellPricePerChi: baseBid,
+    totalProceeds: wacProceeds,
+    costBasisAllocated: wacCost,
+    realizedPnl: wacProceeds - wacCost,
+    purpose: "INTERIOR_HANDOVER" as const,
+    createdAt: "2026-11-18T10:00:00.000Z",
+  };
+  portfolio = { ...portfolio, lots: wacRes.updatedLots, sales: [...portfolio.sales, saleWac] };
+
+  // 3) Specific-Lot sale of 0.5 chỉ on any lot that still has >= 0.5 chỉ
+  const targetLot = portfolio.lots.find((l) => l.remainingChi >= 0.5);
+  assert.ok(targetLot);
+  const specRes = allocateSpecificLotSale(portfolio.lots, targetLot.id, 0.5);
+  assert.equal(specRes.ok, true);
+  const specCost = specRes.allocations.reduce((s, a) => s + a.costBasisAllocated, 0);
+  const specProceeds = Math.round(0.5 * baseBid);
+  const saleSpec = {
+    id: "sale_lc_spec",
+    saleDate: "2026-11-20",
+    category: targetLot.category,
+    allocationMode: "SPECIFIC_LOT" as const,
+    allocations: specRes.allocations,
+    totalSoldChi: 0.5,
+    unitSellPricePerChi: baseBid,
+    totalProceeds: specProceeds,
+    costBasisAllocated: specCost,
+    realizedPnl: specProceeds - specCost,
+    purpose: "SKYONE_PREPAY" as const,
+    createdAt: "2026-11-20T10:00:00.000Z",
+  };
+  portfolio = { ...portfolio, lots: specRes.updatedLots, sales: [...portfolio.sales, saleSpec] };
+
+  const auditMid = verifyGoldPortfolioIntegrity(portfolio);
+  assert.equal(auditMid.ok, true, auditMid.summary);
+  assert.equal(auditMid.errorCount, 0);
+  assert.equal(auditMid.warningCount, 0);
+
+  // 4) Undo the WAC sale and re-verify Ledger Conservation
+  const restoredLots = revertGoldSaleAllocation(portfolio.lots, saleWac);
+  const afterUndo = {
+    ...portfolio,
+    lots: restoredLots,
+    sales: portfolio.sales.filter((s) => s.id !== saleWac.id),
+  };
+  const auditAfterUndo = verifyGoldPortfolioIntegrity(afterUndo);
+  assert.equal(auditAfterUndo.ok, true, auditAfterUndo.summary);
+  assert.equal(auditAfterUndo.errorCount, 0);
+  assert.equal(auditAfterUndo.warningCount, 0);
+});
+
+test("GoldPriceQuoteSchema strictly rejects Bid > Ask while parseGoldPortfolioSafely & reconcile gently repair legacy quotes", () => {
+  const base = createDefaultGoldPortfolio();
+  const invertedQuote = {
+    ...base.quotes.SJC_BAR,
+    buyPricePerChi: 9_850_000,
+    sellPricePerChi: 9_600_000, // Bid > Ask
+  };
+
+  // Strict schema blocks new/manual inverted input
+  const strictRes = GoldPriceQuoteSchema.safeParse(invertedQuote);
+  assert.equal(strictRes.success, false);
+
+  // Safe legacy parser gently repairs Ask = Bid instead of wiping to defaults
+  const legacyRaw = {
+    ...structuredClone(base),
+    quotes: {
+      ...structuredClone(base.quotes),
+      SJC_BAR: invertedQuote,
+    },
+  };
+  const parsed = parseGoldPortfolioSafely(legacyRaw, createDefaultGoldPortfolio);
+  assert.equal(parsed.recovered, true);
+  assert.equal(parsed.data.quotes.SJC_BAR.buyPricePerChi, 9_850_000);
+  assert.equal(parsed.data.quotes.SJC_BAR.sellPricePerChi, 9_850_000);
+  assert.ok(parsed.repairedItems.includes("quotes.SJC_BAR:repaired_inverted_spread"));
+  assert.equal(parsed.droppedItems.length, 0);
+
+  // Reconcile also repairs inverted spread cleanly
+  const reconciled = reconcileGoldPortfolioIntegrity(legacyRaw);
+  assert.deepEqual(reconciled.repairedQuoteCategories, ["SJC_BAR"]);
+  assert.equal(reconciled.reconciledPortfolio.quotes.SJC_BAR.sellPricePerChi, 9_850_000);
+  assert.equal(reconciled.remainingIssues.length, 0);
+});
+
+test("scaled-integer micro-chi arithmetic, roundGoldDecimal IEEE-754 edge cases, and lyToChi/chiToLy work with zero float drift", () => {
+  assert.equal(MICRO_CHI_SCALE, 10_000);
+  // Classic IEEE-754 binary float rounding traps
+  assert.equal(roundGoldDecimal(1.005, 2), 1.01);
+  assert.equal(roundGoldDecimal(35.855, 2), 35.86);
+  assert.equal(roundGoldDecimal(0.1 + 0.2, 4), 0.3);
+  assert.equal(roundGoldDecimal(-1.005, 2), -1.01);
+  assert.equal(roundGoldDecimal(1e-7, 4), 0);
+
+  // Scaled integer micro-chi exact summation & subtraction
+  assert.equal(toMicroChi(1.2345), 12345);
+  assert.equal(fromMicroChi(12345), 1.2345);
+  assert.equal(sumChiExact([0.1, 0.2, 0.3, 0.15, 0.25]), 1);
+  assert.equal(subtractChiExact(1.0, 0.3), 0.7);
+  assert.equal(subtractChiExact(0.3, 0.1), 0.2);
+
+  // Direct Ly conversion helpers
+  assert.equal(chiToLy(1.25), 125);
+  assert.equal(lyToChi(125), 1.25);
+  assert.equal(lyToChi(1), 0.01);
+  assert.equal(chiToLy(0.01), 1);
+});
+
+test("calculateLedgerIntegrity reconciles book ledger and physical vault stocktake (MATCHED, BOOK_DRIFT, SURPLUS, SHORTAGE)", () => {
+  const base = createDefaultGoldPortfolio();
+  const totalBookChi = sumChiExact(base.lots.map((l) => l.remainingChi));
+
+  // 1) Clean book without physical counts
+  const bookOnly = calculateLedgerIntegrity(base);
+  assert.equal(bookOnly.isBookBalanced, true);
+  assert.equal(bookOnly.bookDriftChi, 0);
+  assert.equal(bookOnly.expectedBookRemainingChi, totalBookChi);
+  assert.equal(bookOnly.recordedLotsRemainingChi, totalBookChi);
+  assert.equal(bookOnly.hasPhysicalAudit, false);
+  assert.equal(bookOnly.totalPhysicalCountChi, null);
+
+  // 2) Physical stocktake MATCHED 100%
+  const matched = calculateLedgerIntegrity(base, { NHAN_9999: totalBookChi });
+  assert.equal(matched.hasPhysicalAudit, true);
+  assert.equal(matched.isPhysicallyBalanced, true);
+  assert.equal(matched.totalPhysicalVarianceChi, 0);
+  assert.equal(matched.totalPhysicalVarianceVnd, 0);
+  assert.equal(matched.byCategory[0]?.status, "MATCHED");
+
+  // 3) Physical stocktake SURPLUS (+0.5 chỉ)
+  const surplus = calculateLedgerIntegrity(base, { NHAN_9999: totalBookChi + 0.5 });
+  assert.equal(surplus.isPhysicallyBalanced, false);
+  assert.equal(surplus.totalPhysicalVarianceChi, 0.5);
+  assert.equal(
+    surplus.totalPhysicalVarianceVnd,
+    Math.round(0.5 * base.quotes.NHAN_9999.buyPricePerChi)
+  );
+  assert.equal(surplus.byCategory[0]?.status, "PHYSICAL_SURPLUS");
+
+  // 4) Physical stocktake SHORTAGE (-0.25 chỉ)
+  const shortage = calculateLedgerIntegrity(base, { NHAN_9999: totalBookChi - 0.25 });
+  assert.equal(shortage.isPhysicallyBalanced, false);
+  assert.equal(shortage.totalPhysicalVarianceChi, -0.25);
+  assert.equal(
+    shortage.totalPhysicalVarianceVnd,
+    Math.round(-0.25 * base.quotes.NHAN_9999.buyPricePerChi)
+  );
+  assert.equal(shortage.byCategory[0]?.status, "PHYSICAL_SHORTAGE");
+
+  // 5) Book ledger drift detected accurately
+  const drifted = structuredClone(base);
+  drifted.lots[0].remainingChi = drifted.lots[0].quantityChi - 0.4;
+  const driftReport = calculateLedgerIntegrity(drifted);
+  assert.equal(driftReport.isBookBalanced, false);
+  assert.equal(driftReport.bookDriftChi, -0.4);
+  assert.equal(driftReport.byCategory[0]?.status, "BOOK_DRIFT");
+});
+
+test("optionalTrimmedString, GoldPriceSnapshotSchema Bid<=Ask guard, and 3-layer parseGoldPortfolioSafely auto-repair work end-to-end", () => {
+  // Exported optionalTrimmedString helper
+  const noteSchema = optionalTrimmedString(20);
+  assert.equal(noteSchema.parse("  Ghi chú vàng  "), "Ghi chú vàng");
+  assert.equal(noteSchema.parse("   "), undefined);
+  assert.equal(noteSchema.parse(null), undefined);
+
+  // Strict GoldPriceSnapshotSchema rejects inverted Bid > Ask
+  const badSnap = {
+    date: "2026-11-18",
+    recordedAt: "2026-11-18T09:00:00.000Z",
+    nhan9999BidPerChi: 9_600_000,
+    nhan9999AskPerChi: 9_400_000, // inverted!
+    sjcBidPerChi: 9_800_000,
+    sjcAskPerChi: 9_500_000, // inverted!
+    worldXauUsdPerOz: 2890,
+    usdVndRate: 25450,
+    portfolioBidValueVnd: 60_000_000,
+    portfolioCostBasisVnd: 55_000_000,
+    totalRemainingChi: 7,
+  };
+  assert.equal(GoldPriceSnapshotSchema.safeParse(badSnap).success, false);
+
+  // Strict GoldLotSchema rejects status inconsistent with remainingChi
+  const base = createDefaultGoldPortfolio();
+  assert.equal(
+    GoldLotSchema.safeParse({
+      ...base.lots[0],
+      quantityChi: 2,
+      remainingChi: 1.5,
+      status: "SOLD",
+    }).success,
+    false
+  );
+
+  // 3-layer gentle auto-repair in parseGoldPortfolioSafely:
+  // Layer 1: Quote Bid > Ask
+  // Layer 2: Snapshot Bid > Ask + duplicate date
+  // Layer 3: Legacy lot status mismatch & ledger balance reconciled from sales
+  const saleForLot0 = {
+    id: "sale_legacy_1",
+    saleDate: "2026-11-19",
+    category: "NHAN_9999" as const,
+    allocationMode: "SPECIFIC_LOT" as const,
+    allocations: [
+      {
+        lotId: base.lots[0].id,
+        soldChi: 0.5,
+        costBasisAllocated: Math.round(0.5 * base.lots[0].unitBuyPricePerChi),
+      },
+    ],
+    totalSoldChi: 0.5,
+    unitSellPricePerChi: 9_050_000,
+    totalProceeds: 4_525_000,
+    costBasisAllocated: Math.round(0.5 * base.lots[0].unitBuyPricePerChi),
+    realizedPnl: 4_525_000 - Math.round(0.5 * base.lots[0].unitBuyPricePerChi),
+    purpose: "REBALANCE" as const,
+    createdAt: "2026-11-19T10:00:00.000Z",
+  };
+
+  const legacyRaw = {
+    ...structuredClone(base),
+    lots: [
+      {
+        ...base.lots[0],
+        remainingChi: 2, // drifted: should be 1.5 after saleForLot0
+        status: "SOLD", // wrong status
+      },
+      base.lots[1],
+      base.lots[2],
+    ],
+    sales: [saleForLot0],
+    quotes: {
+      ...structuredClone(base.quotes),
+      NHAN_9999: {
+        ...base.quotes.NHAN_9999,
+        buyPricePerChi: 9_400_000,
+        sellPricePerChi: 9_200_000, // inverted
+      },
+    },
+    priceHistory: [
+      badSnap,
+      {
+        ...badSnap,
+        recordedAt: "2026-11-18T17:00:00.000Z",
+        nhan9999BidPerChi: 9_500_000,
+        nhan9999AskPerChi: 9_650_000,
+        sjcBidPerChi: 9_600_000,
+        sjcAskPerChi: 9_800_000,
+      },
+    ],
+  };
+
+  const repaired = parseGoldPortfolioSafely(legacyRaw, createDefaultGoldPortfolio);
+  assert.equal(repaired.recovered, true);
+  assert.equal(repaired.droppedItems.length, 0);
+  // Layer 1 repaired
+  assert.equal(repaired.data.quotes.NHAN_9999.sellPricePerChi, 9_400_000);
+  assert.ok(repaired.repairedItems.includes("quotes.NHAN_9999:repaired_inverted_spread"));
+  // Layer 2 repaired & deduplicated (keeps newer 17:00 snapshot)
+  assert.equal(repaired.data.priceHistory?.length, 1);
+  assert.equal(repaired.data.priceHistory?.[0]?.recordedAt, "2026-11-18T17:00:00.000Z");
+  assert.ok(repaired.repairedItems.includes("priceHistory[2026-11-18]:repaired_inverted_spread"));
+  assert.ok(repaired.repairedItems.includes("priceHistory[2026-11-18]:deduplicated"));
+  // Layer 3 repaired from sales allocation
+  assert.equal(repaired.data.lots[0]?.remainingChi, 1.5);
+  assert.equal(repaired.data.lots[0]?.status, "PARTIAL_SOLD");
+  assert.ok(repaired.repairedItems.includes(`lots[${base.lots[0].id}]:repaired_status_or_balance`));
+
+  // Final repaired portfolio must pass calculateLedgerIntegrity with 0 errors and 0 drift
+  const integrity = calculateLedgerIntegrity(repaired.data);
+  assert.equal(integrity.isBookBalanced, true, integrity.summary);
+  assert.equal(integrity.bookDriftChi, 0);
+});
+
+
 
 

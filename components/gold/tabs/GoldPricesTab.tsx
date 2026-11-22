@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowLeftRight, Bell, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Bell, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   GoldAlertCondition,
   GoldCategory,
@@ -15,6 +15,7 @@ import {
   computeDomesticPremium,
   computeWorldGoldPricePerChiVnd,
   convertGoldUnit,
+  decomposeChiToVietnameseUnits,
 } from "@/lib/goldEngine";
 import { formatVNDMasked } from "@/lib/formatters";
 import { GOLD_CATEGORIES } from "./goldConstants";
@@ -60,10 +61,11 @@ export function GoldPricesTab({
   const [newAlertCond, setNewAlertCond] = useState<GoldAlertCondition>("TARGET_BID_ABOVE");
   const [newAlertThreshold, setNewAlertThreshold] = useState("9800000");
 
-  // Bidirectional Gold Unit Converter state
+  // Bidirectional Gold Unit Converter state (6 units: Chỉ, Lượng, Phân, Ly, Gram, Troy Oz)
   const [convAmount, setConvAmount] = useState("1");
   const [convUnit, setConvUnit] = useState<GoldWeightUnit>("LUONG");
   const [convCategory, setConvCategory] = useState<GoldCategory>("NHAN_9999");
+  const [quoteGuardWarning, setQuoteGuardWarning] = useState<string | null>(null);
 
   const worldPerChi = useMemo(
     () => computeWorldGoldPricePerChiVnd(goldPortfolio.macro),
@@ -78,12 +80,43 @@ export function GoldPricesTab({
       chi,
       luong: convertGoldUnit(val, convUnit, "LUONG"),
       phan: convertGoldUnit(val, convUnit, "PHAN"),
+      ly: convertGoldUnit(val, convUnit, "LY"),
       gram: convertGoldUnit(val, convUnit, "GRAM"),
       troyOz: convertGoldUnit(val, convUnit, "TROY_OZ"),
+      vietnameseBreakdown: decomposeChiToVietnameseUnits(chi),
       bidValueVnd: Math.round(chi * (quote?.buyPricePerChi || 0)),
       askValueVnd: Math.round(chi * (quote?.sellPricePerChi || 0)),
     };
   }, [convAmount, convUnit, convCategory, goldPortfolio.quotes]);
+
+  const handleQuotePriceChange = (
+    cat: GoldCategory,
+    field: "buyPricePerChi" | "sellPricePerChi",
+    rawValue: string
+  ) => {
+    const numeric = Math.max(0, Number(rawValue) || 0);
+    if (!Number.isFinite(numeric) || numeric <= 0) return;
+
+    const current = goldPortfolio.quotes[cat];
+    const catLabel = GOLD_CATEGORY_META[cat].shortLabel;
+
+    if (field === "buyPricePerChi" && numeric > current.sellPricePerChi) {
+      setQuoteGuardWarning(
+        `Chặn ngược giá (${catLabel}): Giá tiệm mua vào (Bid) không được cao hơn giá bán ra (Ask ${current.sellPricePerChi.toLocaleString("vi-VN")} đ/chỉ). Vui lòng tăng giá Ask trước hoặc nhập Bid ≤ Ask.`
+      );
+      return;
+    }
+
+    if (field === "sellPricePerChi" && numeric < current.buyPricePerChi) {
+      setQuoteGuardWarning(
+        `Chặn ngược giá (${catLabel}): Giá tiệm bán ra (Ask) không được thấp hơn giá mua vào (Bid ${current.buyPricePerChi.toLocaleString("vi-VN")} đ/chỉ). Vui lòng giảm giá Bid trước hoặc nhập Ask ≥ Bid.`
+      );
+      return;
+    }
+
+    setQuoteGuardWarning(null);
+    onUpdateQuote(cat, { [field]: numeric, source: "MANUAL" });
+  };
 
   const handleAddRule = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +166,22 @@ export function GoldPricesTab({
           <p className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">
             {refStatusMsg}
           </p>
+        )}
+
+        {quoteGuardWarning && (
+          <div className="px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800 flex items-center justify-between gap-2 text-xs font-semibold text-rose-800 dark:text-rose-200">
+            <span className="inline-flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{quoteGuardWarning}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setQuoteGuardWarning(null)}
+              className="text-[11px] font-bold underline shrink-0 cursor-pointer"
+            >
+              Đã hiểu
+            </button>
+          </div>
         )}
 
         {/* Macro XAU & USD/VND Inline Controls */}
@@ -202,10 +251,7 @@ export function GoldPricesTab({
                         min="100000"
                         value={q.buyPricePerChi}
                         onChange={(e) =>
-                          onUpdateQuote(cat, {
-                            buyPricePerChi: Math.max(0, Number(e.target.value) || 0),
-                            source: "MANUAL",
-                          })
+                          handleQuotePriceChange(cat, "buyPricePerChi", e.target.value)
                         }
                         aria-label={`Giá mua vào ${GOLD_CATEGORY_META[cat].shortLabel}`}
                         className="w-32 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-right font-bold"
@@ -218,10 +264,7 @@ export function GoldPricesTab({
                         min="100000"
                         value={q.sellPricePerChi}
                         onChange={(e) =>
-                          onUpdateQuote(cat, {
-                            sellPricePerChi: Math.max(0, Number(e.target.value) || 0),
-                            source: "MANUAL",
-                          })
+                          handleQuotePriceChange(cat, "sellPricePerChi", e.target.value)
                         }
                         aria-label={`Giá bán ra ${GOLD_CATEGORY_META[cat].shortLabel}`}
                         className="w-32 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-right font-bold"
@@ -260,17 +303,17 @@ export function GoldPricesTab({
         </div>
       </div>
 
-      {/* Bidirectional Gold Unit Converter (Chỉ ↔ Lượng ↔ Phân ↔ Gram ↔ Troy Oz) */}
+      {/* Bidirectional Gold Unit Converter (Chỉ ↔ Lượng ↔ Phân ↔ Ly ↔ Gram ↔ Troy Oz) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             <div>
               <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
-                Quy Đổi Đơn Vị Vàng 2 Chiều & Ước Tính Tiền Thực (Bid / Ask)
+                Quy Đổi Đơn Vị Vàng 2 Chiều (6 Đơn Vị) & Đối Chiếu Hóa Đơn Vật Lý
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Chuẩn đo lường Việt Nam & Quốc tế: 1 Lượng = 10 Chỉ = 100 Phân = 37,5 Gram ≈ 1,2057 Troy Oz
+                Chuẩn đo lường Việt Nam & Quốc tế: 1 Lượng = 10 Chỉ = 100 Phân = 1.000 Ly = 37,5 Gram ≈ 1,2057 Troy Oz
               </p>
             </div>
           </div>
@@ -308,16 +351,18 @@ export function GoldPricesTab({
               <option value="CHI">Chỉ</option>
               <option value="LUONG">Lượng (Cây)</option>
               <option value="PHAN">Phân</option>
+              <option value="LY">Ly</option>
               <option value="GRAM">Gram (g)</option>
               <option value="TROY_OZ">Troy Oz</option>
             </select>
           </div>
 
-          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-5 gap-2 tabular-nums">
+          <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 tabular-nums">
             {[
               { key: "CHI", label: "Chỉ", val: unitConversion.chi },
               { key: "LUONG", label: "Lượng", val: unitConversion.luong },
               { key: "PHAN", label: "Phân", val: unitConversion.phan },
+              { key: "LY", label: "Ly", val: unitConversion.ly },
               { key: "GRAM", label: "Gram", val: unitConversion.gram },
               { key: "TROY_OZ", label: "Troy Oz", val: unitConversion.troyOz },
             ].map((u) => (
@@ -336,6 +381,19 @@ export function GoldPricesTab({
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Vietnamese Physical Receipt Decomposition */}
+        <div className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums">
+          <span className="text-slate-500 dark:text-slate-400 font-semibold">
+            Đọc chuẩn hóa đơn vật lý Việt Nam:
+          </span>
+          <span className="font-black text-slate-900 dark:text-white">
+            {unitConversion.vietnameseBreakdown.luong} Lượng ·{" "}
+            {unitConversion.vietnameseBreakdown.chi} Chỉ ·{" "}
+            {unitConversion.vietnameseBreakdown.phan} Phân ·{" "}
+            {unitConversion.vietnameseBreakdown.ly} Ly
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs tabular-nums">

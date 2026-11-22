@@ -14,6 +14,7 @@ import { DEFAULT_SETTINGS } from '@/constants/mockData';
 import { createDefaultSkyOneLoan } from './mortgageEngine';
 import { createDefaultGoldPortfolio } from './goldEngine';
 import { createDefaultInteriorStudio } from './interiorFloorplan';
+import { mapDbToGoldPortfolio } from './supabaseMappers';
 
 test('recalculateAccountBalances calculates bank and credit card balances accurately', () => {
   const accounts: Account[] = [
@@ -405,4 +406,139 @@ test('mergeFinanceData performs granular 2-device Smart Merge for Gold priceHist
     merged.interiorStudio.scenarios.some((s) => s.id === 'scenario_partner_custom')
   );
 });
+
+test('parseSyncBundleText & mapDbToGoldPortfolio gracefully recover legacy JSON and partially corrupted gold records', () => {
+  const base = createBaseState();
+  const validLot0 = {
+    ...base.goldPortfolio.lots[0],
+    serialNumber: null,
+    certificateCode: '   ',
+    storeName: '  PNJ Gigamall Thủ Đức ',
+    purityLabel: '',
+  };
+  const corruptedLot = {
+    ...base.goldPortfolio.lots[1],
+    id: 'lot_bad_negative',
+    quantityChi: -3,
+  };
+  const validLot2 = {
+    ...base.goldPortfolio.lots[2],
+  };
+
+  // Legacy JSON missing priceHistory & alerts, with null/blank strings, 1 corrupted lot, and 1 inverted Bid > Ask quote
+  const legacyGoldRaw: Record<string, unknown> = {
+    lots: [validLot0, corruptedLot, validLot2],
+    sales: [],
+    quotes: {
+      ...structuredClone(base.goldPortfolio.quotes),
+      NHAN_9999: {
+        ...base.goldPortfolio.quotes.NHAN_9999,
+        buyPricePerChi: 9_650_000,
+        sellPricePerChi: 9_500_000, // inverted Bid > Ask
+      },
+    },
+    macro: base.goldPortfolio.macro,
+    dcaPlan: base.goldPortfolio.dcaPlan,
+    includeInNetWorth: true,
+    updatedAt: '2026-10-01T00:00:00.000Z',
+  };
+
+  const legacyBackupJson = JSON.stringify({
+    version: '4.0',
+    exportedAt: '2026-10-01T00:00:00.000Z',
+    categories: DEFAULT_CATEGORIES,
+    accounts: base.accounts,
+    transactions: base.transactions,
+    goldPortfolio: legacyGoldRaw,
+  });
+
+  const parsedBundle = parseSyncBundleText(legacyBackupJson);
+  assert.equal(parsedBundle.success, true, parsedBundle.error);
+  assert.ok(parsedBundle.data);
+  // Preserves both valid lots and drops only the corrupted one
+  assert.equal(parsedBundle.data.goldPortfolio.lots.length, 2);
+  assert.equal(parsedBundle.data.goldPortfolio.lots[0]?.serialNumber, undefined);
+  assert.equal(parsedBundle.data.goldPortfolio.lots[0]?.certificateCode, undefined);
+  assert.equal(parsedBundle.data.goldPortfolio.lots[0]?.storeName, 'PNJ Gigamall Thủ Đức');
+  assert.equal(parsedBundle.data.goldPortfolio.lots[0]?.purityLabel, undefined);
+  // Auto-repaired inverted Bid > Ask quote without wiping user Bid price
+  assert.equal(parsedBundle.data.goldPortfolio.quotes.NHAN_9999.buyPricePerChi, 9_650_000);
+  assert.equal(parsedBundle.data.goldPortfolio.quotes.NHAN_9999.sellPricePerChi, 9_650_000);
+
+  // Supabase JSONB mapper recovery path
+  const mappedDb = mapDbToGoldPortfolio({
+    household_id: 'hh_test',
+    id: 'gold_default',
+    portfolio_data: legacyGoldRaw,
+    updated_at: '2026-10-01T00:00:00.000Z',
+  });
+  assert.ok(mappedDb);
+  assert.equal(mappedDb.lots.length, 2);
+  assert.equal(mappedDb.quotes.NHAN_9999.sellPricePerChi, 9_650_000);
+});
+
+test('mergeFinanceData merges 2-device Interior BOQ payments[] tranches without overwriting either device', () => {
+  const local = createBaseState();
+  const partner = createBaseState();
+  const targetItemId = local.interiorStudio.scenarios[0].items[0].id;
+
+  local.interiorStudio.scenarios[0] = {
+    ...local.interiorStudio.scenarios[0],
+    updatedAt: '2026-11-20T08:00:00.000Z',
+    items: local.interiorStudio.scenarios[0].items.map((item) =>
+      item.id === targetItemId
+        ? {
+            ...item,
+            payments: [
+              {
+                id: 'pay_deposit_husband',
+                stage: 'DEPOSIT' as const,
+                amountVnd: 15_000_000,
+                date: '2026-11-18',
+                accountId: 'acc_h',
+                memberId: 'HUSBAND' as const,
+                note: 'Anh Chuột đặt cọc xưởng gỗ',
+              },
+            ],
+          }
+        : item
+    ),
+  };
+
+  partner.interiorStudio.scenarios[0] = {
+    ...partner.interiorStudio.scenarios[0],
+    updatedAt: '2026-11-20T12:00:00.000Z',
+    items: partner.interiorStudio.scenarios[0].items.map((item) =>
+      item.id === targetItemId
+        ? {
+            ...item,
+            payments: [
+              {
+                id: 'pay_delivery_wife',
+                stage: 'DELIVERY' as const,
+                amountVnd: 20_000_000,
+                date: '2026-11-20',
+                accountId: 'acc_h',
+                memberId: 'WIFE' as const,
+                note: 'Bé Mèo thanh toán đợt giao mộc',
+              },
+            ],
+          }
+        : item
+    ),
+  };
+
+  const merged = mergeFinanceData(local, partner, {
+    mode: 'MERGE',
+    keepLocalSecurity: true,
+  });
+
+  const mergedItem = merged.interiorStudio.scenarios[0].items.find((i) => i.id === targetItemId);
+  assert.ok(mergedItem);
+  assert.equal(mergedItem.payments?.length, 2);
+  const paymentIds = new Set(mergedItem.payments?.map((p) => p.id));
+  assert.ok(paymentIds.has('pay_deposit_husband'));
+  assert.ok(paymentIds.has('pay_delivery_wife'));
+});
+
 

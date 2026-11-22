@@ -20,6 +20,7 @@ export const GRAMS_PER_CHI = 3.75;
 export const CHI_PER_LUONG = 10;
 export const PHAN_PER_CHI = 10;
 export const LY_PER_CHI = 100;
+export const MICRO_CHI_SCALE = 10_000; // 1 chỉ = 10.000 vi-chỉ (1e-4 chỉ = 0.01 ly)
 export const GRAMS_PER_TROY_OZ = 31.1034768;
 export const TROY_OZ_PER_LUONG = GRAMS_PER_LUONG / GRAMS_PER_TROY_OZ; // ~1.205653027
 
@@ -66,12 +67,60 @@ export const GOLD_STORAGE_LABELS: Record<GoldStorageLocation, string> = {
   PARENTS: "Gửi nhà nội/ngoại",
 };
 
-function roundToPrecision(value: number, precision: number): number {
-  if (!Number.isFinite(value)) return 0;
+/**
+ * Làm tròn thập phân chuẩn xác bằng phép dịch mũ chuỗi (decimal shift),
+ * loại bỏ hoàn toàn lỗi làm tròn nhị phân IEEE-754 (ví dụ: 1.005 -> 1.01, 35.855 -> 35.86, 0.1 + 0.2 -> 0.3).
+ */
+export function roundGoldDecimal(value: number, precision = 4): number {
+  if (!Number.isFinite(value) || value === 0) return 0;
   const safePrecision = Math.max(0, Math.min(8, Math.trunc(precision)));
-  const factor = Math.pow(10, safePrecision);
-  const rounded = Math.round((value + Number.EPSILON) * factor) / factor;
-  return Object.is(rounded, -0) ? 0 : rounded;
+  const sign = value < 0 ? -1 : 1;
+  const cleaned = Number(Math.abs(value).toPrecision(12));
+  const str = cleaned.toString();
+  let shifted: number;
+  if (str.includes("e") || str.includes("E")) {
+    const [mantissa, expStr] = str.toLowerCase().split("e");
+    const newExp = Number(expStr) + safePrecision;
+    shifted = Number(`${mantissa}e${newExp}`);
+  } else {
+    shifted = Number(`${str}e${safePrecision}`);
+  }
+  const roundedInt = Math.round(shifted);
+  if (roundedInt === 0) return 0;
+  const unshifted = Number(`${roundedInt}e-${safePrecision}`);
+  const result = sign * unshifted;
+  return Object.is(result, -0) ? 0 : result;
+}
+
+function roundToPrecision(value: number, precision: number): number {
+  return roundGoldDecimal(value, precision);
+}
+
+/**
+ * Chuyển đổi số chỉ sang số nguyên tỷ lệ vi-chỉ (1 chỉ = 10.000 vi-chỉ)
+ * để cộng/trừ sổ cái tồn kho hoàn toàn bằng số nguyên, không trôi sai số thập phân.
+ */
+export function toMicroChi(chi: number): number {
+  if (!Number.isFinite(chi) || chi === 0) return 0;
+  const normalized = roundGoldDecimal(chi, 4);
+  return Math.round(Number(`${normalized}e4`));
+}
+
+export function fromMicroChi(microChi: number): number {
+  if (!Number.isFinite(microChi) || microChi === 0) return 0;
+  return roundGoldDecimal(microChi / MICRO_CHI_SCALE, 4);
+}
+
+export function sumChiExact(values: readonly number[]): number {
+  let totalMicro = 0;
+  for (const val of values) {
+    totalMicro += toMicroChi(val);
+  }
+  return fromMicroChi(totalMicro);
+}
+
+export function subtractChiExact(a: number, b: number): number {
+  return fromMicroChi(toMicroChi(a) - toMicroChi(b));
 }
 
 export type GoldWeightUnit = "CHI" | "LUONG" | "PHAN" | "LY" | "GRAM" | "TROY_OZ";
@@ -132,6 +181,10 @@ export function chiToPhan(chi: number, precision = 2): number {
   return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "PHAN"), precision);
 }
 
+export function chiToLy(chi: number, precision = 2): number {
+  return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "LY"), precision);
+}
+
 export function chiToTroyOz(chi: number, precision = 4): number {
   return roundToPrecision(fromExactChi(toExactChi(chi, "CHI"), "TROY_OZ"), precision);
 }
@@ -142,6 +195,10 @@ export function gramsToChi(grams: number, precision = 4): number {
 
 export function phanToChi(phan: number, precision = 4): number {
   return roundToPrecision(toExactChi(phan, "PHAN"), precision);
+}
+
+export function lyToChi(ly: number, precision = 4): number {
+  return roundToPrecision(toExactChi(ly, "LY"), precision);
 }
 
 export function troyOzToChi(oz: number, precision = 4): number {
@@ -1113,6 +1170,7 @@ export function verifyGoldPortfolioIntegrity(
 export function reconcileGoldPortfolioIntegrity(portfolio: GoldPortfolioState): {
   reconciledPortfolio: GoldPortfolioState;
   fixedLotIds: string[];
+  repairedQuoteCategories: GoldCategory[];
   remainingIssues: GoldIntegrityIssue[];
 } {
   const soldByLotId = new Map<string, number>();
@@ -1160,9 +1218,30 @@ export function reconcileGoldPortfolioIntegrity(portfolio: GoldPortfolioState): 
     nextPriceHistory = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  // Tự sửa nhẹ chênh lệch Bid > Ask nếu tồn tại từ dữ liệu cũ
+  const repairedQuoteCategories: GoldCategory[] = [];
+  const nextQuotes = { ...portfolio.quotes };
+  for (const cat of Object.keys(nextQuotes) as GoldCategory[]) {
+    const q = nextQuotes[cat];
+    if (
+      q &&
+      Number.isFinite(q.buyPricePerChi) &&
+      Number.isFinite(q.sellPricePerChi) &&
+      q.buyPricePerChi > 0 &&
+      q.buyPricePerChi > q.sellPricePerChi
+    ) {
+      repairedQuoteCategories.push(cat);
+      nextQuotes[cat] = {
+        ...q,
+        sellPricePerChi: q.buyPricePerChi,
+      };
+    }
+  }
+
   const reconciledPortfolio: GoldPortfolioState = {
     ...portfolio,
     lots: nextLots,
+    quotes: nextQuotes,
     priceHistory: nextPriceHistory,
   };
 
@@ -1170,7 +1249,216 @@ export function reconcileGoldPortfolioIntegrity(portfolio: GoldPortfolioState): 
   return {
     reconciledPortfolio,
     fixedLotIds,
+    repairedQuoteCategories,
     remainingIssues: audit.issues,
+  };
+}
+
+export type GoldLedgerRowStatus =
+  | "MATCHED"
+  | "BOOK_DRIFT"
+  | "PHYSICAL_SURPLUS"
+  | "PHYSICAL_SHORTAGE";
+
+export interface GoldLedgerCategoryBalanceRow {
+  category: GoldCategory;
+  purchasedChi: number;
+  soldAllocatedChi: number;
+  expectedBookRemainingChi: number;
+  recordedLotsRemainingChi: number;
+  bookDriftChi: number;
+  physicalCountChi: number | null;
+  physicalVarianceChi: number | null;
+  physicalVarianceVnd: number | null;
+  bidPricePerChi: number;
+  status: GoldLedgerRowStatus;
+}
+
+export interface GoldLedgerIntegrityResult {
+  totalPurchasedChi: number;
+  totalSoldAllocatedChi: number;
+  expectedBookRemainingChi: number;
+  recordedLotsRemainingChi: number;
+  bookDriftChi: number;
+  isBookBalanced: boolean;
+  hasPhysicalAudit: boolean;
+  totalPhysicalCountChi: number | null;
+  totalPhysicalVarianceChi: number | null;
+  totalPhysicalVarianceVnd: number | null;
+  isPhysicallyBalanced: boolean | null;
+  byCategory: GoldLedgerCategoryBalanceRow[];
+  auditReport: GoldIntegrityAuditReport;
+  summary: string;
+}
+
+const ORDERED_GOLD_CATEGORIES: readonly GoldCategory[] = [
+  "NHAN_9999",
+  "SJC_BAR",
+  "GOLD_24K_JEWELRY",
+  "GOLD_18K",
+  "DIGITAL_GOLD",
+];
+
+/**
+ * Đối soát định lượng sổ cái kế toán (Tổng mua gốc - Tổng đã phân bổ bán = Tồn sổ sách kỳ vọng vs Tồn ghi nhận trên lô)
+ * kết hợp kiểm đếm két vật lý thực tế (Physical Vault Stocktake) theo từng loại vàng bằng số học nguyên tỷ lệ (1e-4 chỉ).
+ */
+export function calculateLedgerIntegrity(
+  portfolio: GoldPortfolioState,
+  physicalCountByCategory?: Partial<Record<GoldCategory, number | null | undefined>>
+): GoldLedgerIntegrityResult {
+  const auditReport = verifyGoldPortfolioIntegrity(portfolio);
+
+  const lotCategoryById = new Map<string, GoldCategory>();
+  const purchasedMicroByCat = new Map<GoldCategory, number>();
+  const recordedMicroByCat = new Map<GoldCategory, number>();
+  const soldMicroByCat = new Map<GoldCategory, number>();
+  const activeCategories = new Set<GoldCategory>();
+
+  for (const lot of portfolio.lots) {
+    activeCategories.add(lot.category);
+    lotCategoryById.set(lot.id, lot.category);
+    purchasedMicroByCat.set(
+      lot.category,
+      (purchasedMicroByCat.get(lot.category) ?? 0) + toMicroChi(lot.quantityChi)
+    );
+    recordedMicroByCat.set(
+      lot.category,
+      (recordedMicroByCat.get(lot.category) ?? 0) + toMicroChi(lot.remainingChi)
+    );
+  }
+
+  for (const sale of portfolio.sales) {
+    activeCategories.add(sale.category);
+    for (const alloc of sale.allocations) {
+      const cat = lotCategoryById.get(alloc.lotId) ?? sale.category;
+      activeCategories.add(cat);
+      soldMicroByCat.set(cat, (soldMicroByCat.get(cat) ?? 0) + toMicroChi(alloc.soldChi));
+    }
+  }
+
+  if (physicalCountByCategory) {
+    for (const cat of ORDERED_GOLD_CATEGORIES) {
+      const rawCount = physicalCountByCategory[cat];
+      if (typeof rawCount === "number" && Number.isFinite(rawCount) && rawCount >= 0) {
+        activeCategories.add(cat);
+      }
+    }
+  }
+
+  let totalPurchasedMicro = 0;
+  let totalSoldMicro = 0;
+  let totalExpectedMicro = 0;
+  let totalRecordedMicro = 0;
+  let hasPhysicalAudit = false;
+  let totalPhysicalMicro = 0;
+  let totalPhysicalVarianceMicro = 0;
+  let totalPhysicalVarianceVnd = 0;
+  let anyPhysicalMismatch = false;
+
+  const byCategory: GoldLedgerCategoryBalanceRow[] = [];
+
+  for (const cat of ORDERED_GOLD_CATEGORIES) {
+    if (!activeCategories.has(cat)) continue;
+
+    const purchasedMicro = purchasedMicroByCat.get(cat) ?? 0;
+    const soldMicro = soldMicroByCat.get(cat) ?? 0;
+    const expectedMicro = Math.max(0, purchasedMicro - soldMicro);
+    const recordedMicro = recordedMicroByCat.get(cat) ?? 0;
+    const bookDriftMicro = recordedMicro - expectedMicro;
+
+    totalPurchasedMicro += purchasedMicro;
+    totalSoldMicro += soldMicro;
+    totalExpectedMicro += expectedMicro;
+    totalRecordedMicro += recordedMicro;
+
+    const bidPricePerChi = portfolio.quotes[cat]?.buyPricePerChi ?? 0;
+    const rawPhysical = physicalCountByCategory?.[cat];
+    const hasRowPhysical =
+      typeof rawPhysical === "number" && Number.isFinite(rawPhysical) && rawPhysical >= 0;
+
+    let physicalCountChi: number | null = null;
+    let physicalVarianceChi: number | null = null;
+    let physicalVarianceVnd: number | null = null;
+
+    if (hasRowPhysical) {
+      hasPhysicalAudit = true;
+      const physMicro = toMicroChi(rawPhysical);
+      const varMicro = physMicro - recordedMicro;
+      physicalCountChi = fromMicroChi(physMicro);
+      physicalVarianceChi = fromMicroChi(varMicro);
+      physicalVarianceVnd = Math.round(physicalVarianceChi * bidPricePerChi);
+
+      totalPhysicalMicro += physMicro;
+      totalPhysicalVarianceMicro += varMicro;
+      totalPhysicalVarianceVnd += physicalVarianceVnd;
+      if (Math.abs(varMicro) > 1) {
+        anyPhysicalMismatch = true;
+      }
+    }
+
+    let status: GoldLedgerRowStatus = "MATCHED";
+    if (Math.abs(bookDriftMicro) > 1) {
+      status = "BOOK_DRIFT";
+    } else if (physicalVarianceChi !== null && physicalVarianceChi > 0.0001) {
+      status = "PHYSICAL_SURPLUS";
+    } else if (physicalVarianceChi !== null && physicalVarianceChi < -0.0001) {
+      status = "PHYSICAL_SHORTAGE";
+    }
+
+    byCategory.push({
+      category: cat,
+      purchasedChi: fromMicroChi(purchasedMicro),
+      soldAllocatedChi: fromMicroChi(soldMicro),
+      expectedBookRemainingChi: fromMicroChi(expectedMicro),
+      recordedLotsRemainingChi: fromMicroChi(recordedMicro),
+      bookDriftChi: fromMicroChi(bookDriftMicro),
+      physicalCountChi,
+      physicalVarianceChi,
+      physicalVarianceVnd,
+      bidPricePerChi,
+      status,
+    });
+  }
+
+  const totalPurchasedChi = fromMicroChi(totalPurchasedMicro);
+  const totalSoldAllocatedChi = fromMicroChi(totalSoldMicro);
+  const expectedBookRemainingChi = fromMicroChi(totalExpectedMicro);
+  const recordedLotsRemainingChi = fromMicroChi(totalRecordedMicro);
+  const bookDriftChi = fromMicroChi(totalRecordedMicro - totalExpectedMicro);
+  const isBookBalanced = Math.abs(totalRecordedMicro - totalExpectedMicro) <= 1 && auditReport.errorCount === 0;
+
+  const totalPhysicalCountChi = hasPhysicalAudit ? fromMicroChi(totalPhysicalMicro) : null;
+  const totalPhysicalVarianceChi = hasPhysicalAudit ? fromMicroChi(totalPhysicalVarianceMicro) : null;
+  const isPhysicallyBalanced = hasPhysicalAudit ? !anyPhysicalMismatch : null;
+
+  let summary: string;
+  if (!isBookBalanced) {
+    summary = `Phát hiện lệch sổ cái ${bookDriftChi > 0 ? "+" : ""}${bookDriftChi} chỉ (${auditReport.errorCount} lỗi kiểm toán). Nên chạy Tự đối soát sổ cái.`;
+  } else if (!hasPhysicalAudit) {
+    summary = `Sổ sách cân bằng tuyệt đối (${recordedLotsRemainingChi} chỉ đang nắm giữ, sai lệch 0 chỉ).`;
+  } else if (isPhysicallyBalanced) {
+    summary = `Khớp hoàn toàn 100% giữa két vật lý thực tế và sổ sách (${totalPhysicalCountChi} chỉ).`;
+  } else {
+    const sign = (totalPhysicalVarianceChi ?? 0) > 0 ? "+" : "";
+    summary = `Chênh lệch két vật lý so với sổ sách: ${sign}${totalPhysicalVarianceChi} chỉ.`;
+  }
+
+  return {
+    totalPurchasedChi,
+    totalSoldAllocatedChi,
+    expectedBookRemainingChi,
+    recordedLotsRemainingChi,
+    bookDriftChi,
+    isBookBalanced,
+    hasPhysicalAudit,
+    totalPhysicalCountChi,
+    totalPhysicalVarianceChi,
+    totalPhysicalVarianceVnd: hasPhysicalAudit ? totalPhysicalVarianceVnd : null,
+    isPhysicallyBalanced,
+    byCategory,
+    auditReport,
+    summary,
   };
 }
 

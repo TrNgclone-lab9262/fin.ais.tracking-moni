@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   Bell,
+  CheckCircle2,
   Coins,
   Download,
   FileText,
   Plus,
+  RefreshCw,
   Scale,
   ShieldCheck,
   TrendingUp,
@@ -27,6 +29,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  GoldCategory,
   GoldPortfolioState,
   GoldRouteTab,
   InteriorRouteTab,
@@ -37,6 +40,7 @@ import {
   EvaluatedGoldAlert,
   GOLD_CATEGORY_META,
   GOLD_STORAGE_LABELS,
+  GoldIntegrityAuditReport,
   GoldPortfolioMetrics,
   NetWorthAllocationGuardrail,
   buildGoldNavHistorySeries,
@@ -47,11 +51,13 @@ import {
 } from "@/lib/goldEngine";
 import { HandoverReadinessResult } from "@/lib/interiorBoqEngine";
 import { formatShortVNDMasked, formatVNDMasked } from "@/lib/formatters";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 interface GoldOverviewTabProps {
   goldPortfolio: GoldPortfolioState;
   metrics: GoldPortfolioMetrics;
   evaluatedAlerts: EvaluatedGoldAlert[];
+  integrityReport: GoldIntegrityAuditReport;
   guardrail: NetWorthAllocationGuardrail;
   handoverReadiness: HandoverReadinessResult;
   husbandName: string;
@@ -59,6 +65,11 @@ interface GoldOverviewTabProps {
   isPrivacyMode: boolean;
   onOpenAddLot: () => void;
   onOpenSellModal: () => void;
+  onReconcilePortfolio: () => {
+    fixedLotIds: string[];
+    repairedQuoteCategories: GoldCategory[];
+    remainingIssuesCount: number;
+  };
   onPrintVaultAudit: () => void;
   onSwitchGoldTab: (tab: GoldRouteTab) => void;
   onSwitchSubApp: (
@@ -71,6 +82,7 @@ export function GoldOverviewTab({
   goldPortfolio,
   metrics,
   evaluatedAlerts,
+  integrityReport,
   guardrail,
   handoverReadiness,
   husbandName,
@@ -78,10 +90,41 @@ export function GoldOverviewTab({
   isPrivacyMode,
   onOpenAddLot,
   onOpenSellModal,
+  onReconcilePortfolio,
   onPrintVaultAudit,
   onSwitchGoldTab,
   onSwitchSubApp,
 }: GoldOverviewTabProps) {
+  const [isReconcileConfirmOpen, setIsReconcileConfirmOpen] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
+
+  const hasAuditIssues = integrityReport.errorCount > 0 || integrityReport.warningCount > 0;
+
+  const handleExportCsv = () => {
+    exportGoldVaultToCsv(goldPortfolio, metrics, { maskSensitive: isPrivacyMode });
+    if (isPrivacyMode) {
+      setStatusNotice("Đã xuất CSV với số tiền và mã seri được ẩn theo Chế độ Riêng tư.");
+    } else {
+      setStatusNotice("Đã xuất bảng kê Kho Tích Sản Vàng (CSV chuẩn UTF-8).");
+    }
+  };
+
+  const handleConfirmReconcile = () => {
+    const res = onReconcilePortfolio();
+    setIsReconcileConfirmOpen(false);
+    const repairedCount = res.fixedLotIds.length + res.repairedQuoteCategories.length;
+    if (repairedCount > 0) {
+      setStatusNotice(
+        `Đã đối soát sổ cái thành công: chuẩn hóa ${res.fixedLotIds.length} lô vàng và ${res.repairedQuoteCategories.length} báo giá (còn ${res.remainingIssuesCount} mục cần lưu ý).`
+      );
+    } else {
+      setStatusNotice(
+        res.remainingIssuesCount === 0
+          ? "Sổ cái đã khớp hoàn toàn 7/7 bất biến kế toán."
+          : `Đã kiểm tra sổ cái. Còn ${res.remainingIssuesCount} cảnh báo thủ công cần rà soát.`
+      );
+    }
+  };
   const triggeredAlerts = useMemo(
     () => evaluatedAlerts.filter((a) => a.triggered),
     [evaluatedAlerts]
@@ -147,21 +190,32 @@ export function GoldOverviewTab({
           <h2 className="text-base font-black text-slate-900 dark:text-slate-100">
             Tổng quan Kho Tích Sản Vàng (Định giá Thu mua Bid)
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            {metrics.lotEvaluations.length} lô đang nắm giữ · XAU/USD{" "}
-            {goldPortfolio.macro.worldXauUsdPerOz.toLocaleString("en-US")} $/oz · USD/VND{" "}
-            {goldPortfolio.macro.usdVndRate.toLocaleString("vi-VN")}
+          <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              {metrics.lotEvaluations.length} lô đang nắm giữ · XAU/USD{" "}
+              {goldPortfolio.macro.worldXauUsdPerOz.toLocaleString("en-US")} $/oz · USD/VND{" "}
+              {goldPortfolio.macro.usdVndRate.toLocaleString("vi-VN")}
+            </span>
+            {!hasAuditIssues && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400"
+                title={integrityReport.summary}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Sổ cái chuẩn xác · 7/7 bất biến</span>
+              </span>
+            )}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => exportGoldVaultToCsv(goldPortfolio, metrics)}
+            onClick={handleExportCsv}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Xuất CSV</span>
+            <span>{isPrivacyMode ? "Xuất CSV (Ẩn số)" : "Xuất CSV"}</span>
           </button>
           <button
             type="button"
@@ -188,6 +242,70 @@ export function GoldOverviewTab({
           </button>
         </div>
       </div>
+
+      {/* Transient Privacy / Reconciliation Status Feedback */}
+      {statusNotice && (
+        <div className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs font-semibold text-slate-700 dark:text-slate-200">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{statusNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusNotice(null)}
+            className="text-[11px] font-bold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
+
+      {/* Bank-Grade 7-Invariant Ledger Audit Banner (Only prominent when anomalies exist) */}
+      {hasAuditIssues && (
+        <div
+          className={`rounded-xl p-3.5 border flex flex-wrap items-start justify-between gap-3 ${
+            integrityReport.errorCount > 0
+              ? "bg-rose-50/80 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800"
+              : "bg-amber-50/80 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800"
+          }`}
+        >
+          <div className="space-y-1 min-w-0 flex-1">
+            <div
+              className={`flex items-center gap-1.5 text-xs font-black ${
+                integrityReport.errorCount > 0
+                  ? "text-rose-900 dark:text-rose-200"
+                  : "text-amber-900 dark:text-amber-200"
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="tabular-nums">
+                Kiểm toán Sổ cái Vàng phát hiện {integrityReport.errorCount} lỗi &{" "}
+                {integrityReport.warningCount} cảnh báo
+              </span>
+            </div>
+            <ul className="space-y-0.5 text-xs text-slate-700 dark:text-slate-300">
+              {integrityReport.issues.slice(0, 4).map((issue, idx) => (
+                <li key={`${issue.code}-${issue.entityId ?? idx}`}>
+                  • <strong>[{issue.severity}]</strong> {issue.message}
+                </li>
+              ))}
+              {integrityReport.issues.length > 4 && (
+                <li className="text-[11px] text-slate-500">
+                  … và {integrityReport.issues.length - 4} mục khác.
+                </li>
+              )}
+            </ul>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReconcileConfirmOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-900 dark:bg-amber-600 hover:bg-slate-800 dark:hover:bg-amber-700 text-white shrink-0 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Tự đối soát sổ cái</span>
+          </button>
+        </div>
+      )}
 
       {/* Triggered Price/Spread Alerts Strip */}
       {triggeredAlerts.length > 0 && (
@@ -509,6 +627,16 @@ export function GoldOverviewTab({
           </div>
         </div>
       </section>
+
+      <ConfirmDialog
+        isOpen={isReconcileConfirmOpen}
+        title="Xác nhận tự đối soát sổ cái vàng?"
+        message="Hệ thống sẽ tự tính lại số chỉ còn lại và trạng thái từng lô từ nhật ký bán gốc, khử trùng mốc ngày lịch sử giá và giữ nguyên mọi giao dịch bán đã ghi nhận (không xóa dữ liệu)."
+        confirmLabel="Tiến hành đối soát"
+        cancelLabel="Để sau"
+        onCancel={() => setIsReconcileConfirmOpen(false)}
+        onConfirm={handleConfirmReconcile}
+      />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import type {
  * Chuẩn hóa chuỗi tùy chọn: tự động trim, chuyển null / "" / chỉ khoảng trắng thành undefined
  * để tương thích 100% với bản ghi cũ từ localStorage và Supabase JSONB.
  */
-function optionalTrimmedString(maxLen: number) {
+export function optionalTrimmedString(maxLen: number) {
   return z.preprocess((val) => {
     if (val === null || val === undefined) return undefined;
     if (typeof val === "string") {
@@ -324,7 +324,18 @@ export const GoldLotSchema = z
   .refine((lot) => lot.remainingChi <= lot.quantityChi + 0.0001, {
     message: "Số chỉ còn nắm giữ không được vượt quá số chỉ mua gốc",
     path: ["remainingChi"],
-  });
+  })
+  .refine(
+    (lot) => {
+      if (lot.status === "SOLD") return lot.remainingChi <= 0.0001;
+      if (lot.status === "HOLDING") return Math.abs(lot.remainingChi - lot.quantityChi) <= 0.0001;
+      return lot.remainingChi > 0.0001 && lot.remainingChi < lot.quantityChi - 0.0001;
+    },
+    {
+      message: "Trạng thái lô vàng (HOLDING/PARTIAL_SOLD/SOLD) không khớp với số chỉ còn nắm giữ",
+      path: ["status"],
+    }
+  );
 
 export const GoldSaleAllocationModeSchema = z.enum(["FIFO", "SPECIFIC_LOT", "WAC"]);
 
@@ -351,14 +362,19 @@ export const GoldSaleEventSchema = z.object({
   createdAt: z.string(),
 });
 
-export const GoldPriceQuoteSchema = z.object({
-  category: GoldCategorySchema,
-  brandLabel: z.string().trim().min(1),
-  buyPricePerChi: z.number().finite().positive(),
-  sellPricePerChi: z.number().finite().positive(),
-  updatedAt: z.string(),
-  source: z.enum(["MANUAL", "SERVER_REFERENCE"]),
-});
+export const GoldPriceQuoteSchema = z
+  .object({
+    category: GoldCategorySchema,
+    brandLabel: z.string().trim().min(1),
+    buyPricePerChi: z.number().finite().positive(),
+    sellPricePerChi: z.number().finite().positive(),
+    updatedAt: z.string(),
+    source: z.enum(["MANUAL", "SERVER_REFERENCE"]),
+  })
+  .refine((q) => q.buyPricePerChi <= q.sellPricePerChi, {
+    message: "Giá mua vào (Bid) không được cao hơn giá bán ra (Ask)",
+    path: ["buyPricePerChi"],
+  });
 
 export const GoldMacroContextSchema = z.object({
   worldXauUsdPerOz: z.number().finite().nonnegative(),
@@ -375,19 +391,29 @@ export const GoldDcaPlanSchema = z.object({
   targetReserveChiFor2027: z.number().finite().nonnegative(),
 });
 
-export const GoldPriceSnapshotSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  recordedAt: z.string(),
-  nhan9999BidPerChi: z.number().finite().nonnegative(),
-  nhan9999AskPerChi: z.number().finite().nonnegative(),
-  sjcBidPerChi: z.number().finite().nonnegative(),
-  sjcAskPerChi: z.number().finite().nonnegative(),
-  worldXauUsdPerOz: z.number().finite().nonnegative(),
-  usdVndRate: z.number().finite().nonnegative(),
-  portfolioBidValueVnd: z.number().finite().nonnegative().default(0),
-  portfolioCostBasisVnd: z.number().finite().nonnegative().default(0),
-  totalRemainingChi: z.number().finite().nonnegative().default(0),
-});
+export const GoldPriceSnapshotSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    recordedAt: z.string(),
+    nhan9999BidPerChi: z.number().finite().nonnegative(),
+    nhan9999AskPerChi: z.number().finite().nonnegative(),
+    sjcBidPerChi: z.number().finite().nonnegative(),
+    sjcAskPerChi: z.number().finite().nonnegative(),
+    worldXauUsdPerOz: z.number().finite().nonnegative(),
+    usdVndRate: z.number().finite().nonnegative(),
+    portfolioBidValueVnd: z.number().finite().nonnegative().default(0),
+    portfolioCostBasisVnd: z.number().finite().nonnegative().default(0),
+    totalRemainingChi: z.number().finite().nonnegative().default(0),
+  })
+  .refine(
+    (s) =>
+      (s.nhan9999AskPerChi === 0 || s.nhan9999BidPerChi <= s.nhan9999AskPerChi) &&
+      (s.sjcAskPerChi === 0 || s.sjcBidPerChi <= s.sjcAskPerChi),
+    {
+      message: "Giá mua vào (Bid) trong lịch sử giá không được cao hơn giá bán ra (Ask)",
+      path: ["nhan9999BidPerChi"],
+    }
+  );
 
 export const GoldAlertConditionSchema = z.enum([
   "TARGET_BID_ABOVE",
@@ -432,11 +458,95 @@ const GOLD_CATEGORIES: readonly GoldCategory[] = [
   "DIGITAL_GOLD",
 ];
 
+function toMicroChiValidation(chi: number): number {
+  if (!Number.isFinite(chi) || chi === 0) return 0;
+  return Math.round(Number(`${Number(chi.toPrecision(12))}e4`));
+}
+
+function fromMicroChiValidation(micro: number): number {
+  if (!Number.isFinite(micro) || micro === 0) return 0;
+  return Number(`${Math.round(micro)}e-4`);
+}
+
+function deriveLotStatus(quantityChi: number, remainingChi: number): GoldLot["status"] {
+  if (remainingChi <= 0.0001) return "SOLD";
+  if (Math.abs(remainingChi - quantityChi) <= 0.0001) return "HOLDING";
+  return "PARTIAL_SOLD";
+}
+
+function reconcileLotsAgainstSales(
+  lots: GoldLot[],
+  sales: GoldSaleEvent[],
+  repairedItems: string[]
+): { lots: GoldLot[]; changed: boolean } {
+  const soldMicroByLotId = new Map<string, number>();
+  for (const sale of sales) {
+    for (const alloc of sale.allocations) {
+      soldMicroByLotId.set(
+        alloc.lotId,
+        (soldMicroByLotId.get(alloc.lotId) ?? 0) + toMicroChiValidation(alloc.soldChi)
+      );
+    }
+  }
+
+  let changed = false;
+  const reconciled = lots.map((lot) => {
+    const hasAllocatedSale = soldMicroByLotId.has(lot.id);
+    if (!hasAllocatedSale) return lot;
+    const expectedRemainingMicro = Math.max(
+      0,
+      toMicroChiValidation(lot.quantityChi) - (soldMicroByLotId.get(lot.id) ?? 0)
+    );
+    const expectedRemaining = fromMicroChiValidation(expectedRemainingMicro);
+    const expectedStatus = deriveLotStatus(lot.quantityChi, expectedRemaining);
+    if (
+      Math.abs(toMicroChiValidation(lot.remainingChi) - expectedRemainingMicro) > 1 ||
+      lot.status !== expectedStatus
+    ) {
+      changed = true;
+      repairedItems.push(`lots[${lot.id}]:repaired_ledger_balance`);
+      return {
+        ...lot,
+        remainingChi: expectedRemaining,
+        status: expectedStatus,
+      };
+    }
+    return lot;
+  });
+
+  return { lots: reconciled, changed };
+}
+
+function deduplicatePriceHistory(
+  history: GoldPriceSnapshot[],
+  repairedItems: string[]
+): { history: GoldPriceSnapshot[]; changed: boolean } {
+  if (history.length <= 1) return { history, changed: false };
+  const byDate = new Map<string, GoldPriceSnapshot>();
+  let changed = false;
+  for (const snap of history) {
+    const prev = byDate.get(snap.date);
+    if (!prev) {
+      byDate.set(snap.date, snap);
+    } else {
+      changed = true;
+      if (snap.recordedAt.localeCompare(prev.recordedAt) > 0) {
+        byDate.set(snap.date, snap);
+      }
+      if (!repairedItems.includes(`priceHistory[${snap.date}]:deduplicated`)) {
+        repairedItems.push(`priceHistory[${snap.date}]:deduplicated`);
+      }
+    }
+  }
+  const deduped = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  return { history: deduped, changed };
+}
+
 /**
- * Phục hồi dữ liệu cục bộ an toàn (Graceful Partial Recovery) cho Kho Vàng:
- * - Nếu hợp lệ 100%, trả thẳng kết quả Zod đã chuẩn hóa.
- * - Nếu chỉ một phần (ví dụ 1 lô bị lỗi hoặc 1 snapshot hỏng), chỉ loại bỏ đúng phần hỏng
- *   và bảo toàn toàn bộ các lô/lịch sử/cảnh báo hợp lệ thay vì rơi toàn bộ về dữ liệu mẫu.
+ * Phục hồi dữ liệu cục bộ an toàn (Graceful 3-Layer Auto-Repair) cho Kho Vàng:
+ * - Lớp 1 (Quotes): Tự sửa nhẹ báo giá cũ bị ngược Bid > Ask (Ask = Bid) thay vì xóa về mặc định.
+ * - Lớp 2 (Price History): Tự sửa nhẹ snapshot lịch sử ngược Bid > Ask và khử trùng ngày.
+ * - Lớp 3 (Lots & Ledger): Tự sửa nhẹ lô cũ lệch trạng thái / lệch tồn kho theo sổ phân bổ bán gốc.
  */
 export function parseGoldPortfolioSafely(
   raw: unknown,
@@ -445,13 +555,32 @@ export function parseGoldPortfolioSafely(
   data: GoldPortfolioState;
   recovered: boolean;
   droppedItems: string[];
+  repairedItems: string[];
 } {
   const fullParsed = GoldPortfolioStateSchema.safeParse(raw);
   if (fullParsed.success) {
+    const repairedItems: string[] = [];
+    const lotCheck = reconcileLotsAgainstSales(
+      fullParsed.data.lots,
+      fullParsed.data.sales,
+      repairedItems
+    );
+    const historyCheck = deduplicatePriceHistory(
+      fullParsed.data.priceHistory ?? [],
+      repairedItems
+    );
+    const changed = lotCheck.changed || historyCheck.changed;
     return {
-      data: fullParsed.data,
-      recovered: false,
+      data: changed
+        ? {
+            ...fullParsed.data,
+            lots: lotCheck.lots,
+            priceHistory: historyCheck.history,
+          }
+        : fullParsed.data,
+      recovered: changed,
       droppedItems: [],
+      repairedItems,
     };
   }
 
@@ -460,34 +589,16 @@ export function parseGoldPortfolioSafely(
       data: fallbackFactory(),
       recovered: true,
       droppedItems: ["goldPortfolio:root"],
+      repairedItems: [],
     };
   }
 
   const obj = raw as Record<string, unknown>;
   const base = fallbackFactory();
   const droppedItems: string[] = [];
+  const repairedItems: string[] = [];
 
-  // 1. Lots
-  let lots: GoldLot[] = base.lots;
-  if (Array.isArray(obj.lots)) {
-    lots = [];
-    obj.lots.forEach((item, idx) => {
-      const parsed = GoldLotSchema.safeParse(item);
-      if (parsed.success) {
-        lots.push(parsed.data);
-      } else {
-        const rawId =
-          item && typeof item === "object" && "id" in item && typeof (item as { id: unknown }).id === "string"
-            ? (item as { id: string }).id
-            : String(idx);
-        droppedItems.push(`lots[${rawId}]`);
-      }
-    });
-  } else {
-    droppedItems.push("lots");
-  }
-
-  // 2. Sales
+  // 1. Sales trước để làm căn cứ đối soát tồn kho cho từng lô cũ
   let sales: GoldSaleEvent[] = base.sales;
   if (Array.isArray(obj.sales)) {
     sales = [];
@@ -507,7 +618,71 @@ export function parseGoldPortfolioSafely(
     droppedItems.push("sales");
   }
 
-  // 3. Quotes (per-category recovery)
+  const soldMicroByLotId = new Map<string, number>();
+  for (const sale of sales) {
+    for (const alloc of sale.allocations) {
+      soldMicroByLotId.set(
+        alloc.lotId,
+        (soldMicroByLotId.get(alloc.lotId) ?? 0) + toMicroChiValidation(alloc.soldChi)
+      );
+    }
+  }
+
+  // 2. Lots (Lớp 3: Tự sửa nhẹ lô cũ lệch trạng thái / remainingChi vượt biên hoặc lệch phân bổ bán)
+  let lots: GoldLot[] = base.lots;
+  if (Array.isArray(obj.lots)) {
+    lots = [];
+    obj.lots.forEach((item, idx) => {
+      const parsed = GoldLotSchema.safeParse(item);
+      if (parsed.success) {
+        lots.push(parsed.data);
+        return;
+      }
+
+      const rawId =
+        item && typeof item === "object" && "id" in item && typeof (item as { id: unknown }).id === "string"
+          ? (item as { id: string }).id
+          : String(idx);
+
+      let repaired = false;
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const lotObj = item as Record<string, unknown>;
+        const qty = lotObj.quantityChi;
+        const rem = lotObj.remainingChi;
+        if (typeof qty === "number" && Number.isFinite(qty) && qty > 0) {
+          const soldMicro = soldMicroByLotId.get(rawId) ?? 0;
+          const expectedRemMicro =
+            soldMicro > 0
+              ? Math.max(0, toMicroChiValidation(qty) - soldMicro)
+              : typeof rem === "number" && Number.isFinite(rem) && rem >= 0 && rem <= qty
+                ? toMicroChiValidation(rem)
+                : toMicroChiValidation(qty);
+          const repairedRemaining = fromMicroChiValidation(expectedRemMicro);
+          const repairedStatus = deriveLotStatus(qty, repairedRemaining);
+          const repairedAttempt = GoldLotSchema.safeParse({
+            ...lotObj,
+            remainingChi: repairedRemaining,
+            status: repairedStatus,
+          });
+          if (repairedAttempt.success) {
+            lots.push(repairedAttempt.data);
+            repairedItems.push(`lots[${rawId}]:repaired_status_or_balance`);
+            repaired = true;
+          }
+        }
+      }
+
+      if (!repaired) {
+        droppedItems.push(`lots[${rawId}]`);
+      }
+    });
+  } else {
+    droppedItems.push("lots");
+  }
+
+  lots = reconcileLotsAgainstSales(lots, sales, repairedItems).lots;
+
+  // 3. Quotes (Lớp 1: per-category recovery + tự sửa nhẹ Bid > Ask từ dữ liệu cũ)
   const quotes = { ...base.quotes };
   const rawQuotes =
     obj.quotes && typeof obj.quotes === "object" && !Array.isArray(obj.quotes)
@@ -515,11 +690,39 @@ export function parseGoldPortfolioSafely(
       : null;
   if (rawQuotes) {
     for (const cat of GOLD_CATEGORIES) {
-      const parsedQuote = GoldPriceQuoteSchema.safeParse(rawQuotes[cat]);
+      const rawQuote = rawQuotes[cat];
+      const parsedQuote = GoldPriceQuoteSchema.safeParse(rawQuote);
       if (parsedQuote.success) {
         quotes[cat] = parsedQuote.data;
-      } else if (rawQuotes[cat] !== undefined) {
-        droppedItems.push(`quotes.${cat}`);
+      } else if (rawQuote !== undefined) {
+        let repaired = false;
+        if (rawQuote && typeof rawQuote === "object" && !Array.isArray(rawQuote)) {
+          const qObj = rawQuote as Record<string, unknown>;
+          const bid = qObj.buyPricePerChi;
+          const ask = qObj.sellPricePerChi;
+          if (
+            typeof bid === "number" &&
+            typeof ask === "number" &&
+            Number.isFinite(bid) &&
+            Number.isFinite(ask) &&
+            bid > 0 &&
+            ask > 0 &&
+            bid > ask
+          ) {
+            const repairedAttempt = GoldPriceQuoteSchema.safeParse({
+              ...qObj,
+              sellPricePerChi: bid,
+            });
+            if (repairedAttempt.success) {
+              quotes[cat] = repairedAttempt.data;
+              repairedItems.push(`quotes.${cat}:repaired_inverted_spread`);
+              repaired = true;
+            }
+          }
+        }
+        if (!repaired) {
+          droppedItems.push(`quotes.${cat}`);
+        }
       }
     }
   } else if (obj.quotes !== undefined) {
@@ -539,7 +742,7 @@ export function parseGoldPortfolioSafely(
     droppedItems.push("dcaPlan");
   }
 
-  // 5. Price History
+  // 5. Price History (Lớp 2: Tự sửa nhẹ snapshot ngược Bid > Ask + khử trùng mốc ngày)
   let priceHistory: GoldPriceSnapshot[] = base.priceHistory ?? [];
   if (Array.isArray(obj.priceHistory)) {
     priceHistory = [];
@@ -547,10 +750,45 @@ export function parseGoldPortfolioSafely(
       const parsed = GoldPriceSnapshotSchema.safeParse(item);
       if (parsed.success) {
         priceHistory.push(parsed.data);
-      } else {
+        return;
+      }
+
+      let repaired = false;
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const sObj = item as Record<string, unknown>;
+        const nBid = sObj.nhan9999BidPerChi;
+        const nAsk = sObj.nhan9999AskPerChi;
+        const sBid = sObj.sjcBidPerChi;
+        const sAsk = sObj.sjcAskPerChi;
+        const nextNhanAsk =
+          typeof nBid === "number" && typeof nAsk === "number" && nAsk > 0 && nBid > nAsk
+            ? nBid
+            : nAsk;
+        const nextSjcAsk =
+          typeof sBid === "number" && typeof sAsk === "number" && sAsk > 0 && sBid > sAsk
+            ? sBid
+            : sAsk;
+        if (nextNhanAsk !== nAsk || nextSjcAsk !== sAsk) {
+          const repairedAttempt = GoldPriceSnapshotSchema.safeParse({
+            ...sObj,
+            nhan9999AskPerChi: nextNhanAsk,
+            sjcAskPerChi: nextSjcAsk,
+          });
+          if (repairedAttempt.success) {
+            priceHistory.push(repairedAttempt.data);
+            const dateTag =
+              typeof sObj.date === "string" && sObj.date.length > 0 ? sObj.date : String(idx);
+            repairedItems.push(`priceHistory[${dateTag}]:repaired_inverted_spread`);
+            repaired = true;
+          }
+        }
+      }
+
+      if (!repaired) {
         droppedItems.push(`priceHistory[${idx}]`);
       }
     });
+    priceHistory = deduplicatePriceHistory(priceHistory, repairedItems).history;
   } else if (obj.priceHistory !== undefined) {
     droppedItems.push("priceHistory");
   }
@@ -595,6 +833,7 @@ export function parseGoldPortfolioSafely(
     },
     recovered: true,
     droppedItems,
+    repairedItems,
   };
 }
 

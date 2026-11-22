@@ -140,6 +140,7 @@ import {
   createDefaultGoldAlerts,
   createDefaultGoldPortfolio,
   createGoldPriceSnapshot,
+  reconcileGoldPortfolioIntegrity,
   revertGoldSaleAllocation,
   upsertGoldPriceSnapshot,
 } from "@/lib/goldEngine";
@@ -514,6 +515,11 @@ interface FinanceContextType {
   goldSimulatorPresetTarget: { amountVnd: number; label: string } | null;
   setGoldSimulatorPresetTarget: (preset: { amountVnd: number; label: string } | null) => void;
   fetchReferenceGoldPrices: (force?: boolean) => Promise<{ ok: boolean; mode?: string; note?: string; error?: string }>;
+  reconcileGoldPortfolio: () => {
+    fixedLotIds: string[];
+    repairedQuoteCategories: GoldCategory[];
+    remainingIssuesCount: number;
+  };
   resetGoldPortfolio: () => void;
 
   // Quản lý Thiết kế Nội thất 3D & Dự toán BOQ (INTERIOR Sub-App)
@@ -3572,18 +3578,43 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       category: GoldCategory,
       patch: Partial<Pick<GoldPriceQuote, "brandLabel" | "buyPricePerChi" | "sellPricePerChi" | "source">>
     ) => {
-      updateGoldPortfolioState((prev) => ({
-        ...prev,
-        quotes: {
-          ...prev.quotes,
-          [category]: {
-            ...prev.quotes[category],
-            ...patch,
-            source: patch.source ?? "MANUAL",
-            updatedAt: new Date().toISOString(),
+      updateGoldPortfolioState((prev) => {
+        const current = prev.quotes[category];
+        let nextBid =
+          patch.buyPricePerChi !== undefined && Number.isFinite(patch.buyPricePerChi) && patch.buyPricePerChi > 0
+            ? patch.buyPricePerChi
+            : current.buyPricePerChi;
+        let nextAsk =
+          patch.sellPricePerChi !== undefined && Number.isFinite(patch.sellPricePerChi) && patch.sellPricePerChi > 0
+            ? patch.sellPricePerChi
+            : current.sellPricePerChi;
+
+        // Chặn tuyệt đối trạng thái nghịch lý Bid > Ask khi nhập mới
+        if (nextBid > nextAsk) {
+          if (patch.buyPricePerChi !== undefined && patch.sellPricePerChi === undefined) {
+            nextAsk = nextBid;
+          } else if (patch.sellPricePerChi !== undefined && patch.buyPricePerChi === undefined) {
+            nextAsk = nextBid;
+          } else {
+            nextAsk = nextBid;
+          }
+        }
+
+        return {
+          ...prev,
+          quotes: {
+            ...prev.quotes,
+            [category]: {
+              ...current,
+              ...patch,
+              buyPricePerChi: nextBid,
+              sellPricePerChi: nextAsk,
+              source: patch.source ?? "MANUAL",
+              updatedAt: new Date().toISOString(),
+            },
           },
-        },
-      }));
+        };
+      });
     },
     [updateGoldPortfolioState]
   );
@@ -3735,6 +3766,26 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     },
     [updateGoldPortfolioState]
   );
+
+  const reconcileGoldPortfolio = useCallback((): {
+    fixedLotIds: string[];
+    repairedQuoteCategories: GoldCategory[];
+    remainingIssuesCount: number;
+  } => {
+    const result = reconcileGoldPortfolioIntegrity(goldPortfolio);
+    if (
+      result.fixedLotIds.length > 0 ||
+      result.repairedQuoteCategories.length > 0 ||
+      result.reconciledPortfolio.priceHistory?.length !== goldPortfolio.priceHistory?.length
+    ) {
+      updateGoldPortfolioState(() => result.reconciledPortfolio, { recordSnapshot: false });
+    }
+    return {
+      fixedLotIds: result.fixedLotIds,
+      repairedQuoteCategories: result.repairedQuoteCategories,
+      remainingIssuesCount: result.remainingIssues.length,
+    };
+  }, [goldPortfolio, updateGoldPortfolioState]);
 
   const resetGoldPortfolio = useCallback(() => {
     const fresh = createDefaultGoldPortfolio();
@@ -5709,6 +5760,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     goldSimulatorPresetTarget,
     setGoldSimulatorPresetTarget,
     fetchReferenceGoldPrices,
+    reconcileGoldPortfolio,
     resetGoldPortfolio,
     interiorStudio,
     setActiveInteriorScenario,
