@@ -1,10 +1,16 @@
 import {
   Account,
   Category,
+  DebtItem,
   FamilyMember,
+  GoldPortfolioState,
+  InvestmentItem,
+  MortgageContract,
   Transaction,
 } from "@/types/finance";
 import { recalculateAccountBalances } from "./storage";
+import { computeGoldPortfolioMetrics } from "./goldEngine";
+import { generateMortgageSchedule } from "./mortgageEngine";
 
 export type PerspectiveFilter = "ALL" | "HUSBAND" | "WIFE";
 
@@ -530,3 +536,129 @@ export function resolveCategorySlugToId(
 
   return categories.find((c) => c.type === "EXPENSE")?.id || "cat_expense_food";
 }
+
+// ---------------------------------------------------------------------------
+// UNIFIED HOUSEHOLD NET WORTH SELECTOR (FINANCE + GOLD + SKYONE)
+// ---------------------------------------------------------------------------
+export interface UnifiedHouseholdNetWorth {
+  /** Tiền mặt, tài khoản ngân hàng, ví điện tử (không gồm thẻ tín dụng) */
+  liquidCashVnd: number;
+  /** Danh mục đầu tư khác trong FINANCE (tránh cộng trùng nếu người dùng đang quản vàng tại Sub-App GOLD) */
+  otherInvestmentsVnd: number;
+  /** Giá trị thanh khoản Kho Vàng theo giá Mua vào (Bid Valuation) */
+  goldBidValueVnd: number;
+  /** Khoản cho vay đang chờ thu hồi (LEND) */
+  receivablesVnd: number;
+  /** Vốn chủ sở hữu BĐS SKYONE = Giá trị thị trường ước tính - Dư nợ vay còn lại */
+  skyoneEquityVnd: number;
+  skyonePropertyValueVnd: number;
+  skyoneRemainingDebtVnd: number;
+  /** Tổng dư nợ thẻ tín dụng BIDV */
+  creditCardDebtVnd: number;
+  /** Khoản nợ ngắn hạn khác (BORROW chưa trả) */
+  shortTermDebtVnd: number;
+  /** Tổng nợ ngắn hạn (Thẻ tín dụng + Nợ vay ngoài BĐS) */
+  totalShortTermLiabilitiesVnd: number;
+  /** Tài sản ròng thanh khoản nhanh (Tiền + Đầu tư + Kho Vàng Bid + Cho vay - Nợ thẻ & Nợ ngắn hạn) */
+  liquidNetWorthVnd: number;
+  /** Tổng Gia Sản Hộ Gia Đình Hợp Nhất (gồm cả Vốn chủ sở hữu BĐS SKYONE) */
+  totalHouseholdNetWorthVnd: number;
+  /** Tổng gộp tài sản dương (mẫu số tính tỷ trọng) */
+  grossAssetsVnd: number;
+  /** Tỷ trọng từng khối tài sản (%) */
+  sharesPct: {
+    cash: number;
+    investments: number;
+    gold: number;
+    realEstateEquity: number;
+  };
+}
+
+export function computeUnifiedHouseholdNetWorth(input: {
+  accounts: Account[];
+  investments: InvestmentItem[];
+  debts: DebtItem[];
+  goldPortfolio: GoldPortfolioState;
+  skyoneLoan: MortgageContract;
+}): UnifiedHouseholdNetWorth {
+  const liquidCashVnd = input.accounts
+    .filter((a) => a.type !== "CREDIT_CARD")
+    .reduce((sum, a) => sum + (Number.isFinite(a.currentBalance) ? a.currentBalance : 0), 0);
+
+  const creditCardDebtVnd = input.accounts
+    .filter((a) => a.type === "CREDIT_CARD")
+    .reduce((sum, a) => sum + Math.max(0, Number.isFinite(a.currentBalance) ? a.currentBalance : 0), 0);
+
+  const goldMetrics = computeGoldPortfolioMetrics(input.goldPortfolio);
+  const goldBidValueVnd = Math.max(0, Math.round(goldMetrics.totalLiquidationValueBid));
+  const hasGoldVaultHoldings = goldMetrics.totalRemainingChi > 0.0001;
+
+  // Nếu gia đình đã quản trị vàng chuyên sâu tại Sub-App GOLD, loại trừ mục type === 'GOLD'
+  // cũ trong bảng investments để tuyệt đối không đếm trùng tài sản vàng.
+  const otherInvestmentsVnd = input.investments
+    .filter((inv) => inv.status === "ACTIVE" && (!hasGoldVaultHoldings || inv.type !== "GOLD"))
+    .reduce((sum, inv) => {
+      const val = inv.currentValue !== undefined ? inv.currentValue : inv.amount;
+      return sum + Math.max(0, Number.isFinite(val) ? val : 0);
+    }, 0);
+
+  const shortTermDebtVnd = input.debts
+    .filter((d) => d.status === "ACTIVE" && d.type === "BORROW")
+    .reduce((sum, d) => sum + Math.max(0, d.totalAmount - d.paidAmount), 0);
+
+  const receivablesVnd = input.debts
+    .filter((d) => d.status === "ACTIVE" && d.type === "LEND")
+    .reduce((sum, d) => sum + Math.max(0, d.totalAmount - d.paidAmount), 0);
+
+  const skySchedule = generateMortgageSchedule(input.skyoneLoan);
+  const skyoneRemainingDebtVnd = Math.max(0, Math.round(skySchedule.remainingBalance));
+  const skyonePropertyValueVnd = Math.max(
+    0,
+    Math.round(
+      input.skyoneLoan.currentMarketValue && input.skyoneLoan.currentMarketValue > 0
+        ? input.skyoneLoan.currentMarketValue
+        : input.skyoneLoan.propertyValue
+    )
+  );
+  const skyoneEquityVnd = Math.max(0, skyonePropertyValueVnd - skyoneRemainingDebtVnd);
+
+  const totalShortTermLiabilitiesVnd = creditCardDebtVnd + shortTermDebtVnd;
+  const liquidNetWorthVnd = Math.round(
+    liquidCashVnd +
+      otherInvestmentsVnd +
+      goldBidValueVnd +
+      receivablesVnd -
+      totalShortTermLiabilitiesVnd
+  );
+  const totalHouseholdNetWorthVnd = Math.round(liquidNetWorthVnd + skyoneEquityVnd);
+
+  const positiveCash = Math.max(0, liquidCashVnd);
+  const grossAssetsVnd =
+    positiveCash + otherInvestmentsVnd + goldBidValueVnd + skyoneEquityVnd;
+
+  const pct = (part: number): number =>
+    grossAssetsVnd > 0 ? Math.round((part / grossAssetsVnd) * 1000) / 10 : 0;
+
+  return {
+    liquidCashVnd: Math.round(liquidCashVnd),
+    otherInvestmentsVnd: Math.round(otherInvestmentsVnd),
+    goldBidValueVnd,
+    receivablesVnd: Math.round(receivablesVnd),
+    skyoneEquityVnd,
+    skyonePropertyValueVnd,
+    skyoneRemainingDebtVnd,
+    creditCardDebtVnd: Math.round(creditCardDebtVnd),
+    shortTermDebtVnd: Math.round(shortTermDebtVnd),
+    totalShortTermLiabilitiesVnd: Math.round(totalShortTermLiabilitiesVnd),
+    liquidNetWorthVnd,
+    totalHouseholdNetWorthVnd,
+    grossAssetsVnd: Math.round(grossAssetsVnd),
+    sharesPct: {
+      cash: pct(positiveCash),
+      investments: pct(otherInvestmentsVnd),
+      gold: pct(goldBidValueVnd),
+      realEstateEquity: pct(skyoneEquityVnd),
+    },
+  };
+}
+

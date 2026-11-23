@@ -392,6 +392,7 @@ export interface DbSkyOneLoan {
   household_id: string;
   id: string;
   contract_data: unknown;
+  revision?: number;
   updated_at?: string;
 }
 
@@ -417,6 +418,7 @@ export interface DbGoldPortfolio {
   household_id: string;
   id: string;
   portfolio_data: unknown;
+  revision?: number;
   updated_at?: string;
 }
 
@@ -444,6 +446,7 @@ export interface DbInteriorStudio {
   household_id: string;
   id: string;
   studio_data: unknown;
+  revision?: number;
   updated_at?: string;
 }
 

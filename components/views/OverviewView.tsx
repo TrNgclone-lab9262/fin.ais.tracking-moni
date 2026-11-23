@@ -24,6 +24,7 @@ import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarC
 import { AssetDebtGoalsWidgets } from "@/components/dashboard/AssetDebtGoalsWidgets";
 import { RecentActivitySection } from "@/components/dashboard/RecentActivitySection";
 import { AdvancedAnalyticsSuite } from "@/components/dashboard/AdvancedAnalyticsSuite";
+import { UnifiedNetWorthBanner } from "@/components/dashboard/UnifiedNetWorthBanner";
 
 interface OverviewViewProps {
   onOpenPdfReport?: () => void;
@@ -129,6 +130,9 @@ export function OverviewView({ onOpenPdfReport, onOpenAddModal }: OverviewViewPr
           </button>
         </div>
       )}
+
+      {/* 0B. Tổng Gia Sản Hợp Nhất 4 Sub-App (FINANCE + GOLD + SKYONE) */}
+      <UnifiedNetWorthBanner />
 
       {/* 1. Bốn Thẻ Chỉ Số Gradient Tổng quan */}
       <section aria-label="Thống kê tổng quan">

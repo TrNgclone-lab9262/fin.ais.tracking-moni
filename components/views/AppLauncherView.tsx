@@ -29,6 +29,7 @@ import { CloudAuthModal } from "@/components/auth/CloudAuthModal";
 import { computeGoldPortfolioMetrics, formatChiWeight } from "@/lib/goldEngine";
 import { calculateScenarioBoq } from "@/lib/interiorBoqEngine";
 import { formatShortVNDMasked } from "@/lib/formatters";
+import { UnifiedNetWorthBanner } from "@/components/dashboard/UnifiedNetWorthBanner";
 
 interface AppLauncherViewProps {
   onOpenBackupModal: () => void;
@@ -199,13 +200,18 @@ export function AppLauncherView({ onOpenBackupModal }: AppLauncherViewProps) {
 
       {/* Streamlined Centered App Launcher Hub */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16 flex flex-col justify-center">
-        <div className="text-center space-y-2 mb-10">
+        <div className="text-center space-y-2 mb-6">
           <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] dark:text-slate-100 tracking-tight text-balance">
             Chọn không gian làm việc
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Mỗi ứng dụng được tách biệt hoàn toàn để tập trung thực thi nghiệp vụ chuyên sâu.
           </p>
+        </div>
+
+        {/* Tổng Gia Sản Hộ Gia Đình Hợp Nhất 4 Sub-App */}
+        <div className="mb-6">
+          <UnifiedNetWorthBanner compact />
         </div>
 
         {/* 4 Streamlined App Cards (2x2 Grid) driven by Declarative Registry */}

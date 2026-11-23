@@ -13,11 +13,48 @@ export interface AppReleaseEntry {
   mandatory?: boolean;
 }
 
-export const APP_VERSION = '1.6.0';
-export const APP_BUILD_ID = 'v1.6.0-phudong-skyone';
-export const APP_RELEASE_DATE = '2026-11-13';
+export const APP_VERSION = '1.9.0';
+export const APP_BUILD_ID = 'v1.9.0-fullstack-ecosystem';
+export const APP_RELEASE_DATE = '2026-11-22';
 
 export const APP_CHANGELOG: AppReleaseEntry[] = [
+  {
+    version: '1.9.0',
+    buildId: 'v1.9.0-fullstack-ecosystem',
+    releasedAt: '2026-11-22',
+    title: 'Hoàn thiện Full-Stack Bảo mật, Đồng bộ Đa thiết bị & Liên thông 4 Sub-App',
+    highlights: [
+      'Khóa chuẩn Express Backend với Zod validation toàn diện cho 9 tuyến API, Rate Limiter tách luồng AI/đọc nhẹ, Timeout bảo vệ Gemini và chuẩn lỗi HTTP thống nhất.',
+      'Nâng cấp đồng bộ Supabase chống ghi đè bằng Revision Optimistic Locking + Smart Merge tự động cho SKYONE/GOLD/INTERIOR, Dead-Letter Outbox không chặn hàng đợi và đồng bộ ảnh Snag List / file 3D GLB qua Supabase Storage.',
+      'Bổ sung AI OCR sao kê vay BIDV & cố vấn chiến lược trả trước hạn cho SKYONE, AI quét báo giá nhà thầu BOQ & cầu nối quyết toán 1 chạm sang FINANCE cho INTERIOR, cùng hiệu chỉnh biên độ giá vàng nội địa.',
+      'Hợp nhất Tổng Gia Sản Hộ Gia Đình (Tiền + Đầu tư + Kho Vàng Bid + Vốn chủ SKYONE - Dư nợ), Trung tâm Thông báo 4 Sub-App và mở rộng Data Studio kiểm toán toàn hệ sinh thái.',
+    ],
+    mandatory: false,
+  },
+  {
+    version: '1.8.0',
+    buildId: 'v1.8.0-bank-grade-gold',
+    releasedAt: '2026-11-21',
+    title: 'Chuẩn hóa Bank-Grade Kho Vàng, Số học Nguyên 6 Đơn Vị & Kiểm kê Két Vật Lý',
+    highlights: [
+      'Nâng cấp lõi hạch toán Kho Vàng với số học nguyên tỷ lệ micro-chỉ (khử hoàn toàn sai số dấu phẩy động IEEE-754) cho 6 đơn vị: Lượng, Chỉ, Phân, Ly, Gram, Troy Oz.',
+      'Bổ sung kiểm toán toàn vẹn 7 bất biến kế toán (Ledger Conservation), tự đối soát an toàn, đối chiếu két vật lý trên UI và phục hồi 3 tầng parseGoldPortfolioSafely chống mất dữ liệu cũ.',
+      'Chống tiêm công thức CSV khi xuất bảng kê Kho Vàng và tự động ẩn số tiền + số seri theo Chế độ Riêng tư.',
+    ],
+    mandatory: false,
+  },
+  {
+    version: '1.7.0',
+    buildId: 'v1.7.0-gold-interior-3d',
+    releasedAt: '2026-11-20',
+    title: 'Hệ sinh thái 4 Sub-App Liên Thông: Kho Vàng & SKYONE 3D Interior Studio',
+    highlights: [
+      'Mở rộng HOME MONI từ 2 lên 4 Sub-App liên thông (FINANCE, SKYONE, GOLD, INTERIOR) kèm App Launcher và chuyển nhanh từ thanh điều hướng.',
+      'Ra mắt Sub-App Kho Tích Sản Vàng (WAC/FIFO/Specific-Lot, định giá Bid, chênh lệch XAU/USD và giả lập thanh khoản Q3/2027).',
+      'Ra mắt Sub-App SKYONE 3D Interior Studio (Three.js PBR, Walkthrough 1.6m, 2D Blueprint CAD, 2 phương án PA-A vs PA-B và Cầu nối Sẵn sàng Bàn giao Q3/2027).',
+    ],
+    mandatory: false,
+  },
   {
     version: '1.6.0',
     buildId: 'v1.6.0-phudong-skyone',

@@ -651,6 +651,82 @@ export function previewMergeDiff(
   };
 }
 
+export function mergeSkyOneContracts(
+  current: MortgageContract,
+  incoming: MortgageContract
+): MortgageContract {
+  const incomingIsNewer = incoming.updatedAt.localeCompare(current.updatedAt) > 0;
+  const baseContract = incomingIsNewer ? incoming : current;
+
+  const paidPeriodSet = new Set(current.paidRecords.map((r) => r.period));
+  const mergedPaidRecords = [
+    ...current.paidRecords,
+    ...incoming.paidRecords.filter((r) => !paidPeriodSet.has(r.period)),
+  ].sort((a, b) => a.period - b.period);
+
+  const mergedPrepayments = mergeById(current.prepayments, incoming.prepayments).sort(
+    (a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date)
+  );
+
+  const mergedRateAdjustments = mergeById(
+    current.rateAdjustments,
+    incoming.rateAdjustments
+  ).sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod);
+
+  return {
+    ...baseContract,
+    paidRecords: mergedPaidRecords,
+    prepayments: mergedPrepayments,
+    rateAdjustments: mergedRateAdjustments,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function mergeGoldPortfolios(
+  current: GoldPortfolioState,
+  incoming: GoldPortfolioState
+): GoldPortfolioState {
+  const incomingGoldNewer = incoming.updatedAt.localeCompare(current.updatedAt) > 0;
+  return {
+    ...(incomingGoldNewer ? incoming : current),
+    lots: mergeByIdPreferNewer(current.lots, incoming.lots),
+    sales: mergeById(current.sales, incoming.sales),
+    priceHistory: mergeGoldPriceHistory(current.priceHistory, incoming.priceHistory),
+    alerts: mergeById(current.alerts || [], incoming.alerts || []),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function mergeInteriorStudios(
+  current: InteriorStudioState,
+  incoming: InteriorStudioState
+): InteriorStudioState {
+  const incomingInteriorNewer = incoming.updatedAt.localeCompare(current.updatedAt) > 0;
+  const mergedScenarios = mergeInteriorScenarios(current.scenarios, incoming.scenarios);
+  const preferredActiveId = incomingInteriorNewer
+    ? incoming.activeScenarioId
+    : current.activeScenarioId;
+  const resolvedActiveId = mergedScenarios.some((s) => s.id === preferredActiveId)
+    ? preferredActiveId
+    : mergedScenarios[0]?.id || current.activeScenarioId;
+
+  return {
+    ...(incomingInteriorNewer ? incoming : current),
+    targetHandoverDate:
+      (incomingInteriorNewer ? incoming.targetHandoverDate : current.targetHandoverDate) ||
+      current.targetHandoverDate ||
+      incoming.targetHandoverDate ||
+      "2027-08-31",
+    activeScenarioId: resolvedActiveId,
+    scenarios: mergedScenarios,
+    handoverChecklist: mergeHandoverChecklist(
+      current.handoverChecklist,
+      incoming.handoverChecklist
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function mergeFinanceData(
   current: StoredAppStateV3,
   incoming: StoredAppStateV3,
@@ -700,72 +776,15 @@ export function mergeFinanceData(
     incoming.savingsChallenges || []
   );
 
-  const incomingIsNewer =
-    incoming.skyoneLoan.updatedAt.localeCompare(current.skyoneLoan.updatedAt) > 0;
-  const baseContract = incomingIsNewer ? incoming.skyoneLoan : current.skyoneLoan;
-
-  const paidPeriodSet = new Set(current.skyoneLoan.paidRecords.map((r) => r.period));
-  const mergedPaidRecords = [
-    ...current.skyoneLoan.paidRecords,
-    ...incoming.skyoneLoan.paidRecords.filter((r) => !paidPeriodSet.has(r.period)),
-  ].sort((a, b) => a.period - b.period);
-
-  const mergedPrepayments = mergeById(
-    current.skyoneLoan.prepayments,
-    incoming.skyoneLoan.prepayments
-  ).sort((a, b) => a.afterPeriod - b.afterPeriod || a.date.localeCompare(b.date));
-
-  const mergedRateAdjustments = mergeById(
-    current.skyoneLoan.rateAdjustments,
-    incoming.skyoneLoan.rateAdjustments
-  ).sort((a, b) => a.effectiveFromPeriod - b.effectiveFromPeriod);
-
-  const mergedSkyOneLoan: MortgageContract = {
-    ...baseContract,
-    paidRecords: mergedPaidRecords,
-    prepayments: mergedPrepayments,
-    rateAdjustments: mergedRateAdjustments,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const curGold = current.goldPortfolio || createDefaultGoldPortfolio();
-  const incGold = incoming.goldPortfolio || createDefaultGoldPortfolio();
-  const incomingGoldNewer = incGold.updatedAt.localeCompare(curGold.updatedAt) > 0;
-  const mergedGoldPortfolio: GoldPortfolioState = {
-    ...(incomingGoldNewer ? incGold : curGold),
-    lots: mergeByIdPreferNewer(curGold.lots, incGold.lots),
-    sales: mergeById(curGold.sales, incGold.sales),
-    priceHistory: mergeGoldPriceHistory(curGold.priceHistory, incGold.priceHistory),
-    alerts: mergeById(curGold.alerts || [], incGold.alerts || []),
-    updatedAt: new Date().toISOString(),
-  };
-
-  const curInterior = current.interiorStudio || createDefaultInteriorStudio();
-  const incInterior = incoming.interiorStudio || createDefaultInteriorStudio();
-  const incomingInteriorNewer = incInterior.updatedAt.localeCompare(curInterior.updatedAt) > 0;
-  const mergedScenarios = mergeInteriorScenarios(curInterior.scenarios, incInterior.scenarios);
-  const preferredActiveId = incomingInteriorNewer
-    ? incInterior.activeScenarioId
-    : curInterior.activeScenarioId;
-  const resolvedActiveId = mergedScenarios.some((s) => s.id === preferredActiveId)
-    ? preferredActiveId
-    : mergedScenarios[0]?.id || curInterior.activeScenarioId;
-
-  const mergedInteriorStudio: InteriorStudioState = {
-    ...(incomingInteriorNewer ? incInterior : curInterior),
-    targetHandoverDate:
-      (incomingInteriorNewer ? incInterior.targetHandoverDate : curInterior.targetHandoverDate) ||
-      curInterior.targetHandoverDate ||
-      incInterior.targetHandoverDate ||
-      "2027-08-31",
-    activeScenarioId: resolvedActiveId,
-    scenarios: mergedScenarios,
-    handoverChecklist: mergeHandoverChecklist(
-      curInterior.handoverChecklist,
-      incInterior.handoverChecklist
-    ),
-    updatedAt: new Date().toISOString(),
-  };
+  const mergedSkyOneLoan = mergeSkyOneContracts(current.skyoneLoan, incoming.skyoneLoan);
+  const mergedGoldPortfolio = mergeGoldPortfolios(
+    current.goldPortfolio || createDefaultGoldPortfolio(),
+    incoming.goldPortfolio || createDefaultGoldPortfolio()
+  );
+  const mergedInteriorStudio = mergeInteriorStudios(
+    current.interiorStudio || createDefaultInteriorStudio(),
+    incoming.interiorStudio || createDefaultInteriorStudio()
+  );
 
   const mergedAccounts = recalculateAccountBalances(mergedAccountsRaw, mergedTransactions);
 

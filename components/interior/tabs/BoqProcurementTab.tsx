@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { InteriorBoqAiAndPaymentPanel } from "@/components/interior/InteriorBoqAiAndPaymentPanel";
 import { useFinance } from "@/context/FinanceContext";
 import {
   FamilyMember,
@@ -266,6 +267,9 @@ export function BoqProcurementTab({
           </span>
         </div>
       )}
+
+      {/* AI OCR Báo giá Nhà thầu & Quyết toán Nội thất <-> FINANCE */}
+      <InteriorBoqAiAndPaymentPanel />
 
       {/* Scenario Comparison Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

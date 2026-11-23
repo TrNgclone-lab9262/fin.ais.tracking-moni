@@ -29,6 +29,8 @@ export function MobileNotificationSheet({
     browserNotifEnabled,
     enableBrowserNotifications,
     disableBrowserNotifications,
+    unifiedEcosystemAlerts,
+    navigateToEcosystemAlert,
   } = useFinance();
 
   const [appliedMsg, setAppliedMsg] = useState<string | null>(null);
@@ -203,6 +205,61 @@ export function MobileNotificationSheet({
                 <Repeat className="w-3.5 h-3.5" />
                 <span>Ghi sổ hết</span>
               </button>
+            </div>
+          )}
+
+          {/* Cảnh báo Hợp nhất 4 Sub-App */}
+          {unifiedEcosystemAlerts.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  Cảnh báo Hệ sinh thái ({unifiedEcosystemAlerts.length})
+                </span>
+              </div>
+              <div className="space-y-2">
+                {unifiedEcosystemAlerts.slice(0, 6).map((alert) => {
+                  const appBadgeCls =
+                    alert.app === "SKYONE"
+                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300"
+                      : alert.app === "GOLD"
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                      : alert.app === "INTERIOR"
+                      ? "bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-300"
+                      : "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300";
+                  return (
+                    <div
+                      key={alert.id}
+                      className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 p-2.5 flex items-start justify-between gap-2.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${appBadgeCls}`}
+                          >
+                            {alert.app}
+                          </span>
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                            {alert.title}
+                          </p>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                          {alert.description}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          navigateToEcosystemAlert(alert);
+                        }}
+                        className="min-h-[36px] px-2.5 py-1 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        {alert.actionLabel}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

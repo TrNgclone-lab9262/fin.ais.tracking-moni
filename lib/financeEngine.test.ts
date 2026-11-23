@@ -8,12 +8,15 @@ import {
   calculateHeatmapDays,
   calculateCoupleSettlement,
   calculateLedgerIntegrity,
+  computeUnifiedHouseholdNetWorth,
   resolveCategorySlugToId,
 } from "./financeEngine";
 import { DEFAULT_CATEGORIES } from "@/constants/defaultCategories";
 import { DEFAULT_ACCOUNTS, DEFAULT_TRANSACTIONS } from "@/constants/mockData";
 import { recalculateAccountBalances } from "./storage";
-import { Account, Transaction } from "@/types/finance";
+import { createDefaultSkyOneLoan } from "./mortgageEngine";
+import { createDefaultGoldPortfolio } from "./goldEngine";
+import { Account, DebtItem, InvestmentItem, Transaction } from "@/types/finance";
 
 test("calculateDaysRemainingInMonth computes dynamic days for active & historical months", () => {
   // Active month: 2026-11 has 30 days. On Nov 12 -> 30 - 12 + 1 = 19
@@ -169,4 +172,121 @@ test("resolveCategorySlugToId maps AI/legacy category hints to valid IDs", () =>
   assert.equal(resolveCategorySlugToId("cat_food", DEFAULT_CATEGORIES), "cat_expense_food");
   assert.equal(resolveCategorySlugToId("cat_medical", DEFAULT_CATEGORIES), "cat_expense_health");
   assert.equal(resolveCategorySlugToId("cat_expense_bills", DEFAULT_CATEGORIES), "cat_expense_bills");
+});
+
+test("computeUnifiedHouseholdNetWorth aggregates 4 sub-apps and deduplicates legacy GOLD investments", () => {
+  const accounts: Account[] = [
+    {
+      id: "bank_1",
+      name: "BIDV",
+      type: "BANK",
+      owner: "HUSBAND",
+      initialBalance: 0,
+      currentBalance: 150_000_000,
+      color: "#2563EB",
+    },
+    {
+      id: "cc_1",
+      name: "BIDV Credit",
+      type: "CREDIT_CARD",
+      owner: "HUSBAND",
+      initialBalance: 0,
+      currentBalance: 10_000_000,
+      creditLimit: 50_000_000,
+      color: "#DC2626",
+    },
+  ];
+
+  const investments: InvestmentItem[] = [
+    {
+      id: "inv_stock",
+      name: "Chứng chỉ quỹ",
+      type: "STOCK",
+      amount: 50_000_000,
+      currentValue: 60_000_000,
+      expectedProfitRate: 10,
+      startDate: "2026-01-01",
+      status: "ACTIVE",
+    },
+    {
+      id: "inv_legacy_gold",
+      name: "Vàng nhẫn cũ (trùng với Kho Vàng)",
+      type: "GOLD",
+      amount: 80_000_000,
+      currentValue: 90_000_000,
+      expectedProfitRate: 8,
+      startDate: "2026-01-01",
+      status: "ACTIVE",
+    },
+  ];
+
+  const debts: DebtItem[] = [
+    {
+      id: "d_borrow",
+      name: "Mượn gia đình",
+      type: "BORROW",
+      totalAmount: 20_000_000,
+      paidAmount: 5_000_000,
+      interestRate: 0,
+      startDate: "2026-01-01",
+      dueDate: "2027-01-01",
+      status: "ACTIVE",
+    },
+    {
+      id: "d_lend",
+      name: "Cho bạn mượn",
+      type: "LEND",
+      totalAmount: 10_000_000,
+      paidAmount: 0,
+      interestRate: 0,
+      startDate: "2026-01-01",
+      dueDate: "2027-01-01",
+      status: "ACTIVE",
+    },
+  ];
+
+  const goldPortfolio = createDefaultGoldPortfolio();
+  goldPortfolio.lots = [
+    {
+      id: "lot_test_1",
+      category: "NHAN_9999",
+      brand: "PNJ",
+      purchaseDate: "2026-06-01",
+      quantityChi: 10,
+      remainingChi: 10,
+      unitBuyPricePerChi: 9_200_000,
+      makingFee: 0,
+      memberId: "SHARED",
+      storageLocation: "HOME_SAFE",
+      status: "HOLDING",
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:00:00Z",
+    },
+  ];
+  const skyoneLoan = createDefaultSkyOneLoan();
+
+  const nw = computeUnifiedHouseholdNetWorth({
+    accounts,
+    investments,
+    debts,
+    goldPortfolio,
+    skyoneLoan,
+  });
+
+  // Because goldPortfolio has holdings > 0, legacy GOLD investment (90M) MUST be excluded
+  assert.equal(nw.liquidCashVnd, 150_000_000);
+  assert.equal(nw.otherInvestmentsVnd, 60_000_000);
+  assert.equal(nw.creditCardDebtVnd, 10_000_000);
+  assert.equal(nw.shortTermDebtVnd, 15_000_000);
+  assert.equal(nw.receivablesVnd, 10_000_000);
+  assert.ok(nw.goldBidValueVnd > 0);
+  assert.equal(
+    nw.liquidNetWorthVnd,
+    nw.liquidCashVnd +
+      nw.otherInvestmentsVnd +
+      nw.goldBidValueVnd +
+      nw.receivablesVnd -
+      nw.totalShortTermLiabilitiesVnd
+  );
+  assert.equal(nw.totalHouseholdNetWorthVnd, nw.liquidNetWorthVnd + nw.skyoneEquityVnd);
 });

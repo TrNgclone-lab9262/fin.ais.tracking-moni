@@ -54,6 +54,91 @@
         }
       } catch (e) {}
     </script>
+    <script>
+      (function () {
+        try {
+          var host = window.location.hostname || "";
+          var isDevOrigin =
+            host === "localhost" ||
+            host === "127.0.0.1" ||
+            host.indexOf("ais-dev-") === 0;
+          var CURRENT_CACHE = "homemoni-pwa-v1.9.1";
+          var EVICT_FLAG = "HOME_MONI_SW_EVICTED_191";
+
+          if (isDevOrigin) {
+            var hadController = Boolean(
+              "serviceWorker" in navigator && navigator.serviceWorker.controller
+            );
+            var cleanupTasks = [];
+
+            if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
+              cleanupTasks.push(
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                  return Promise.all(
+                    regs.map(function (reg) {
+                      return reg.unregister().catch(function () {});
+                    })
+                  );
+                })
+              );
+            }
+
+            if ("caches" in window && caches.keys) {
+              cleanupTasks.push(
+                caches.keys().then(function (keys) {
+                  var targets = keys.filter(function (k) {
+                    return k.indexOf("homemoni-pwa-") === 0;
+                  });
+                  return Promise.all(
+                    targets.map(function (k) {
+                      return caches.delete(k).catch(function () {});
+                    })
+                  ).then(function () {
+                    return targets.length > 0;
+                  });
+                })
+              );
+            }
+
+            Promise.all(cleanupTasks)
+              .then(function (results) {
+                var clearedLegacyCache = Boolean(results[results.length - 1]);
+                if (
+                  (hadController || clearedLegacyCache) &&
+                  !sessionStorage.getItem(EVICT_FLAG)
+                ) {
+                  sessionStorage.setItem(EVICT_FLAG, "1");
+                  window.location.reload();
+                }
+              })
+              .catch(function () {});
+          } else if ("caches" in window && caches.keys) {
+            caches
+              .keys()
+              .then(function (keys) {
+                var stale = keys.filter(function (k) {
+                  return k.indexOf("homemoni-pwa-") === 0 && k !== CURRENT_CACHE;
+                });
+                if (stale.length === 0) return;
+                return Promise.all(
+                  stale.map(function (k) {
+                    return caches.delete(k).catch(function () {});
+                  })
+                ).then(function () {
+                  if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
+                    navigator.serviceWorker.getRegistrations().then(function (regs) {
+                      regs.forEach(function (reg) {
+                        reg.update().catch(function () {});
+                      });
+                    });
+                  }
+                });
+              })
+              .catch(function () {});
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="antialiased">
     <div id="root"></div>

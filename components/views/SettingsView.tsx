@@ -36,6 +36,7 @@ import { usePWAUpdate } from "@/context/PWAUpdateContext";
 import { formatCheckTimestamp } from "@/constants/appVersion";
 import { AuthMemberId, QuickAuthViewId } from "@/types/finance";
 import { FamilyHub } from "@/components/views/FamilyHub";
+import { SyncOutboxInspector } from "@/components/common/SyncOutboxInspector";
 import { CategoryManagerSection } from "@/components/categories/CategoryManagerSection";
 import {
   checkBiometricAvailability,
@@ -1164,6 +1165,9 @@ export function SettingsView({
       {/* 4. FamilyHub (Supabase Auth, Profile, Ghép đôi) & Công cụ Hệ thống */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-5 sm:p-6 border border-[#DCE4EE] dark:border-slate-800 shadow-xs space-y-5">
         <FamilyHub onStatusToast={flashSaved} />
+
+        {/* Hàng đợi Đồng bộ ngoại tuyến (Outbox & Dead-Letter Recovery) */}
+        <SyncOutboxInspector compact />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-[#E9EEF5] dark:border-slate-700 rounded-lg flex items-center justify-between">

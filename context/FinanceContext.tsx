@@ -108,9 +108,11 @@ import {
   calculateTodaySpent,
   calculateCreditCardCycleInfo,
   calculateCoupleSettlement,
+  computeUnifiedHouseholdNetWorth,
   shiftMonthKey,
   CoupleSettlementResult,
   CreditCardCycleStatus,
+  UnifiedHouseholdNetWorth,
 } from "@/lib/financeEngine";
 import { restoreDefaultCategoriesList } from "@/lib/categoryUtils";
 import {
@@ -158,15 +160,28 @@ import {
   CloudProfile,
   HouseholdInfo,
   CloudFullData,
+  CloudTablePatch,
+  MutationExecutionResult,
 } from "@/lib/supabaseService";
 import { mergeSharedSettingsWithLocal } from "@/lib/supabaseMappers";
 import {
   CloudMutation,
+  OutboxEntry,
   enqueueOutboxMutation,
+  flushOutboxEntriesPure,
   loadOutboxQueue,
+  removeOutboxEntryByKey,
+  resetAllFailedOutboxEntries,
+  resetOutboxEntryForRetry,
   saveOutboxQueue,
   clearOutboxQueue,
 } from "@/lib/offlineOutbox";
+import { configureSnagPhotoCloudHousehold } from "@/lib/snagPhotoVault";
+import { configureGlbCloudHousehold } from "@/lib/interiorGlbVault";
+import {
+  buildUnifiedEcosystemAlerts,
+  UnifiedEcosystemAlert,
+} from "@/lib/unifiedAlertsEngine";
 import {
   parseAppRoute,
   buildAppPath,
@@ -288,6 +303,13 @@ interface FinanceContextType {
   isSyncing: boolean;
   lastSyncedAt: Date | null;
   pendingOutboxCount: number;
+  failedOutboxCount: number;
+  outboxEntries: OutboxEntry[];
+  lastConflictNotice: string | null;
+  dismissConflictNotice: () => void;
+  retryOutboxEntry: (key: string) => Promise<void>;
+  retryAllFailedOutbox: () => Promise<void>;
+  discardOutboxEntry: (key: string) => void;
   cloudError: string | null;
   clearCloudError: () => void;
   syncWithCloud: () => Promise<void>;
@@ -514,7 +536,15 @@ interface FinanceContextType {
   deleteGoldAlertRule: (id: string) => void;
   goldSimulatorPresetTarget: { amountVnd: number; label: string } | null;
   setGoldSimulatorPresetTarget: (preset: { amountVnd: number; label: string } | null) => void;
-  fetchReferenceGoldPrices: (force?: boolean) => Promise<{ ok: boolean; mode?: string; note?: string; error?: string }>;
+  fetchReferenceGoldPrices: (
+    force?: boolean,
+    calibration?: {
+      nhanPremiumPct?: number;
+      sjcPremiumPct?: number;
+      nhanSpreadVnd?: number;
+      sjcSpreadVnd?: number;
+    }
+  ) => Promise<{ ok: boolean; mode?: string; note?: string; error?: string }>;
   reconcileGoldPortfolio: () => {
     fixedLotIds: string[];
     repairedQuoteCategories: GoldCategory[];
@@ -649,6 +679,11 @@ interface FinanceContextType {
   // Thông tin 2 thẻ BIDV Credit
   husbandCreditCard: CreditCardInfo | null;
   wifeCreditCard: CreditCardInfo | null;
+
+  // Hệ sinh thái hợp nhất 4 Sub-App (Wave 4)
+  unifiedNetWorth: UnifiedHouseholdNetWorth;
+  unifiedEcosystemAlerts: UnifiedEcosystemAlert[];
+  navigateToEcosystemAlert: (alert: UnifiedEcosystemAlert) => void;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -675,8 +710,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [household, setHousehold] = useState<HouseholdInfo | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [outboxEntries, setOutboxEntries] = useState<OutboxEntry[]>([]);
   const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(0);
+  const [lastConflictNotice, setLastConflictNotice] = useState<string | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
+
+  const failedOutboxCount = useMemo(
+    () => outboxEntries.filter((e) => e.status === "FAILED").length,
+    [outboxEntries]
+  );
 
   const isCloudConnected = Boolean(isSupabaseConfigured && cloudUser && household);
 
@@ -716,6 +758,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const householdRef = useRef<HouseholdInfo | null>(null);
   const ignoreRealtimeUntilRef = useRef<number>(0);
   const syncDebounceRef = useRef<number | null>(null);
+  const pendingRealtimeTablesRef = useRef<Set<string>>(new Set());
   const stateSnapshotRef = useRef<StoredAppStateV3>({
     categories: DEFAULT_CATEGORIES,
     accounts: DEFAULT_ACCOUNTS,
@@ -734,6 +777,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     householdRef.current = household;
+    configureSnagPhotoCloudHousehold(household?.id ?? null);
+    configureGlbCloudHousehold(household?.id ?? null);
   }, [household]);
 
   useEffect(() => {
@@ -818,59 +863,163 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setAccounts(recalcAccounts);
   }, []);
 
-  const flushOutboxQueue = useCallback(async (targetHouseholdId: string): Promise<boolean> => {
-    const queue = loadOutboxQueue();
-    if (queue.length === 0) {
-      setPendingOutboxCount(0);
-      return true;
-    }
+  const syncOutboxState = useCallback((entries: OutboxEntry[]) => {
+    setOutboxEntries(entries);
+    setPendingOutboxCount(entries.length);
+  }, []);
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      setPendingOutboxCount(queue.length);
-      return false;
-    }
+  const dismissConflictNotice = useCallback(() => {
+    setLastConflictNotice(null);
+  }, []);
 
-    for (let i = 0; i < queue.length; i++) {
-      try {
-        await supabaseService.executeMutation(targetHouseholdId, queue[i].mutation);
-      } catch (err) {
-        const remaining = queue.slice(i);
-        saveOutboxQueue(remaining);
-        setPendingOutboxCount(remaining.length);
-        setCloudError(
-          err instanceof Error ? err.message : "Chưa thể đẩy hàng đợi đồng bộ lên Cloud."
-        );
+  const applyMutationConflictResult = useCallback((result: MutationExecutionResult | void) => {
+    if (!result || !result.conflictResolved) return;
+    const parts: string[] = [];
+    if (result.mergedSkyOneLoan) {
+      setSkyoneLoan(reconcileBidvSkyOneContract(result.mergedSkyOneLoan).contract);
+      parts.push("Khoản vay SKYONE");
+    }
+    if (result.mergedGoldPortfolio) {
+      setGoldPortfolio(result.mergedGoldPortfolio);
+      parts.push("Kho Vàng");
+    }
+    if (result.mergedInteriorStudio) {
+      setInteriorStudio(result.mergedInteriorStudio);
+      parts.push("Studio Nội thất 3D");
+    }
+    if (parts.length > 0) {
+      setLastConflictNotice(
+        `Đã tự động gộp an toàn dữ liệu đồng thời từ 2 thiết bị cho ${parts.join(", ")} (không mất bản ghi).`
+      );
+    }
+  }, []);
+
+  const applyCloudTablePatchToState = useCallback((patch: CloudTablePatch) => {
+    if (patch.categories && patch.categories.length > 0) setCategories(patch.categories);
+    if (patch.budgets) setBudgets(patch.budgets);
+    if (patch.goals) setGoals(patch.goals);
+    if (patch.debts) setDebts(patch.debts);
+    if (patch.investments) setInvestments(patch.investments);
+    if (patch.recurringRules) setRecurringRules(patch.recurringRules);
+    if (patch.skyoneLoan) {
+      setSkyoneLoan(reconcileBidvSkyOneContract(patch.skyoneLoan).contract);
+    }
+    if (patch.goldPortfolio) {
+      setGoldPortfolio(patch.goldPortfolio);
+    }
+    if (patch.interiorStudio) {
+      setInteriorStudio(patch.interiorStudio);
+    }
+    if (patch.sharedSettings) {
+      const shared = patch.sharedSettings;
+      setSettings((prev) => mergeSharedSettingsWithLocal(prev, shared));
+    }
+    if (patch.transactions !== undefined || patch.accounts !== undefined) {
+      const nextAccounts =
+        patch.accounts && patch.accounts.length > 0
+          ? patch.accounts
+          : stateSnapshotRef.current.accounts;
+      const nextTransactions =
+        patch.transactions !== undefined
+          ? patch.transactions
+          : stateSnapshotRef.current.transactions;
+      const recalcAccounts = recalculateAccountBalances(nextAccounts, nextTransactions);
+      if (patch.transactions !== undefined) setTransactions(nextTransactions);
+      setAccounts(recalcAccounts);
+    }
+  }, []);
+
+  const flushOutboxQueue = useCallback(
+    async (targetHouseholdId: string): Promise<boolean> => {
+      const queue = loadOutboxQueue();
+      if (queue.length === 0) {
+        syncOutboxState([]);
+        return true;
+      }
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        syncOutboxState(queue);
         return false;
       }
-    }
 
-    clearOutboxQueue();
-    setPendingOutboxCount(0);
-    return true;
-  }, []);
-
-  const queueCloudMutation = useCallback((mutation: CloudMutation) => {
-    ignoreRealtimeUntilRef.current = Date.now() + 2500;
-    const hh = householdRef.current;
-    if (!isSupabaseConfigured || !hh) return;
-
-    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
-    if (isOffline) {
-      const next = enqueueOutboxMutation(mutation);
-      setPendingOutboxCount(next.length);
-      return;
-    }
-
-    void supabaseService
-      .executeMutation(hh.id, mutation)
-      .then(() => {
-        setLastSyncedAt(new Date());
-      })
-      .catch(() => {
-        const next = enqueueOutboxMutation(mutation);
-        setPendingOutboxCount(next.length);
+      const report = await flushOutboxEntriesPure(queue, async (mutation) => {
+        const res = await supabaseService.executeMutation(targetHouseholdId, mutation);
+        applyMutationConflictResult(res);
       });
-  }, []);
+
+      saveOutboxQueue(report.remainingEntries);
+      syncOutboxState(report.remainingEntries);
+
+      if (report.lastError) {
+        setCloudError(report.lastError);
+      }
+
+      return report.remainingEntries.length === 0;
+    },
+    [syncOutboxState, applyMutationConflictResult]
+  );
+
+  const queueCloudMutation = useCallback(
+    (mutation: CloudMutation) => {
+      ignoreRealtimeUntilRef.current = Date.now() + 2500;
+      const hh = householdRef.current;
+      if (!isSupabaseConfigured || !hh) return;
+
+      const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+      if (isOffline) {
+        const next = enqueueOutboxMutation(mutation);
+        syncOutboxState(next);
+        return;
+      }
+
+      void supabaseService
+        .executeMutation(hh.id, mutation)
+        .then((res) => {
+          applyMutationConflictResult(res);
+          setLastSyncedAt(new Date());
+        })
+        .catch(() => {
+          const next = enqueueOutboxMutation(mutation);
+          syncOutboxState(next);
+        });
+    },
+    [syncOutboxState, applyMutationConflictResult]
+  );
+
+  const retryOutboxEntry = useCallback(
+    async (key: string) => {
+      const current = loadOutboxQueue();
+      const reset = resetOutboxEntryForRetry(current, key);
+      saveOutboxQueue(reset);
+      syncOutboxState(reset);
+      const hh = householdRef.current;
+      if (hh) {
+        await flushOutboxQueue(hh.id);
+      }
+    },
+    [syncOutboxState, flushOutboxQueue]
+  );
+
+  const retryAllFailedOutbox = useCallback(async () => {
+    const current = loadOutboxQueue();
+    const reset = resetAllFailedOutboxEntries(current);
+    saveOutboxQueue(reset);
+    syncOutboxState(reset);
+    const hh = householdRef.current;
+    if (hh) {
+      await flushOutboxQueue(hh.id);
+    }
+  }, [syncOutboxState, flushOutboxQueue]);
+
+  const discardOutboxEntry = useCallback(
+    (key: string) => {
+      const current = loadOutboxQueue();
+      const next = removeOutboxEntryByKey(current, key);
+      saveOutboxQueue(next);
+      syncOutboxState(next);
+    },
+    [syncOutboxState]
+  );
 
   // Hàm đồng bộ dữ liệu 2 chiều (Xả hàng đợi ngoại tuyến -> Kéo trạng thái Cloud)
   const syncWithCloud = useCallback(async () => {
@@ -889,7 +1038,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date());
       }
     } catch (err) {
-      console.error("Cloud sync error:", err);
+      console.warn("Cloud sync warning:", err);
       setCloudError(err instanceof Error ? err.message : "Lỗi đồng bộ với Supabase.");
     } finally {
       setIsSyncing(false);
@@ -988,6 +1137,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     try {
       await supabaseService.pushFullState(hh.id, stateSnapshotRef.current);
       clearOutboxQueue();
+      setOutboxEntries([]);
       setPendingOutboxCount(0);
       setLastSyncedAt(new Date());
       return true;
@@ -1017,6 +1167,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         ignoreRealtimeUntilRef.current = Date.now() + 3000;
         await supabaseService.pushFullState(created.household.id, stateSnapshotRef.current);
         clearOutboxQueue();
+        setOutboxEntries([]);
         setPendingOutboxCount(0);
 
         const [refreshed, refreshedProfile] = await Promise.all([
@@ -1126,6 +1277,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         }
 
         clearOutboxQueue();
+        setOutboxEntries([]);
         setPendingOutboxCount(0);
         setLastSyncedAt(new Date());
         return true;
@@ -1160,6 +1312,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return false;
     }
     clearOutboxQueue();
+    setOutboxEntries([]);
     setPendingOutboxCount(0);
     setHousehold(null);
     setCloudProfile((prev) =>
@@ -1262,7 +1415,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     const updatedAccounts = recalculateAccountBalances(data.accounts, data.transactions);
     setAccounts(updatedAccounts);
 
-    setPendingOutboxCount(loadOutboxQueue().length);
+    const initialOutbox = loadOutboxQueue();
+    setOutboxEntries(initialOutbox);
+    setPendingOutboxCount(initialOutbox.length);
     setIsLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1340,11 +1495,42 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        pendingRealtimeTablesRef.current.add(changedTable);
         if (syncDebounceRef.current) {
           window.clearTimeout(syncDebounceRef.current);
         }
         syncDebounceRef.current = window.setTimeout(() => {
-          void syncWithCloud();
+          const tablesToPull = Array.from(pendingRealtimeTablesRef.current);
+          pendingRealtimeTablesRef.current.clear();
+
+          if (tablesToPull.length === 0) return;
+          if (tablesToPull.length > 3) {
+            void syncWithCloud();
+            return;
+          }
+
+          void (async () => {
+            try {
+              const patches = await Promise.all(
+                tablesToPull.map((tbl) =>
+                  supabaseService.fetchSingleTablePatch(household.id, tbl)
+                )
+              );
+              let appliedAny = false;
+              for (const patch of patches) {
+                if (patch) {
+                  applyCloudTablePatchToState(patch);
+                  appliedAny = true;
+                }
+              }
+              if (appliedAny) {
+                setLastSyncedAt(new Date());
+              }
+            } catch (err) {
+              console.warn("Incremental Realtime pull failed, falling back to full sync:", err);
+              void syncWithCloud();
+            }
+          })();
         }, 450);
       }
     );
@@ -1360,8 +1546,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (syncDebounceRef.current) {
         window.clearTimeout(syncDebounceRef.current);
       }
+      pendingRealtimeTablesRef.current.clear();
     };
-  }, [cloudUser, household?.id, syncWithCloud]);
+  }, [cloudUser, household?.id, syncWithCloud, applyCloudTablePatchToState]);
 
   // Đồng bộ URL route, document.title và nút Back/Forward của trình duyệt
   useEffect(() => {
@@ -3712,10 +3899,31 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const fetchReferenceGoldPrices = useCallback(
     async (
-      force = false
+      force = false,
+      calibration?: {
+        nhanPremiumPct?: number;
+        sjcPremiumPct?: number;
+        nhanSpreadVnd?: number;
+        sjcSpreadVnd?: number;
+      }
     ): Promise<{ ok: boolean; mode?: string; note?: string; error?: string }> => {
       try {
-        const res = await fetch(`/api/gold/reference-prices${force ? "?force=1" : ""}`);
+        const params = new URLSearchParams();
+        if (force) params.set("force", "1");
+        if (calibration?.nhanPremiumPct !== undefined) {
+          params.set("nhanPremiumPct", String(calibration.nhanPremiumPct));
+        }
+        if (calibration?.sjcPremiumPct !== undefined) {
+          params.set("sjcPremiumPct", String(calibration.sjcPremiumPct));
+        }
+        if (calibration?.nhanSpreadVnd !== undefined) {
+          params.set("nhanSpreadVnd", String(calibration.nhanSpreadVnd));
+        }
+        if (calibration?.sjcSpreadVnd !== undefined) {
+          params.set("sjcSpreadVnd", String(calibration.sjcSpreadVnd));
+        }
+        const qs = params.toString();
+        const res = await fetch(`/api/gold/reference-prices${qs ? `?${qs}` : ""}`);
         if (!res.ok) {
           return { ok: false, error: "Không thể lấy giá tham khảo từ máy chủ." };
         }
@@ -5605,6 +5813,56 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     setBrowserNotifEnabled(false);
   }, []);
 
+  const unifiedNetWorth = useMemo<UnifiedHouseholdNetWorth>(
+    () =>
+      computeUnifiedHouseholdNetWorth({
+        accounts,
+        investments,
+        debts,
+        goldPortfolio,
+        skyoneLoan,
+      }),
+    [accounts, investments, debts, goldPortfolio, skyoneLoan]
+  );
+
+  const unifiedEcosystemAlerts = useMemo<UnifiedEcosystemAlert[]>(() => {
+    const activeMonth = selectedMonth === "ALL" ? getCurrentMonthKey() : selectedMonth;
+    return buildUnifiedEcosystemAlerts({
+      accounts,
+      budgetItems: budgetSummary.items,
+      recurringRules,
+      currentMonthKey: activeMonth,
+      skyoneLoan,
+      goldPortfolio,
+      interiorStudio,
+      failedOutboxCount,
+    });
+  }, [
+    accounts,
+    budgetSummary.items,
+    recurringRules,
+    selectedMonth,
+    skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
+    failedOutboxCount,
+  ]);
+
+  const navigateToEcosystemAlert = useCallback(
+    (alert: UnifiedEcosystemAlert) => {
+      if (alert.app === "FINANCE") {
+        switchSubApp("FINANCE", { financeTab: alert.targetTab as FinanceTab });
+      } else if (alert.app === "SKYONE") {
+        switchSubApp("SKYONE", { skyoneTab: alert.targetTab as SkyOneRouteTab });
+      } else if (alert.app === "GOLD") {
+        switchSubApp("GOLD", { goldTab: alert.targetTab as GoldRouteTab });
+      } else if (alert.app === "INTERIOR") {
+        switchSubApp("INTERIOR", { interiorTab: alert.targetTab as InteriorRouteTab });
+      }
+    },
+    [switchSubApp]
+  );
+
   const value: FinanceContextType = {
     isLoaded,
     activeApp,
@@ -5629,6 +5887,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     isSyncing,
     lastSyncedAt,
     pendingOutboxCount,
+    failedOutboxCount,
+    outboxEntries,
+    lastConflictNotice,
+    dismissConflictNotice,
+    retryOutboxEntry,
+    retryAllFailedOutbox,
+    discardOutboxEntry,
     cloudError,
     clearCloudError,
     syncWithCloud,
@@ -5834,6 +6099,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     getAccountById,
     husbandCreditCard,
     wifeCreditCard,
+    unifiedNetWorth,
+    unifiedEcosystemAlerts,
+    navigateToEcosystemAlert,
   };
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

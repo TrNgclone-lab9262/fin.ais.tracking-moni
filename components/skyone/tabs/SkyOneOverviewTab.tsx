@@ -20,6 +20,7 @@ import {
   Legend,
 } from "recharts";
 import { SkyOneAmortizationChart } from "@/components/dashboard/SkyOneAmortizationChart";
+import { SkyOneAiToolsPanel } from "@/components/skyone/SkyOneAiToolsPanel";
 import { computeResponsiveXAxisInterval } from "@/lib/viewport";
 import {
   formatDateVN,
@@ -477,6 +478,9 @@ export function SkyOneOverviewTab({
           </div>
         </div>
       </div>
+
+      {/* AI OCR Thông báo BIDV & Cố vấn Chiến lược Liên thông SKYONE x GOLD x FINANCE */}
+      <SkyOneAiToolsPanel />
     </div>
   );
 }

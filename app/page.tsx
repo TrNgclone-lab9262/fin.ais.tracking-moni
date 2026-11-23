@@ -36,9 +36,89 @@ import { GuideView } from "@/components/views/GuideView";
 import { SettingsView } from "@/components/views/SettingsView";
 import { AppLauncherView } from "@/components/views/AppLauncherView";
 
-const LazyInteriorStudioView = lazy(
+function lazyWithRetry<T extends React.ComponentType<unknown>>(
+  importer: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await importer();
+    } catch (firstErr) {
+      // Xóa cache SW cũ nếu có rồi thử tải lại module một lần trước khi báo lỗi
+      try {
+        if (typeof caches !== "undefined") {
+          const keys = await caches.keys();
+          await Promise.all(
+            keys.filter((k) => k.startsWith("homemoni-pwa-")).map((k) => caches.delete(k))
+          );
+        }
+      } catch {
+        // ignore cache cleanup error
+      }
+      try {
+        return await importer();
+      } catch {
+        throw firstErr;
+      }
+    }
+  });
+}
+
+const LazyInteriorStudioView = lazyWithRetry(
   () => import("@/components/views/InteriorStudioView")
 );
+
+class InteriorChunkErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      hasError: true,
+      message: error instanceof Error ? error.message : "Không thể tải module Studio 3D.",
+    };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn("InteriorStudioView load error:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/30 p-6 text-center space-y-3">
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Không thể tải phân hệ SKYONE 3D Interior
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+            Kết nối mạng bị gián đoạn hoặc trình duyệt đang giữ bản nhớ đệm cũ ({this.state.message}).
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, message: "" })}
+              className="px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer"
+            >
+              Thử tải lại
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+            >
+              Làm mới trang
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // 2. Mobile-Specific Views (Thu chi)
 import { MobileOverviewView } from "@/components/mobile/views/MobileOverviewView";
@@ -155,18 +235,20 @@ export default function HomePage() {
 
     if (activeApp === "INTERIOR") {
       return (
-        <Suspense
-          fallback={
-            <div className="space-y-4">
-              <div className="h-20 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
-              <div className="h-[520px] rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse flex items-center justify-center text-xs font-bold text-slate-500">
-                Đang khởi tạo không gian 3D SKYONE A.12A.07…
+        <InteriorChunkErrorBoundary>
+          <Suspense
+            fallback={
+              <div className="space-y-4">
+                <div className="h-20 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
+                <div className="h-[520px] rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse flex items-center justify-center text-xs font-bold text-slate-500">
+                  Đang khởi tạo không gian 3D SKYONE A.12A.07…
+                </div>
               </div>
-            </div>
-          }
-        >
-          <LazyInteriorStudioView />
-        </Suspense>
+            }
+          >
+            <LazyInteriorStudioView />
+          </Suspense>
+        </InteriorChunkErrorBoundary>
       );
     }
 

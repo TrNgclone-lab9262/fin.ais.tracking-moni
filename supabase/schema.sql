@@ -681,3 +681,93 @@ begin
     end if;
   end loop;
 end $$;
+
+-- 5. OPTIMISTIC CONCURRENCY (REVISION) FOR JSONB SUB-APP TABLES
+alter table public.skyone_loans add column if not exists revision bigint not null default 1;
+alter table public.gold_portfolios add column if not exists revision bigint not null default 1;
+alter table public.interior_studios add column if not exists revision bigint not null default 1;
+
+create or replace function public.bump_jsonb_revision()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.revision := coalesce(old.revision, 1) + 1;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_bump_revision_skyone_loans on public.skyone_loans;
+create trigger trg_bump_revision_skyone_loans
+  before update on public.skyone_loans
+  for each row execute function public.bump_jsonb_revision();
+
+drop trigger if exists trg_bump_revision_gold_portfolios on public.gold_portfolios;
+create trigger trg_bump_revision_gold_portfolios
+  before update on public.gold_portfolios
+  for each row execute function public.bump_jsonb_revision();
+
+drop trigger if exists trg_bump_revision_interior_studios on public.interior_studios;
+create trigger trg_bump_revision_interior_studios
+  before update on public.interior_studios
+  for each row execute function public.bump_jsonb_revision();
+
+-- 6. PRIVATE SUPABASE STORAGE BUCKET FOR SNAG PHOTOS & 3D GLB MODELS (MULTI-DEVICE SYNC)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'household-media',
+  'household-media',
+  false,
+  15728640,
+  array[
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'model/gltf-binary',
+    'model/gltf+json',
+    'application/octet-stream'
+  ]
+)
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists household_media_member_select on storage.objects;
+create policy household_media_member_select on storage.objects
+  for select using (
+    bucket_id = 'household-media'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and public.is_household_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists household_media_member_insert on storage.objects;
+create policy household_media_member_insert on storage.objects
+  for insert with check (
+    bucket_id = 'household-media'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and public.is_household_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists household_media_member_update on storage.objects;
+create policy household_media_member_update on storage.objects
+  for update using (
+    bucket_id = 'household-media'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and public.is_household_member(((storage.foldername(name))[1])::uuid)
+  )
+  with check (
+    bucket_id = 'household-media'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and public.is_household_member(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists household_media_member_delete on storage.objects;
+create policy household_media_member_delete on storage.objects
+  for delete using (
+    bucket_id = 'household-media'
+    and (storage.foldername(name))[1] ~ '^[0-9a-fA-F-]{36}$'
+    and public.is_household_member(((storage.foldername(name))[1])::uuid)
+  );
+

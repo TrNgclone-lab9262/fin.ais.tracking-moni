@@ -33,6 +33,7 @@ import { PeriodComparisonCompact } from "@/components/dashboard/PeriodComparison
 import { QuickAddCard } from "@/components/dashboard/QuickAddCard";
 import { FinancialCalendarCard } from "@/components/dashboard/FinancialCalendarCard";
 import { AdvancedAnalyticsSuite } from "@/components/dashboard/AdvancedAnalyticsSuite";
+import { UnifiedNetWorthBanner } from "@/components/dashboard/UnifiedNetWorthBanner";
 
 interface MobileOverviewViewProps {
   onOpenPdfReport?: () => void;
@@ -194,6 +195,9 @@ export function MobileOverviewView({
     <div className="space-y-3.5 animate-in fade-in duration-200">
       {/* 0. HORIZONTAL MONTH SELECTOR */}
       <MobileMonthSelector />
+
+      {/* 0B. TỔNG GIA SẢN HỢP NHẤT 4 SUB-APP */}
+      <UnifiedNetWorthBanner compact />
 
       {/* 1. HERO NET WORTH NAVY CARD */}
       <div className="rounded-xl p-4 bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8] text-white shadow-md relative overflow-hidden space-y-3">

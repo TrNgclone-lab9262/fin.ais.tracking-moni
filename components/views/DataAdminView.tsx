@@ -35,7 +35,11 @@ import {
 } from "@/types/finance";
 import { formatVNDMasked, formatDateVN, getCurrentMonthKey, getMonthDisplayLabel } from "@/lib/formatters";
 import { calculateLedgerIntegrity, shiftMonthKey } from "@/lib/financeEngine";
+import { computeGoldPortfolioMetrics, formatChiWeight, verifyGoldPortfolioIntegrity } from "@/lib/goldEngine";
+import { calculateScenarioBoq } from "@/lib/interiorBoqEngine";
+import { generateMortgageSchedule } from "@/lib/mortgageEngine";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { SyncOutboxInspector } from "@/components/common/SyncOutboxInspector";
 import { StepUpAuthModal } from "@/components/auth/StepUpAuthModal";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { GoalDepositSheet } from "@/components/mobile/sheets/GoalDepositSheet";
@@ -48,7 +52,11 @@ type CollectionKey =
   | "transactions"
   | "accounts"
   | "categories"
-  | "recurringRules";
+  | "recurringRules"
+  | "skyone"
+  | "gold"
+  | "interior"
+  | "outbox";
 
 type ModalMode =
   | { kind: "budget"; item?: CategoryBudget }
@@ -102,6 +110,11 @@ export function DataAdminView() {
     applyRecurringRule,
     getCategoryById,
     getAccountById,
+    skyoneLoan,
+    goldPortfolio,
+    interiorStudio,
+    outboxEntries,
+    switchSubApp,
   } = useFinance();
 
   const [activeCollection, setActiveCollection] = useState<CollectionKey>("budgets");
@@ -160,6 +173,10 @@ export function DataAdminView() {
     [accounts, transactions]
   );
 
+  const skyoneSummary = useMemo(() => generateMortgageSchedule(skyoneLoan), [skyoneLoan]);
+  const goldMetrics = useMemo(() => computeGoldPortfolioMetrics(goldPortfolio), [goldPortfolio]);
+  const goldIntegrity = useMemo(() => verifyGoldPortfolioIntegrity(goldPortfolio), [goldPortfolio]);
+
   const collections: { key: CollectionKey; label: string; count: number }[] = [
     { key: "budgets", label: "Ngân sách", count: budgets.length },
     { key: "goals", label: "Mục tiêu", count: goals.length },
@@ -169,6 +186,10 @@ export function DataAdminView() {
     { key: "accounts", label: "Ví & Thẻ", count: accounts.length },
     { key: "categories", label: "Danh mục", count: categories.length },
     { key: "recurringRules", label: "Định kỳ", count: recurringRules.length },
+    { key: "skyone", label: "SKYONE Loan", count: skyoneLoan.paidRecords.length },
+    { key: "gold", label: "Kho Vàng", count: goldPortfolio.lots.length },
+    { key: "interior", label: "Nội thất 3D", count: interiorStudio.scenarios.length },
+    { key: "outbox", label: "Sync Outbox", count: outboxEntries.length },
   ];
 
   const q = search.toLowerCase().trim();
@@ -319,7 +340,9 @@ export function DataAdminView() {
       setIsTxModalOpen(true);
       return;
     }
-    const mapKind: Record<Exclude<CollectionKey, "transactions">, Exclude<ModalMode, null>["kind"]> = {
+    const mapKind: Partial<
+      Record<Exclude<CollectionKey, "transactions">, Exclude<ModalMode, null>["kind"]>
+    > = {
       budgets: "budget",
       goals: "goal",
       debts: "debt",
@@ -328,7 +351,9 @@ export function DataAdminView() {
       categories: "category",
       recurringRules: "recurring",
     };
-    openModal({ kind: mapKind[activeCollection] } as ModalMode);
+    const kind = mapKind[activeCollection];
+    if (!kind) return;
+    openModal({ kind } as ModalMode);
   };
 
   const parseMoney = (s: string) => parseFloat(s.replace(/[^0-9]/g, "")) || 0;
@@ -541,14 +566,19 @@ export function DataAdminView() {
               <Download className="w-3.5 h-3.5" />
               <span>Xuất JSON</span>
             </button>
-            <button
-              type="button"
-              onClick={handleCreatePrimary}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Thêm bản ghi</span>
-            </button>
+            {activeCollection !== "skyone" &&
+              activeCollection !== "gold" &&
+              activeCollection !== "interior" &&
+              activeCollection !== "outbox" && (
+                <button
+                  type="button"
+                  onClick={handleCreatePrimary}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm bản ghi</span>
+                </button>
+              )}
           </div>
         </div>
 
@@ -1302,6 +1332,222 @@ export function DataAdminView() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {/* TABLE 9: SKYONE LOAN AUDIT */}
+          {activeCollection === "skyone" && (
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                    Kiểm toán Hợp đồng vay {skyoneLoan.projectName}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    Dư nợ gốc còn lại: {formatVNDMasked(skyoneSummary.remainingBalance, isPrivacyMode)} · Đã tất toán {skyoneSummary.paidCount}/{skyoneSummary.totalScheduledMonths} kỳ · Trả trước hạn: {skyoneLoan.prepayments.length} đợt
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => switchSubApp("SKYONE", { skyoneTab: "OVERVIEW" })}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  Mở Sub-App SKYONE
+                </button>
+              </div>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Kỳ #</th>
+                    <th className="py-2.5 px-3">Ngày trả</th>
+                    <th className="py-2.5 px-3 text-right">Gốc đã trả</th>
+                    <th className="py-2.5 px-3 text-right">Lãi đã trả</th>
+                    <th className="py-2.5 px-3 text-right">Lãi suất</th>
+                    <th className="py-2.5 px-3">Giao dịch liên kết</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 tabular-nums">
+                  {skyoneLoan.paidRecords
+                    .slice()
+                    .sort((a, b) => b.period - a.period)
+                    .map((rec) => (
+                      <tr key={rec.period} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">
+                          Kỳ #{rec.period}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
+                          {formatDateVN(rec.paidAt)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">
+                          {formatVNDMasked(rec.paidPrincipal, isPrivacyMode)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-amber-700 dark:text-amber-300">
+                          {formatVNDMasked(rec.paidInterest, isPrivacyMode)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-300">
+                          {rec.appliedRate}%
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                          {rec.linkedTransactionId || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  {skyoneLoan.paidRecords.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-400">
+                        Chưa có kỳ trả góp nào được ghi nhận.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* TABLE 10: GOLD VAULT AUDIT */}
+          {activeCollection === "gold" && (
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                    Kiểm toán Kho Tích Sản Vàng (Bank-Grade Ledger)
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    Tồn thực tế: {formatChiWeight(goldMetrics.totalRemainingChi)} · Giá trị Bid:{" "}
+                    {formatVNDMasked(goldMetrics.totalLiquidationValueBid, isPrivacyMode)} · Toàn vẹn sổ cái:{" "}
+                    <strong className={goldIntegrity.ok ? "text-emerald-600" : "text-rose-600"}>
+                      {goldIntegrity.ok
+                        ? "Hợp lệ 100%"
+                        : `${goldIntegrity.issues.length} cảnh báo cần đối soát`}
+                    </strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => switchSubApp("GOLD", { goldTab: "LOTS" })}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  Mở Sub-App GOLD
+                </button>
+              </div>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Loại / Thương hiệu</th>
+                    <th className="py-2.5 px-3">Ngày mua</th>
+                    <th className="py-2.5 px-3 text-right">Còn lại / Ban đầu</th>
+                    <th className="py-2.5 px-3 text-right">Giá vốn/chỉ</th>
+                    <th className="py-2.5 px-3">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 tabular-nums">
+                  {goldPortfolio.lots
+                    .filter(
+                      (l) =>
+                        !q ||
+                        l.brand.toLowerCase().includes(q) ||
+                        l.category.toLowerCase().includes(q) ||
+                        (l.invoiceNote || "").toLowerCase().includes(q)
+                    )
+                    .map((lot) => (
+                      <tr key={lot.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">
+                          {lot.brand} ({lot.category})
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
+                          {formatDateVN(lot.purchaseDate)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-slate-800 dark:text-slate-100">
+                          {formatChiWeight(lot.remainingChi)} / {formatChiWeight(lot.quantityChi)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-200">
+                          {formatVNDMasked(lot.unitBuyPricePerChi, isPrivacyMode)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
+                            {lot.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* TABLE 11: INTERIOR STUDIO AUDIT */}
+          {activeCollection === "interior" && (
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                    Kiểm toán Dự toán Nội thất 3D &amp; Snag List (Căn A.12A.07)
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    {interiorStudio.scenarios.length} phương án thiết kế ·{" "}
+                    {
+                      interiorStudio.handoverChecklist.filter(
+                        (i) => i.status === "DEFECT_CRITICAL" || i.status === "DEFECT_MINOR"
+                      ).length
+                    }{" "}
+                    lỗi Snag List đang chờ CĐT khắc phục
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => switchSubApp("INTERIOR", { interiorTab: "BOQ" })}
+                  className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  Mở Sub-App INTERIOR
+                </button>
+              </div>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Phương án</th>
+                    <th className="py-2.5 px-3 text-right">Hạng mục (3D + BOQ)</th>
+                    <th className="py-2.5 px-3 text-right">Tổng dự toán</th>
+                    <th className="py-2.5 px-3 text-right">Đã chi</th>
+                    <th className="py-2.5 px-3 text-right">Còn phải chi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 tabular-nums">
+                  {interiorStudio.scenarios.map((sc) => {
+                    const boq = calculateScenarioBoq(sc);
+                    return (
+                      <tr key={sc.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">
+                          {sc.name}
+                          {sc.id === interiorStudio.activeScenarioId && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-900/50 text-teal-800 dark:text-teal-300 text-[10px]">
+                              Đang chọn
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-300">
+                          {sc.items.length} + {sc.extraBoqItems.length}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-slate-100">
+                          {formatVNDMasked(boq.grandTotalWithContingency, isPrivacyMode)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">
+                          {formatVNDMasked(boq.paidOrDepositedVnd, isPrivacyMode)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-amber-700 dark:text-amber-300">
+                          {formatVNDMasked(boq.remainingToPayVnd, isPrivacyMode)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* TABLE 12: SYNC OUTBOX INSPECTOR */}
+          {activeCollection === "outbox" && (
+            <div className="p-4 sm:p-5">
+              <SyncOutboxInspector />
+            </div>
           )}
         </div>
       </div>

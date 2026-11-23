@@ -39,7 +39,12 @@ import {
   mapTransactionToDb,
 } from "./supabaseMappers";
 import { CloudMutation } from "./offlineOutbox";
-import { StoredAppStateV3 } from "./storage";
+import {
+  StoredAppStateV3,
+  mergeGoldPortfolios,
+  mergeInteriorStudios,
+  mergeSkyOneContracts,
+} from "./storage";
 import {
   Account,
   AuthMemberId,
@@ -154,6 +159,89 @@ function validateArrayWithZod<T>(
     }
   }
   return valid;
+}
+
+interface SupabaseErrorLike {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+  status?: number;
+}
+
+function isMissingRelationError(err: SupabaseErrorLike | null | undefined): boolean {
+  if (!err) return false;
+  return (
+    err.code === "42P01" ||
+    err.code === "PGRST205" ||
+    Boolean(
+      err.message &&
+        /relation .* does not exist|could not find the table|not found in the schema cache/i.test(
+          err.message
+        )
+    )
+  );
+}
+
+function isMissingColumnError(err: SupabaseErrorLike | null | undefined): boolean {
+  if (!err) return false;
+  return (
+    err.code === "42703" ||
+    err.code === "PGRST204" ||
+    Boolean(
+      err.message &&
+        /column .* does not exist|could not find the .* column/i.test(err.message)
+    )
+  );
+}
+
+function isAuthSessionError(err: SupabaseErrorLike | null | undefined): boolean {
+  if (!err) return false;
+  return (
+    err.code === "PGRST301" ||
+    err.code === "401" ||
+    err.status === 401 ||
+    Boolean(
+      err.message &&
+        /jwt expired|invalid jwt|token is expired|not authenticated/i.test(err.message)
+    )
+  );
+}
+
+function formatSupabaseErrorTag(table: string, err: SupabaseErrorLike): string {
+  const code = err.code ? ` (${err.code})` : "";
+  return `${table}${code}: ${err.message || "Lỗi truy vấn"}`;
+}
+
+export interface CloudTablePatch {
+  table: string;
+  categories?: Category[];
+  accounts?: Account[];
+  transactions?: Transaction[];
+  budgets?: CategoryBudget[];
+  goals?: SavingsGoal[];
+  debts?: DebtItem[];
+  investments?: InvestmentItem[];
+  recurringRules?: RecurringRule[];
+  sharedSettings?: SharedHouseholdSettings;
+  skyoneLoan?: MortgageContract;
+  goldPortfolio?: GoldPortfolioState;
+  interiorStudio?: InteriorStudioState;
+}
+
+export interface MutationExecutionResult {
+  ok: boolean;
+  conflictResolved?: boolean;
+  mergedSkyOneLoan?: MortgageContract;
+  mergedGoldPortfolio?: GoldPortfolioState;
+  mergedInteriorStudio?: InteriorStudioState;
+}
+
+// Theo dõi revision mới nhất đã đọc từ server cho 3 bảng JSONB theo hộ gia đình
+const knownJsonbRevisions = new Map<string, number>();
+
+function revKey(householdId: string, table: "skyone_loans" | "gold_portfolios" | "interior_studios", id: string): string {
+  return `${householdId}:${table}:${id}`;
 }
 
 export const supabaseService = {
@@ -493,8 +581,40 @@ export const supabaseService = {
   // -------------------------------------------------------------------------
   // 3. DATA FETCH & FULL PUSH (HOUSEHOLD-SCOPED)
   // -------------------------------------------------------------------------
-  async fetchAllData(householdId: string): Promise<CloudFullData | null> {
+  async fetchAllData(
+    householdId: string,
+    retriedAuth = false
+  ): Promise<CloudFullData | null> {
     if (!isSupabaseConfigured || !supabase) return null;
+
+    let queryResults;
+    try {
+      queryResults = await Promise.all([
+        supabase.from("categories").select("*").eq("household_id", householdId),
+        supabase.from("accounts").select("*").eq("household_id", householdId),
+        supabase
+          .from("transactions")
+          .select("*")
+          .eq("household_id", householdId)
+          .order("date", { ascending: false }),
+        supabase.from("category_budgets").select("*").eq("household_id", householdId),
+        supabase.from("savings_goals").select("*").eq("household_id", householdId),
+        supabase.from("debts").select("*").eq("household_id", householdId),
+        supabase.from("investments").select("*").eq("household_id", householdId),
+        supabase.from("recurring_rules").select("*").eq("household_id", householdId),
+        supabase.from("skyone_loans").select("*").eq("household_id", householdId).limit(1),
+        supabase
+          .from("household_settings")
+          .select("*")
+          .eq("household_id", householdId)
+          .maybeSingle<DbHouseholdSettings>(),
+        supabase.from("gold_portfolios").select("*").eq("household_id", householdId).limit(1),
+        supabase.from("interior_studios").select("*").eq("household_id", householdId).limit(1),
+      ]);
+    } catch (networkErr) {
+      console.warn("[Supabase fetchAllData] Lỗi kết nối mạng, giữ chế độ Offline-First:", networkErr);
+      return null;
+    }
 
     const [
       catRes,
@@ -509,42 +629,70 @@ export const supabaseService = {
       setRes,
       goldRes,
       interiorRes,
-    ] = await Promise.all([
-      supabase.from("categories").select("*").eq("household_id", householdId),
-      supabase.from("accounts").select("*").eq("household_id", householdId),
-      supabase
-        .from("transactions")
-        .select("*")
-        .eq("household_id", householdId)
-        .order("date", { ascending: false }),
-      supabase.from("category_budgets").select("*").eq("household_id", householdId),
-      supabase.from("savings_goals").select("*").eq("household_id", householdId),
-      supabase.from("debts").select("*").eq("household_id", householdId),
-      supabase.from("investments").select("*").eq("household_id", householdId),
-      supabase.from("recurring_rules").select("*").eq("household_id", householdId),
-      supabase.from("skyone_loans").select("*").eq("household_id", householdId).limit(1),
-      supabase
-        .from("household_settings")
-        .select("*")
-        .eq("household_id", householdId)
-        .maybeSingle<DbHouseholdSettings>(),
-      supabase.from("gold_portfolios").select("*").eq("household_id", householdId).limit(1),
-      supabase.from("interior_studios").select("*").eq("household_id", householdId).limit(1),
-    ]);
+    ] = queryResults;
 
-    if (
-      catRes.error ||
-      accRes.error ||
-      txRes.error ||
-      budgetRes.error ||
-      goalRes.error ||
-      debtRes.error ||
-      invRes.error ||
-      recRes.error ||
-      skyRes.error ||
-      setRes.error
-    ) {
-      throw new Error("Không thể tải dữ liệu đồng bộ từ Supabase.");
+    const coreChecks: Array<{ table: string; error: SupabaseErrorLike | null }> = [
+      { table: "categories", error: catRes.error },
+      { table: "accounts", error: accRes.error },
+      { table: "transactions", error: txRes.error },
+      { table: "category_budgets", error: budgetRes.error },
+      { table: "savings_goals", error: goalRes.error },
+      { table: "debts", error: debtRes.error },
+      { table: "investments", error: invRes.error },
+    ];
+
+    const optionalChecks: Array<{ table: string; error: SupabaseErrorLike | null }> = [
+      { table: "recurring_rules", error: recRes.error },
+      { table: "skyone_loans", error: skyRes.error },
+      { table: "household_settings", error: setRes.error },
+      { table: "gold_portfolios", error: goldRes.error },
+      { table: "interior_studios", error: interiorRes.error },
+    ];
+
+    const allErrors = [...coreChecks, ...optionalChecks].filter(
+      (item): item is { table: string; error: SupabaseErrorLike } => Boolean(item.error)
+    );
+
+    // Nếu phiên JWT vừa hết hạn, tự làm mới phiên 1 lần rồi thử kéo lại trước khi báo lỗi
+    if (!retriedAuth && allErrors.some((item) => isAuthSessionError(item.error))) {
+      try {
+        const refreshed = await supabase.auth.refreshSession();
+        if (!refreshed.error && refreshed.data.session) {
+          return this.fetchAllData(householdId, true);
+        }
+      } catch {
+        // tiếp tục xử lý báo lỗi bên dưới
+      }
+    }
+
+    const missingCoreTables = coreChecks.filter(
+      (item) => item.error && isMissingRelationError(item.error)
+    );
+    if (missingCoreTables.length > 0) {
+      console.warn(
+        "[Supabase fetchAllData] Schema Supabase chưa đầy đủ, tạm giữ dữ liệu cục bộ:",
+        missingCoreTables.map((item) => item.table)
+      );
+      return null;
+    }
+
+    const fatalFailures: string[] = [];
+    for (const item of coreChecks) {
+      if (item.error) {
+        fatalFailures.push(formatSupabaseErrorTag(item.table, item.error));
+      }
+    }
+    for (const item of optionalChecks) {
+      if (item.error && !isMissingRelationError(item.error)) {
+        fatalFailures.push(formatSupabaseErrorTag(item.table, item.error));
+      }
+    }
+
+    if (fatalFailures.length > 0) {
+      console.warn("[Supabase fetchAllData] Lỗi tải bảng:", fatalFailures);
+      throw new Error(
+        `Không thể tải dữ liệu đồng bộ từ Supabase (${fatalFailures[0]}).`
+      );
     }
 
     const categories = validateArrayWithZod(
@@ -575,12 +723,19 @@ export const supabaseService = {
       ((invRes.data || []) as DbInvestment[]).map(mapDbToInvestment),
       InvestmentItemSchema
     );
-    const recurringRules = validateArrayWithZod(
-      ((recRes.data || []) as DbRecurringRule[]).map(mapDbToRecurringRule),
-      RecurringRuleSchema
-    );
+    const recurringRules = !recRes.error
+      ? validateArrayWithZod(
+          ((recRes.data || []) as DbRecurringRule[]).map(mapDbToRecurringRule),
+          RecurringRuleSchema
+        )
+      : [];
 
-    const skyRow = (skyRes.data || [])[0] as DbSkyOneLoan | undefined;
+    const skyRow = !skyRes.error
+      ? ((skyRes.data || [])[0] as DbSkyOneLoan | undefined)
+      : undefined;
+    if (skyRow && typeof skyRow.revision === "number") {
+      knownJsonbRevisions.set(revKey(householdId, "skyone_loans", skyRow.id), skyRow.revision);
+    }
     const rawSkyOne = skyRow ? mapDbToSkyOneLoan(skyRow) : null;
     const skyoneLoan = rawSkyOne
       ? reconcileBidvSkyOneContract(rawSkyOne).contract
@@ -589,18 +744,28 @@ export const supabaseService = {
     const goldRow = !goldRes.error
       ? ((goldRes.data || [])[0] as DbGoldPortfolio | undefined)
       : undefined;
+    if (goldRow && typeof goldRow.revision === "number") {
+      knownJsonbRevisions.set(revKey(householdId, "gold_portfolios", goldRow.id), goldRow.revision);
+    }
     const goldPortfolio = goldRow ? (mapDbToGoldPortfolio(goldRow) ?? undefined) : undefined;
 
     const interiorRow = !interiorRes.error
       ? ((interiorRes.data || [])[0] as DbInteriorStudio | undefined)
       : undefined;
+    if (interiorRow && typeof interiorRow.revision === "number") {
+      knownJsonbRevisions.set(
+        revKey(householdId, "interior_studios", interiorRow.id),
+        interiorRow.revision
+      );
+    }
     const interiorStudio = interiorRow
       ? (mapDbToInteriorStudio(interiorRow) ?? undefined)
       : undefined;
 
-    const sharedSettings = setRes.data
-      ? mapDbToSharedSettings(setRes.data)
-      : undefined;
+    const sharedSettings =
+      !setRes.error && setRes.data
+        ? mapDbToSharedSettings(setRes.data)
+        : undefined;
 
     return {
       categories,
@@ -718,30 +883,264 @@ export const supabaseService = {
       throw new Error(failed.error.message);
     }
 
-    // Best-effort sync cho 2 phân hệ mới (không làm hỏng luồng cũ nếu SQL schema chưa nâng cấp)
+    // Đồng bộ 2 phân hệ mới (tương thích ngược với DB cũ chưa thêm cột revision hoặc chưa tạo bảng)
     if (state.goldPortfolio) {
-      await supabase
+      const goldRowPayload = mapGoldPortfolioToDb(state.goldPortfolio, householdId);
+      let goldUpsert = await supabase
         .from("gold_portfolios")
-        .upsert(mapGoldPortfolioToDb(state.goldPortfolio, householdId), {
-          onConflict: "household_id,id",
-        });
+        .upsert(goldRowPayload, { onConflict: "household_id,id" })
+        .select("id,revision")
+        .maybeSingle<{ id: string; revision?: number }>();
+      if (goldUpsert.error && isMissingColumnError(goldUpsert.error)) {
+        goldUpsert = await supabase
+          .from("gold_portfolios")
+          .upsert(goldRowPayload, { onConflict: "household_id,id" })
+          .select("id")
+          .maybeSingle<{ id: string; revision?: number }>();
+      }
+      if (goldUpsert.error && !isMissingRelationError(goldUpsert.error)) {
+        throw new Error(`Lỗi đồng bộ Kho Vàng: ${goldUpsert.error.message}`);
+      }
+      if (goldUpsert.data && typeof goldUpsert.data.revision === "number") {
+        knownJsonbRevisions.set(
+          revKey(householdId, "gold_portfolios", goldUpsert.data.id),
+          goldUpsert.data.revision
+        );
+      }
     }
     if (state.interiorStudio) {
-      await supabase
+      const interiorRowPayload = mapInteriorStudioToDb(state.interiorStudio, householdId);
+      let interiorUpsert = await supabase
         .from("interior_studios")
-        .upsert(mapInteriorStudioToDb(state.interiorStudio, householdId), {
-          onConflict: "household_id,id",
-        });
+        .upsert(interiorRowPayload, { onConflict: "household_id,id" })
+        .select("id,revision")
+        .maybeSingle<{ id: string; revision?: number }>();
+      if (interiorUpsert.error && isMissingColumnError(interiorUpsert.error)) {
+        interiorUpsert = await supabase
+          .from("interior_studios")
+          .upsert(interiorRowPayload, { onConflict: "household_id,id" })
+          .select("id")
+          .maybeSingle<{ id: string; revision?: number }>();
+      }
+      if (interiorUpsert.error && !isMissingRelationError(interiorUpsert.error)) {
+        throw new Error(`Lỗi đồng bộ Studio 3D: ${interiorUpsert.error.message}`);
+      }
+      if (interiorUpsert.data && typeof interiorUpsert.data.revision === "number") {
+        knownJsonbRevisions.set(
+          revKey(householdId, "interior_studios", interiorUpsert.data.id),
+          interiorUpsert.data.revision
+        );
+      }
     }
 
     return true;
   },
 
+  /**
+   * Kéo dữ liệu gia tăng cho ĐÚNG 1 bảng bị thay đổi qua Supabase Realtime
+   * thay vì kéo lại toàn bộ 12 bảng sau mỗi thao tác nhỏ.
+   */
+  async fetchSingleTablePatch(
+    householdId: string,
+    table: string
+  ): Promise<CloudTablePatch | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+
+    switch (table) {
+      case "categories": {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          categories: validateArrayWithZod(
+            ((data || []) as DbCategory[]).map(mapDbToCategory),
+            CategorySchema
+          ),
+        };
+      }
+      case "accounts": {
+        const { data, error } = await supabase
+          .from("accounts")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          accounts: validateArrayWithZod(
+            ((data || []) as DbAccount[]).map(mapDbToAccount),
+            AccountSchema
+          ),
+        };
+      }
+      case "transactions": {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("household_id", householdId)
+          .order("date", { ascending: false });
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          transactions: validateArrayWithZod(
+            ((data || []) as DbTransaction[]).map(mapDbToTransaction),
+            TransactionSchema
+          ),
+        };
+      }
+      case "category_budgets": {
+        const { data, error } = await supabase
+          .from("category_budgets")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          budgets: validateArrayWithZod(
+            ((data || []) as DbCategoryBudget[]).map(mapDbToBudget),
+            BudgetSchema
+          ),
+        };
+      }
+      case "savings_goals": {
+        const { data, error } = await supabase
+          .from("savings_goals")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          goals: validateArrayWithZod(
+            ((data || []) as DbSavingsGoal[]).map(mapDbToGoal),
+            SavingsGoalSchema
+          ),
+        };
+      }
+      case "debts": {
+        const { data, error } = await supabase
+          .from("debts")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          debts: validateArrayWithZod(
+            ((data || []) as DbDebt[]).map(mapDbToDebt),
+            DebtItemSchema
+          ),
+        };
+      }
+      case "investments": {
+        const { data, error } = await supabase
+          .from("investments")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          investments: validateArrayWithZod(
+            ((data || []) as DbInvestment[]).map(mapDbToInvestment),
+            InvestmentItemSchema
+          ),
+        };
+      }
+      case "recurring_rules": {
+        const { data, error } = await supabase
+          .from("recurring_rules")
+          .select("*")
+          .eq("household_id", householdId);
+        if (error) throw new Error(error.message);
+        return {
+          table,
+          recurringRules: validateArrayWithZod(
+            ((data || []) as DbRecurringRule[]).map(mapDbToRecurringRule),
+            RecurringRuleSchema
+          ),
+        };
+      }
+      case "skyone_loans": {
+        const { data, error } = await supabase
+          .from("skyone_loans")
+          .select("*")
+          .eq("household_id", householdId)
+          .limit(1);
+        if (error) {
+          if (isMissingRelationError(error)) return null;
+          throw new Error(error.message);
+        }
+        const row = (data || [])[0] as DbSkyOneLoan | undefined;
+        if (!row) return null;
+        if (typeof row.revision === "number") {
+          knownJsonbRevisions.set(revKey(householdId, "skyone_loans", row.id), row.revision);
+        }
+        const parsed = mapDbToSkyOneLoan(row);
+        return parsed
+          ? { table, skyoneLoan: reconcileBidvSkyOneContract(parsed).contract }
+          : null;
+      }
+      case "gold_portfolios": {
+        const { data, error } = await supabase
+          .from("gold_portfolios")
+          .select("*")
+          .eq("household_id", householdId)
+          .limit(1);
+        if (error) {
+          if (isMissingRelationError(error)) return null;
+          throw new Error(error.message);
+        }
+        const row = (data || [])[0] as DbGoldPortfolio | undefined;
+        if (!row) return null;
+        if (typeof row.revision === "number") {
+          knownJsonbRevisions.set(revKey(householdId, "gold_portfolios", row.id), row.revision);
+        }
+        const parsed = mapDbToGoldPortfolio(row);
+        return parsed ? { table, goldPortfolio: parsed } : null;
+      }
+      case "interior_studios": {
+        const { data, error } = await supabase
+          .from("interior_studios")
+          .select("*")
+          .eq("household_id", householdId)
+          .limit(1);
+        if (error) {
+          if (isMissingRelationError(error)) return null;
+          throw new Error(error.message);
+        }
+        const row = (data || [])[0] as DbInteriorStudio | undefined;
+        if (!row) return null;
+        if (typeof row.revision === "number") {
+          knownJsonbRevisions.set(revKey(householdId, "interior_studios", row.id), row.revision);
+        }
+        const parsed = mapDbToInteriorStudio(row);
+        return parsed ? { table, interiorStudio: parsed } : null;
+      }
+      case "household_settings": {
+        const { data, error } = await supabase
+          .from("household_settings")
+          .select("*")
+          .eq("household_id", householdId)
+          .maybeSingle<DbHouseholdSettings>();
+        if (error) {
+          if (isMissingRelationError(error)) return null;
+          throw new Error(error.message);
+        }
+        return data ? { table, sharedSettings: mapDbToSharedSettings(data) } : null;
+      }
+      default:
+        return null;
+    }
+  },
+
   // -------------------------------------------------------------------------
   // 4. SINGLE MUTATION EXECUTION (USED ONLINE & BY OFFLINE OUTBOX FLUSHER)
   // -------------------------------------------------------------------------
-  async executeMutation(householdId: string, mutation: CloudMutation): Promise<boolean> {
-    if (!isSupabaseConfigured || !supabase) return false;
+  async executeMutation(
+    householdId: string,
+    mutation: CloudMutation
+  ): Promise<MutationExecutionResult> {
+    if (!isSupabaseConfigured || !supabase) return { ok: false };
 
     let res: { error: { message: string } | null } = { error: null };
 
@@ -769,7 +1168,7 @@ export const supabaseService = {
           });
         break;
       case "UPSERT_ACCOUNTS_BATCH":
-        if (mutation.payload.length === 0) return true;
+        if (mutation.payload.length === 0) return { ok: true };
         res = await supabase
           .from("accounts")
           .upsert(mutation.payload.map((a) => mapAccountToDb(a, householdId)), {
@@ -792,7 +1191,7 @@ export const supabaseService = {
           });
         break;
       case "UPSERT_TRANSACTIONS_BATCH":
-        if (mutation.payload.length === 0) return true;
+        if (mutation.payload.length === 0) return { ok: true };
         res = await supabase
           .from("transactions")
           .upsert(mutation.payload.map((t) => mapTransactionToDb(t, householdId)), {
@@ -807,7 +1206,7 @@ export const supabaseService = {
           .eq("id", mutation.id);
         break;
       case "DELETE_TRANSACTIONS_BATCH":
-        if (mutation.ids.length === 0) return true;
+        if (mutation.ids.length === 0) return { ok: true };
         res = await supabase
           .from("transactions")
           .delete()
@@ -823,7 +1222,7 @@ export const supabaseService = {
           });
         break;
       case "UPSERT_BUDGETS_BATCH":
-        if (mutation.payload.length === 0) return true;
+        if (mutation.payload.length === 0) return { ok: true };
         res = await supabase
           .from("category_budgets")
           .upsert(mutation.payload.map((b) => mapBudgetToDb(b, householdId)), {
@@ -892,7 +1291,7 @@ export const supabaseService = {
           });
         break;
       case "UPSERT_RECURRING_RULES_BATCH":
-        if (mutation.payload.length === 0) return true;
+        if (mutation.payload.length === 0) return { ok: true };
         res = await supabase
           .from("recurring_rules")
           .upsert(mutation.payload.map((r) => mapRecurringRuleToDb(r, householdId)), {
@@ -907,29 +1306,187 @@ export const supabaseService = {
           .eq("id", mutation.id);
         break;
 
-      case "UPSERT_SKYONE_LOAN":
-        res = await supabase
+      case "UPSERT_SKYONE_LOAN": {
+        const docId = mutation.payload.id || "skyone_default";
+        const key = revKey(householdId, "skyone_loans", docId);
+        const expectedRev = knownJsonbRevisions.get(key);
+
+        // Kiểm tra xung đột revision trước khi ghi đè JSONB
+        const remoteCheck = await supabase
           .from("skyone_loans")
-          .upsert(mapSkyOneLoanToDb(mutation.payload, householdId), {
-            onConflict: "household_id,id",
-          });
-        break;
+          .select("*")
+          .eq("household_id", householdId)
+          .eq("id", docId)
+          .maybeSingle<DbSkyOneLoan>();
 
-      case "UPSERT_GOLD_PORTFOLIO":
-        res = await supabase
+        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
+          return { ok: true };
+        }
+
+        let payloadToWrite = mutation.payload;
+        let conflictResolved = false;
+
+        if (
+          !remoteCheck.error &&
+          remoteCheck.data &&
+          typeof remoteCheck.data.revision === "number" &&
+          expectedRev !== undefined &&
+          remoteCheck.data.revision > expectedRev
+        ) {
+          const remoteParsed = mapDbToSkyOneLoan(remoteCheck.data);
+          if (remoteParsed) {
+            payloadToWrite = reconcileBidvSkyOneContract(
+              mergeSkyOneContracts(remoteParsed, mutation.payload)
+            ).contract;
+            conflictResolved = true;
+          }
+        }
+
+        const dbRow = mapSkyOneLoanToDb(payloadToWrite, householdId);
+        let saved = await supabase
+          .from("skyone_loans")
+          .upsert(dbRow, { onConflict: "household_id,id" })
+          .select("id,revision")
+          .maybeSingle<{ id: string; revision?: number }>();
+        if (saved.error && isMissingColumnError(saved.error)) {
+          saved = await supabase
+            .from("skyone_loans")
+            .upsert(dbRow, { onConflict: "household_id,id" })
+            .select("id")
+            .maybeSingle<{ id: string; revision?: number }>();
+        }
+        if (saved.error) {
+          throw new Error(saved.error.message);
+        }
+        if (saved.data && typeof saved.data.revision === "number") {
+          knownJsonbRevisions.set(key, saved.data.revision);
+        }
+        return {
+          ok: true,
+          conflictResolved,
+          ...(conflictResolved ? { mergedSkyOneLoan: payloadToWrite } : {}),
+        };
+      }
+
+      case "UPSERT_GOLD_PORTFOLIO": {
+        const docId = "gold_default";
+        const key = revKey(householdId, "gold_portfolios", docId);
+        const expectedRev = knownJsonbRevisions.get(key);
+
+        const remoteCheck = await supabase
           .from("gold_portfolios")
-          .upsert(mapGoldPortfolioToDb(mutation.payload, householdId), {
-            onConflict: "household_id,id",
-          });
-        break;
+          .select("*")
+          .eq("household_id", householdId)
+          .eq("id", docId)
+          .maybeSingle<DbGoldPortfolio>();
 
-      case "UPSERT_INTERIOR_STUDIO":
-        res = await supabase
+        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
+          return { ok: true };
+        }
+
+        let payloadToWrite = mutation.payload;
+        let conflictResolved = false;
+
+        if (
+          !remoteCheck.error &&
+          remoteCheck.data &&
+          typeof remoteCheck.data.revision === "number" &&
+          expectedRev !== undefined &&
+          remoteCheck.data.revision > expectedRev
+        ) {
+          const remoteParsed = mapDbToGoldPortfolio(remoteCheck.data);
+          if (remoteParsed) {
+            payloadToWrite = mergeGoldPortfolios(remoteParsed, mutation.payload);
+            conflictResolved = true;
+          }
+        }
+
+        const dbRow = mapGoldPortfolioToDb(payloadToWrite, householdId);
+        let saved = await supabase
+          .from("gold_portfolios")
+          .upsert(dbRow, { onConflict: "household_id,id" })
+          .select("id,revision")
+          .maybeSingle<{ id: string; revision?: number }>();
+        if (saved.error && isMissingColumnError(saved.error)) {
+          saved = await supabase
+            .from("gold_portfolios")
+            .upsert(dbRow, { onConflict: "household_id,id" })
+            .select("id")
+            .maybeSingle<{ id: string; revision?: number }>();
+        }
+        if (saved.error) {
+          if (isMissingRelationError(saved.error)) return { ok: true };
+          throw new Error(saved.error.message);
+        }
+        if (saved.data && typeof saved.data.revision === "number") {
+          knownJsonbRevisions.set(key, saved.data.revision);
+        }
+        return {
+          ok: true,
+          conflictResolved,
+          ...(conflictResolved ? { mergedGoldPortfolio: payloadToWrite } : {}),
+        };
+      }
+
+      case "UPSERT_INTERIOR_STUDIO": {
+        const docId = "interior_a12a07";
+        const key = revKey(householdId, "interior_studios", docId);
+        const expectedRev = knownJsonbRevisions.get(key);
+
+        const remoteCheck = await supabase
           .from("interior_studios")
-          .upsert(mapInteriorStudioToDb(mutation.payload, householdId), {
-            onConflict: "household_id,id",
-          });
-        break;
+          .select("*")
+          .eq("household_id", householdId)
+          .eq("id", docId)
+          .maybeSingle<DbInteriorStudio>();
+
+        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
+          return { ok: true };
+        }
+
+        let payloadToWrite = mutation.payload;
+        let conflictResolved = false;
+
+        if (
+          !remoteCheck.error &&
+          remoteCheck.data &&
+          typeof remoteCheck.data.revision === "number" &&
+          expectedRev !== undefined &&
+          remoteCheck.data.revision > expectedRev
+        ) {
+          const remoteParsed = mapDbToInteriorStudio(remoteCheck.data);
+          if (remoteParsed) {
+            payloadToWrite = mergeInteriorStudios(remoteParsed, mutation.payload);
+            conflictResolved = true;
+          }
+        }
+
+        const dbRow = mapInteriorStudioToDb(payloadToWrite, householdId);
+        let saved = await supabase
+          .from("interior_studios")
+          .upsert(dbRow, { onConflict: "household_id,id" })
+          .select("id,revision")
+          .maybeSingle<{ id: string; revision?: number }>();
+        if (saved.error && isMissingColumnError(saved.error)) {
+          saved = await supabase
+            .from("interior_studios")
+            .upsert(dbRow, { onConflict: "household_id,id" })
+            .select("id")
+            .maybeSingle<{ id: string; revision?: number }>();
+        }
+        if (saved.error) {
+          if (isMissingRelationError(saved.error)) return { ok: true };
+          throw new Error(saved.error.message);
+        }
+        if (saved.data && typeof saved.data.revision === "number") {
+          knownJsonbRevisions.set(key, saved.data.revision);
+        }
+        return {
+          ok: true,
+          conflictResolved,
+          ...(conflictResolved ? { mergedInteriorStudio: payloadToWrite } : {}),
+        };
+      }
 
       case "UPSERT_SETTINGS":
         res = await supabase
@@ -943,7 +1500,7 @@ export const supabaseService = {
     if (res.error) {
       throw new Error(res.error.message);
     }
-    return true;
+    return { ok: true };
   },
 
   // -------------------------------------------------------------------------

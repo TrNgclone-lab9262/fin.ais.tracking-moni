@@ -6,7 +6,7 @@
  * - Bỏ qua cache cho `/api/*`, `/version.json`, `/sw.js` và dùng Network-First cho HTML điều hướng để tránh lỗi màn hình trắng sau khi nâng cấp.
  */
 
-const SW_VERSION = '1.6.0';
+const SW_VERSION = '1.9.1';
 const CACHE_PREFIX = 'homemoni-pwa-';
 const CACHE_NAME = `${CACHE_PREFIX}v${SW_VERSION}`;
 const STATIC_ASSETS = [
@@ -19,19 +19,45 @@ const STATIC_ASSETS = [
   '/apple-touch-icon.png',
 ];
 
+const DEV_OR_SOURCE_PATH_PREFIXES = [
+  '/@vite/',
+  '/@fs/',
+  '/@id/',
+  '/@react-refresh',
+  '/node_modules/',
+  '/src/',
+  '/app/',
+  '/components/',
+  '/context/',
+  '/lib/',
+  '/constants/',
+  '/types/',
+  '/data/',
+];
+
+function isDevOrSourceModuleRequest(url) {
+  if (DEV_OR_SOURCE_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    return true;
+  }
+  if (/\.(ts|tsx|jsx|mjs|map)$/i.test(url.pathname)) {
+    return true;
+  }
+  if (url.searchParams.has('import') || url.searchParams.has('direct') || url.searchParams.has('t')) {
+    return true;
+  }
+  return false;
+}
+
 // 1. Cài đặt Service Worker & Pre-cache tài nguyên cốt lõi
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch(() => undefined);
     })
   );
 
-  // Chỉ tự kích hoạt ngay ở lần cài đặt đầu tiên khi chưa có Service Worker nào đang kiểm soát.
-  // Khi nâng cấp từ bản cũ, giữ nguyên trạng thái `waiting` để hiển thị thông báo 1-chạm cho người dùng.
-  if (!self.registration.active) {
-    self.skipWaiting();
-  }
+  // Kích hoạt ngay ở lần đầu hoặc khi vá lỗi cache cũ để loại bỏ module hỏng tức thì
+  self.skipWaiting();
 });
 
 // 2. Kích hoạt & Dọn bộ nhớ đệm vỏ ứng dụng của các phiên bản cũ
@@ -54,9 +80,9 @@ self.addEventListener('activate', (event) => {
 });
 
 // 3. Chiến lược Fetch thông minh:
-// - Bỏ qua cache cho API, version.json, sw.js và dịch vụ bên ngoài
+// - Bỏ qua cache cho API, version.json, sw.js, Vite dev/source modules và dịch vụ bên ngoài
 // - Network-First (dự phòng cache) cho trang điều hướng HTML
-// - Stale-While-Revalidate cho các tài nguyên tĩnh (JS/CSS/Icon)
+// - Stale-While-Revalidate an toàn chỉ cho tài nguyên tĩnh production (/assets/, /icons/, ...)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -64,13 +90,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Luôn đi thẳng mạng cho Google AI, Supabase, API nội bộ, tệp kiểm tra phiên bản và tệp SW
+  // Luôn đi thẳng mạng cho dịch vụ ngoài, API nội bộ, tệp kiểm tra phiên bản, SW và Vite dev modules
   if (
+    url.origin !== self.location.origin ||
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('supabase.co') ||
     url.pathname.startsWith('/api/') ||
     url.pathname === '/version.json' ||
-    url.pathname === '/sw.js'
+    url.pathname === '/sw.js' ||
+    isDevOrSourceModuleRequest(url)
   ) {
     return;
   }
@@ -98,26 +126,54 @@ self.addEventListener('fetch', (event) => {
           return (
             (await cache.match(event.request)) ||
             (await cache.match('/index.html')) ||
-            (await cache.match('/'))
+            (await cache.match('/')) ||
+            new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
           );
         })
     );
     return;
   }
 
-  // Tài nguyên tĩnh khác: Stale-While-Revalidate
+  // Tài nguyên tĩnh production khác: Network-First cho JS/CSS để tránh mismatch chunk hash, SWR cho icon/media
+  const isCodeBundle = /\.(js|css)$/i.test(url.pathname);
+  if (isCodeBundle) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          const cached = await cache.match(event.request);
+          return (
+            cached ||
+            new Response('Module unavailable offline', { status: 503, statusText: 'Service Unavailable' })
+          );
+        })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
       const cachedResponse = await cache.match(event.request);
 
       const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && url.origin === self.location.origin) {
+          if (networkResponse && networkResponse.status === 200) {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
         })
-        .catch(() => cachedResponse);
+        .catch(
+          () =>
+            cachedResponse ||
+            new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
+        );
 
       return cachedResponse || fetchPromise;
     })

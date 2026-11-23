@@ -1,13 +1,13 @@
 {
-  "version": "1.6.0",
-  "buildId": "v1.6.0-phudong-skyone",
-  "releasedAt": "2026-11-13",
-  "title": "Tab chuyên biệt Phú Đông SKYONE — Quản Lý Vay & BĐS Toàn Diện",
+  "version": "1.9.0",
+  "buildId": "v1.9.0-fullstack-ecosystem",
+  "releasedAt": "2026-11-22",
+  "title": "Hoàn thiện Full-Stack Bảo mật, Đồng bộ Đa thiết bị & Liên thông 4 Sub-App",
   "mandatory": false,
   "highlights": [
-    "Ra mắt tab Phú Đông SKYONE áp dụng chuẩn dư nợ giảm dần không ân hạn gốc, hỗ trợ 2 giai đoạn Lãi cố định ưu đãi & Lãi thả nổi (Cơ sở + Biên độ) cùng mốc điều chỉnh lãi suất thực tế từ ngân hàng.",
-    "Bảng theo dõi thanh toán từng kỳ đa bộ lọc (Trạng thái, Giai đoạn, Năm vay), nhảy nhanh tới kỳ hiện tại, xác nhận từng kỳ hoặc hàng loạt kèm tùy chọn liên kết Sổ giao dịch.",
-    "Phân tích chuyên sâu BĐS & Tài chính: Vốn chủ sở hữu (Equity %), LTV, gánh nặng trả nợ trên thu nhập gia đình (DTI %), bảng Stress-test biến động lãi thả nổi (+1%, +2%, +3%) và biểu đồ Gốc/Lãi/Dư nợ.",
-    "Mô phỏng & lưu đợt Trả gốc trước hạn (tính phí phạt theo năm, lãi tiết kiệm ròng, rút ngắn kỳ hạn hoặc giảm đóng tháng) cùng đồng bộ hoàn toàn vào Sao lưu JSON và Gói hợp nhất 2 máy."
+    "Khóa chuẩn Express Backend với Zod validation toàn diện cho 9 tuyến API, Rate Limiter tách luồng AI/đọc nhẹ, Timeout bảo vệ Gemini và chuẩn lỗi HTTP thống nhất.",
+    "Nâng cấp đồng bộ Supabase chống ghi đè bằng Revision Optimistic Locking + Smart Merge tự động cho SKYONE/GOLD/INTERIOR, Dead-Letter Outbox không chặn hàng đợi và đồng bộ ảnh Snag List / file 3D GLB qua Supabase Storage.",
+    "Bổ sung AI OCR sao kê vay BIDV & cố vấn chiến lược trả trước hạn cho SKYONE, AI quét báo giá nhà thầu BOQ & cầu nối quyết toán 1 chạm sang FINANCE cho INTERIOR, cùng hiệu chỉnh biên độ giá vàng nội địa.",
+    "Hợp nhất Tổng Gia Sản Hộ Gia Đình (Tiền + Đầu tư + Kho Vàng Bid + Vốn chủ SKYONE - Dư nợ), Trung tâm Thông báo 4 Sub-App và mở rộng Data Studio kiểm toán toàn hệ sinh thái."
   ]
 }

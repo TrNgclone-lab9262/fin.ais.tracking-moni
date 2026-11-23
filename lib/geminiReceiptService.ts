@@ -386,12 +386,13 @@ export async function analyzeFinancialInsights(
 
   const data = (await res.json().catch(() => ({}))) as {
     insights?: FinancialInsightsResponse;
+    message?: string;
     error?: string;
   };
 
   if (!res.ok) {
     throw new Error(
-      data.error || 'Không thể phân tích dữ liệu chi tiêu với Gemini AI lúc này.'
+      data.message || data.error || 'Không thể phân tích dữ liệu chi tiêu với Gemini AI lúc này.'
     );
   }
 
@@ -457,12 +458,13 @@ export async function generateSpendingForecastInsights(
 
   const data = (await res.json().catch(() => ({}))) as {
     forecastInsights?: SpendingForecastAIResponse;
+    message?: string;
     error?: string;
   };
 
   if (!res.ok) {
     throw new Error(
-      data.error || 'Không thể lấy nhận xét dự báo 3 tháng từ Gemini AI lúc này.'
+      data.message || data.error || 'Không thể lấy nhận xét dự báo 3 tháng từ Gemini AI lúc này.'
     );
   }
 

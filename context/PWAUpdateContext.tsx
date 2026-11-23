@@ -362,19 +362,38 @@ export function PWAUpdateProvider({ children }: { children: React.ReactNode }) {
     };
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+      if (import.meta.env.DEV) {
+        // Trong môi trường Vite Dev, tuyệt đối không để Service Worker cũ giữ cache .tsx/.ts gây lỗi dynamic import
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+          .catch(() => undefined);
+        if (typeof caches !== 'undefined') {
+          caches
+            .keys()
+            .then((keys) =>
+              Promise.all(
+                keys.filter((k) => k.startsWith('homemoni-pwa-')).map((k) => caches.delete(k))
+              )
+            )
+            .catch(() => undefined);
+        }
+        void checkForUpdate({ silent: true });
+      } else {
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-      navigator.serviceWorker
-        .register('/sw.js', { updateViaCache: 'none' })
-        .then((reg) => {
-          registrationRef.current = reg;
-          attachWorkerLifecycleListeners(reg);
-          void checkForUpdate({ silent: true });
-        })
-        .catch(() => {
-          // Vẫn chạy kiểm tra qua endpoint phiên bản ngay cả khi SW chưa khả dụng
-          void checkForUpdate({ silent: true });
-        });
+        navigator.serviceWorker
+          .register('/sw.js', { updateViaCache: 'none' })
+          .then((reg) => {
+            registrationRef.current = reg;
+            attachWorkerLifecycleListeners(reg);
+            void checkForUpdate({ silent: true });
+          })
+          .catch(() => {
+            // Vẫn chạy kiểm tra qua endpoint phiên bản ngay cả khi SW chưa khả dụng
+            void checkForUpdate({ silent: true });
+          });
+      }
     } else {
       void checkForUpdate({ silent: true });
     }

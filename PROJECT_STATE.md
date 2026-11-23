@@ -1,7 +1,7 @@
 # HOME MONI — MASTER LIVING PROJECT STATE (SSOT)
 > **Tệp Chủ Tối Thượng & Bản Đặc Tả Trạng Thái Dự Án (Single Source of Truth)**  
-> **Phiên bản:** `v1.7.0-gold-interior-3d` | **Ngày phát hành:** 2026-11-20 | **Môi trường:** Production Ready (4 Sub-App Ecosystem · PWA · Three.js 3D · Express + Gemini AI)  
-> **Tiêu chuẩn Thiết kế:** Calm Slate Fintech + Warm Architectural Studio | **Mô hình Kế toán:** Event Sourcing Dual-Member + WAC/FIFO Gold Lots + Live BOQ
+> **Phiên bản:** `v1.9.0-fullstack-ecosystem` | **Ngày phát hành:** 2026-11-22 | **Môi trường:** Production Ready (4 Sub-App Ecosystem · Hardened Express + Gemini AI · Supabase Sync & Storage · Three.js 3D · PWA)  
+> **Tiêu chuẩn Thiết kế:** Calm Slate Fintech + Warm Architectural Studio | **Mô hình Kế toán:** Event Sourcing Dual-Member + Bank-Grade Micro-Chỉ Gold Ledger + Live BOQ
 
 ---
 
@@ -133,9 +133,18 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `lib/appRegistry.test.ts` | Unit test kiểm định cấu hình 4 Sub-app và điều kiện cảnh báo kỳ hạn SKYONE | **STABLE** |
 | `lib/appRouting.ts` | Điều phối deep-link SPA cho `/launcher`, `/finance/*`, `/skyone/*`, `/gold/*`, `/interior/*` | **STABLE** |
 | `lib/appRouting.test.ts` | Unit test kiểm định parse/build URL và tiêu đề tài liệu 4 Sub-app | **STABLE** |
-| `lib/offlineOutbox.ts` | Hàng đợi đồng bộ ngoại tuyến bền vững cho thay đổi cục bộ lên Supabase Cloud | **STABLE** |
-| `lib/goldEngine.ts` | Engine Kho Tích Sản Vàng: ưu tiên Nhẫn 9999, WAC/FIFO/Specific-Lot, định giá theo giá Mua vào (Bid), chênh lệch XAU/USD & giả lập thanh khoản Q3/2027 | **STABLE** |
-| `lib/goldEngine.test.ts` | Unit test kiểm định FIFO/Specific-Lot, Bid Valuation, Domestic Premium & kịch bản chốt lời Q3/2027 | **STABLE** |
+| `lib/offlineOutbox.ts` | Hàng đợi đồng bộ ngoại tuyến chuẩn Production (coalesce, retryCount, Dead-Letter FAILED không chặn đầu hàng & khôi phục thủ công) | **STABLE** |
+| `lib/offlineOutbox.test.ts` | Unit test kiểm định gộp mutation, xả hàng đợi không chặn đầu hàng và Dead-Letter Queue | **STABLE** |
+| `lib/apiSchemas.ts` | Zod request schemas cho toàn bộ `/api/ai/*`, unified error contract `{ ok: false, code, message }` & `SlidingWindowRateLimiter` | **STABLE** |
+| `lib/apiSchemas.test.ts` | Unit test kiểm định Zod API schemas, giới hạn kích thước ảnh base64, MIME allowlist & Rate Limiter | **STABLE** |
+| `lib/skyoneAiService.ts` | Client bridge gọi `POST /api/ai/scan-loan-statement` (OCR thông báo BIDV) & `POST /api/ai/skyone-strategy` (Cố vấn liên thông) | **STABLE** |
+| `lib/interiorAiService.ts` | Client bridge gọi `POST /api/ai/scan-boq-quote` (OCR báo giá nhà thầu & so sánh chênh lệch BOQ) | **STABLE** |
+| `lib/unifiedAlertsEngine.ts` | Bộ tổng hợp cảnh báo thuần túy 4 Sub-App (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) & Outbox DLQ sắp xếp theo mức độ nghiêm trọng | **STABLE** |
+| `lib/unifiedAlertsEngine.test.ts` | Unit test kiểm định cảnh báo xuyên hệ sinh thái 4 Sub-App và thứ tự ưu tiên | **STABLE** |
+| `lib/snagPhotoVault.ts` | Lưu trữ Hybrid Local-First (IndexedDB) + Supabase Storage (`household-media`) đồng bộ ảnh Snag List đa thiết bị | **STABLE** |
+| `lib/interiorGlbVault.ts` | Lưu trữ Hybrid Local-First (IndexedDB) + Supabase Storage (`household-media`) đồng bộ mô hình 3D GLB/GLTF đa thiết bị | **STABLE** |
+| `lib/goldEngine.ts` | Engine Kho Tích Sản Vàng chuẩn Bank-Grade: số học nguyên tỷ lệ micro-chỉ cho 6 đơn vị, kiểm toán bất biến sổ cái, WAC/FIFO/Specific-Lot, Bid Valuation & giả lập Q3/2027 | **STABLE** |
+| `lib/goldEngine.test.ts` | Unit test kiểm định chuyển đổi khứ hồi 6 đơn vị vàng không sai số, bất biến sổ cái, FIFO/Specific-Lot & kịch bản chốt lời Q3/2027 | **STABLE** |
 | `lib/interiorFloorplan.ts` | Bản vẽ số hóa chuẩn tỷ lệ 1:1 (`1 unit = 1m`) căn hộ Phú Đông SKYONE A.12A.07 (Loại A2 51.0m²/55.3m²), 26 món danh mục & 2 phương án 3D (PA-A PN2 & PA-B Dual Growth Studio) | **STABLE** |
 | `lib/interiorBoqEngine.ts` | Engine bóc tách dự toán BOQ thời gian thực, kiểm tra khoảng trống công thái học & cầu nối Sẵn sàng Bàn giao Q3/2027 (FINANCE + GOLD + SKYONE + INTERIOR) | **STABLE** |
 | `lib/interiorBoqEngine.test.ts` | Unit test kiểm định ngân sách 100–150tr PA-A/PA-B, Dual Growth Studio, không chồng lấn công thái học & Readiness Bridge | **STABLE** |
@@ -172,10 +181,12 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/common/IOSInstallModal.tsx` | Modal hướng dẫn chi tiết cách cài đặt lên màn hình chính cho iPhone/iPad Safari | **STABLE** |
 | `components/common/AppSwitcherWaffle.tsx` | Popover chuyển đổi nhanh giữa 4 Sub-app (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) trên TopBar | **STABLE** |
 | `components/common/SubAppIcons.tsx` | Bộ icon vector định danh chuẩn mực cho 4 Sub-app hệ sinh thái HOME MONI | **STABLE** |
+| `components/common/SyncOutboxInspector.tsx` | Trình quản trị Hàng đợi Đồng bộ ngoại tuyến (Outbox DLQ): xem trạng thái, thử lại từng mục/hàng loạt & thông báo Smart Merge xung đột | **STABLE** |
 
 ### 4.4. Desktop Dashboard Widgets (`components/dashboard/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
 | :--- | :--- | :--- |
+| `components/dashboard/UnifiedNetWorthBanner.tsx` | Thẻ Tổng Gia Sản Hộ Gia Đình Hợp Nhất 4 Sub-App (Thanh khoản ngay ↔ Tổng gia sản gồm Vốn chủ BĐS SKYONE + Kho Vàng Bid), hỗ trợ 100% Privacy Mode | **STABLE** |
 | `components/dashboard/SummaryCards.tsx` | 4 thẻ chỉ số tài chính: Tài sản ròng, Tổng thu, Tổng chi, Tiết kiệm tích lũy | **STABLE** |
 | `components/dashboard/DualCreditCardsWidget.tsx` | Widget quản lý trực quan 2 thẻ tín dụng BIDV: Thẻ Chuột 50tr & Thẻ Mèo 20tr | **STABLE** |
 | `components/dashboard/FamilyCashflowWidget.tsx` | Thước đo dòng tiền tổ ấm và Widget hạn mức chi tiêu ngày thích ứng (*Adaptive Daily Limit*) | **STABLE** |
@@ -188,6 +199,8 @@ Bảng ma trận quản trị toàn bộ các tệp mã nguồn trong dự án H
 | `components/dashboard/FilterBar.tsx` | Thanh công cụ lọc theo tháng, tài khoản, loại thu/chi | **STABLE** |
 | `components/dashboard/SkyOneAmortizationChart.tsx` | Biểu đồ Recharts kết hợp Cột Gốc/Lãi và Đường tỷ lệ dư nợ giảm dần SKYONE (chuyển đổi VNĐ/%, 3 mốc tham chiếu) | **STABLE** |
 | `components/dashboard/SkyOneCashflowScheduleTable.tsx` | Bảng chi tiết dòng tiền Amortization Schedule SKYONE theo Năm / Tháng (Dư nợ đầu kỳ, Gốc, Lãi, Tổng đóng, Dư nợ cuối kỳ) | **STABLE** |
+| `components/skyone/SkyOneAiToolsPanel.tsx` | Bộ công cụ AI cho Sub-App SKYONE: Quét thông báo thu nợ/lãi suất BIDV (OCR) & Cố vấn chiến lược liên thông SKYONE × GOLD × FINANCE | **STABLE** |
+| `components/interior/InteriorBoqAiAndPaymentPanel.tsx` | Bộ công cụ AI & Quyết toán cho Sub-App INTERIOR: Quét báo giá nhà thầu (OCR) & Ghi nhận thanh toán đợt sang FINANCE 1 chạm | **STABLE** |
 
 ### 4.5. Mobile-First Components (`components/mobile/`)
 | Tệp mã nguồn | Trách nhiệm chính | Trạng thái |
@@ -358,6 +371,13 @@ Khi có bất kỳ thay đổi nào liên quan đến cấu trúc file, mô hìn
 4. **Bước 4:** Ghi nhận phiên bản và nội dung thay đổi vào Changelog bên dưới.
 
 ### Lịch Sử Phiên Bản (Living Changelog)
+* **v1.9.0-fullstack-ecosystem (2026-11-22):**
+  * **Wave 1 (Backend Hardening & Version SSOT):** Bổ sung `lib/apiSchemas.ts` (Zod validation end-to-end cho toàn bộ `/api/ai/*`, unified error contract `{ ok: false, code, message }`, `SlidingWindowRateLimiter` 2 tầng), security headers, timeout `AbortController`, disk-backed calibrated `GET /api/gold/reference-prices`, nâng cấp `GET /api/health`, và đồng bộ SSOT phiên bản `1.9.0`.
+  * **Wave 2 (Cloud Sync Chống Ghi Đè, Dead-Letter Outbox & Media Đa Thiết Bị):** Nâng cấp `supabase/schema.sql` với cột `revision` + trigger chống ghi đè cho 3 bảng JSONB (`skyone_loans`, `gold_portfolios`, `interior_studios`), Smart Merge tự động khi 2 máy sửa đồng thời, kéo Realtime tăng dần theo bảng (`fetchSingleTablePatch`), nâng cấp `lib/offlineOutbox.ts` chuẩn Dead-Letter Queue kèm `SyncOutboxInspector.tsx`, và bổ sung bucket private `household-media` + đồng bộ Hybrid Local-First/Cloud cho `lib/snagPhotoVault.ts` & `lib/interiorGlbVault.ts`.
+  * **Wave 3 (Full-Stack & AI Parity 4 Sub-App):** Thêm 3 endpoint AI mới (`POST /api/ai/scan-loan-statement`, `POST /api/ai/skyone-strategy`, `POST /api/ai/scan-boq-quote`), giao diện `SkyOneAiToolsPanel.tsx` (OCR thông báo BIDV & Cố vấn liên thông SKYONE × GOLD × FINANCE), `InteriorBoqAiAndPaymentPanel.tsx` (OCR báo giá nhà thầu & cầu nối quyết toán Nội thất ↔ FINANCE), và bộ hiệu chỉnh biên độ nội địa Nhẫn 9999/SJC trong `GoldPricesTab.tsx`.
+  * **Wave 4 (Hệ Sinh Thái Hợp Nhất):** Triển khai `computeUnifiedHouseholdNetWorth` (chống đếm trùng vàng cũ) + `UnifiedNetWorthBanner.tsx` trên Desktop/Mobile Overview & AppLauncher, Trung tâm Cảnh báo Hợp nhất 4 Sub-App (`lib/unifiedAlertsEngine.ts`) tích hợp trên `TopBar.tsx` & `MobileNotificationSheet.tsx`, và mở rộng `DataAdminView.tsx` thêm 4 tab kiểm toán (`SKYONE Loan`, `Kho Vàng`, `Nội thất 3D`, `Sync Outbox`).
+* **v1.8.0-bank-grade-gold (2026-11-21):**
+  * Nâng cấp lõi Kho Tích Sản Vàng chuẩn Bank-Grade với số học nguyên tỷ lệ micro-chỉ cho 6 đơn vị (Lượng, Chỉ, Phân, Ly, Gram, Troy Oz), kiểm toán 7 bất biến sổ cái (`verifyGoldPortfolioIntegrity`, `calculateLedgerIntegrity`) kèm đối soát két vật lý trên UI và phục hồi an toàn `parseGoldPortfolioSafely` trong `lib/validations.ts`.
 * **v1.7.0-gold-interior-3d (2026-11-20):**
   * Mở rộng hệ sinh thái HOME MONI từ 2 lên **4 Sub-app liên thông** (`FINANCE`, `SKYONE`, `GOLD`, `INTERIOR`) trên `AppLauncherView.tsx`, `AppSwitcherWaffle.tsx`, `MobileDrawer.tsx`, `lib/appRegistry.ts` và `lib/appRouting.ts`.
   * Triển khai **Sub-app `GOLD` (`/gold/*`)** với `lib/goldEngine.ts`, `components/views/GoldVaultView.tsx`, endpoint tham chiếu `GET /api/gold/reference-prices` (cache 15 phút), hạch toán WAC/FIFO/Specific-Lot, định giá theo giá Mua vào (Bid), phân tích chênh lệch XAU/USD và giả lập thanh khoản Q3/2027.

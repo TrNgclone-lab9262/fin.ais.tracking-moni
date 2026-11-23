@@ -29,9 +29,12 @@ export function MobileHeader({
     isPrivacyMode,
     togglePrivacyMode,
     notifications,
+    unifiedEcosystemAlerts,
     hasPasscodeProtection,
     lockApp,
   } = useFinance();
+
+  const totalAlertCount = notifications.length + unifiedEcosystemAlerts.length;
 
   const { hasUpdate } = usePWAUpdate();
   const haptic = useHaptic();
@@ -44,16 +47,16 @@ export function MobileHeader({
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#DCE4EE] dark:border-slate-800 pt-safe shadow-xs transition-colors">
-      <div className="px-2 min-[390px]:px-2.5 py-2 flex items-center justify-between gap-1">
+      <div className="px-2 min-[420px]:px-2.5 py-2 flex items-center justify-between gap-1">
       {/* Nút Hamburger + Logo Brand */}
-      <div className="flex items-center gap-1 min-[390px]:gap-1.5 shrink-0">
+      <div className="flex items-center gap-1 min-[420px]:gap-1.5 shrink-0">
         <button
           onClick={() => {
             haptic.light();
             onOpenDrawer();
           }}
           aria-label={hasUpdate ? "Mở menu tổ ấm (Có bản cập nhật mới)" : "Mở menu tổ ấm"}
-          className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 active:scale-95 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-all cursor-pointer shrink-0"
+          className="relative w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:bg-slate-300 active:scale-95 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-all cursor-pointer shrink-0"
         >
           <Menu className="w-4 h-4" />
           {hasUpdate && (
@@ -66,11 +69,11 @@ export function MobileHeader({
 
         <AppSwitcherWaffle variant="compact" align="left" />
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="hidden min-[420px]:flex items-center gap-1 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
             <Home className="w-3.5 h-3.5 stroke-[2.5]" />
           </div>
-          <span className="hidden min-[440px]:inline font-black text-[11px] tracking-wide text-[#1E3A8A] dark:text-blue-300">
+          <span className="hidden min-[450px]:inline font-black text-[11px] tracking-wide text-[#1E3A8A] dark:text-blue-300">
             MONI
           </span>
         </div>
@@ -111,7 +114,7 @@ export function MobileHeader({
           data-testid="mobile-theme-toggle"
           aria-label={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
           title={themeMode === "dark" ? "Chuyển sang Light Mode" : "Chuyển sang Dark Mode"}
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
+          className={`w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             themeMode === "dark"
               ? "bg-slate-800 text-amber-300 border-slate-700"
               : "bg-slate-100 text-slate-700 border-slate-200/80"
@@ -128,7 +131,7 @@ export function MobileHeader({
           }}
           aria-label={isPrivacyMode ? "Hiện số tiền" : "Ẩn số tiền nhạy cảm"}
           title={isPrivacyMode ? "Hiện số tiền" : "Ẩn số tiền nhạy cảm"}
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
+          className={`w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             isPrivacyMode
               ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
@@ -147,12 +150,12 @@ export function MobileHeader({
             }}
             aria-label="Thông báo & cảnh báo"
             title="Cảnh báo gia đình"
-            className="relative w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            className="relative w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
           >
             <Bell className="w-3.5 h-3.5" />
-            {notifications.length > 0 && (
+            {totalAlertCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center border border-white dark:border-slate-900">
-                {notifications.length > 9 ? "9+" : notifications.length}
+                {totalAlertCount > 9 ? "9+" : totalAlertCount}
               </span>
             )}
           </button>
@@ -167,7 +170,7 @@ export function MobileHeader({
           }}
           aria-label="Khóa ứng dụng"
           title="Mở màn hình khóa /login"
-          className={`w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
+          className={`w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer border ${
             hasPasscodeProtection
               ? "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-800"
               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
@@ -184,7 +187,7 @@ export function MobileHeader({
               onOpenScanner();
             }}
             aria-label="Quét hóa đơn bằng AI"
-            className="w-7 h-7 min-[390px]:w-8 min-[390px]:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 active:bg-indigo-100 text-indigo-600 dark:text-indigo-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
+            className="w-7 h-7 min-[420px]:w-8 min-[420px]:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 active:bg-indigo-100 text-indigo-600 dark:text-indigo-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
             title="Quét hóa đơn thông minh"
           >
             <Camera className="w-3.5 h-3.5" />
