@@ -11,6 +11,7 @@ import {
   GoldStorageLocation,
 } from "@/types/finance";
 import { GOLD_CATEGORY_META, GOLD_STORAGE_LABELS } from "@/lib/goldEngine";
+import { postAiJson } from "@/lib/aiFetch";
 import {
   BRAND_SUGGESTIONS,
   GOLD_CATEGORIES,
@@ -151,14 +152,17 @@ export function GoldLotModal({
     setScanStatus(null);
     try {
       const { base64, mimeType } = await compressImageToJpegBase64(file);
-      const res = await fetch("/api/ai/scan-gold-invoice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      const res = await postAiJson("/api/ai/scan-gold-invoice", {
+        imageBase64: base64,
+        mimeType,
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        const errPayload = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string;
+        };
+        throw new Error(errPayload.message || errPayload.error || `HTTP ${res.status}`);
       }
 
       const payload = (await res.json()) as {

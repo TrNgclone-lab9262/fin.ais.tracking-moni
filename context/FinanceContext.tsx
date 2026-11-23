@@ -15,6 +15,7 @@ import {
   runThemeCircularReveal,
   ThemeTransitionTriggerEvent,
 } from "@/lib/themeTransition";
+import { JsonbCasConflictError } from "@/lib/jsonbCasSync";
 import {
   Category,
   Account,
@@ -978,8 +979,27 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           applyMutationConflictResult(res);
           setLastSyncedAt(new Date());
         })
-        .catch(() => {
-          const next = enqueueOutboxMutation(mutation);
+        .catch((err: unknown) => {
+          let mutationToQueue: CloudMutation = mutation;
+          if (err instanceof JsonbCasConflictError) {
+            if (mutation.type === "UPSERT_SKYONE_LOAN") {
+              const merged = reconcileBidvSkyOneContract(
+                err.mergedPayload as MortgageContract
+              ).contract;
+              setSkyoneLoan(merged);
+              mutationToQueue = { type: "UPSERT_SKYONE_LOAN", payload: merged };
+            } else if (mutation.type === "UPSERT_GOLD_PORTFOLIO") {
+              const merged = err.mergedPayload as GoldPortfolioState;
+              setGoldPortfolio(merged);
+              mutationToQueue = { type: "UPSERT_GOLD_PORTFOLIO", payload: merged };
+            } else if (mutation.type === "UPSERT_INTERIOR_STUDIO") {
+              const merged = err.mergedPayload as InteriorStudioState;
+              setInteriorStudio(merged);
+              mutationToQueue = { type: "UPSERT_INTERIOR_STUDIO", payload: merged };
+            }
+            setLastConflictNotice(err.message);
+          }
+          const next = enqueueOutboxMutation(mutationToQueue);
           syncOutboxState(next);
         });
     },

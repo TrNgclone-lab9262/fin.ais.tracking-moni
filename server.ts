@@ -26,9 +26,16 @@ import {
   buildApiError,
   formatZodApiError,
 } from './lib/apiSchemas';
+import {
+  createSupabaseJwtVerifier,
+  evaluateAiRouteAccess,
+  extractTrustedClientIp,
+  resolveSupabaseServerConfig,
+} from './lib/serverSecurity';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.basename(__dirname) === 'dist' ? path.resolve(__dirname, '..') : __dirname;
 
 const PORT = Number(process.env.PORT) || 3000;
 const SERVER_STARTED_AT = Date.now();
@@ -73,20 +80,12 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
-function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || 'unknown';
-}
-
 function createRateLimitMiddleware(
   limiter: SlidingWindowRateLimiter,
   scope: string
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
-    const key = `${scope}:${getClientIp(req)}`;
+    const key = `${scope}:${extractTrustedClientIp(req)}`;
     const decision = limiter.check(key);
     res.setHeader('X-RateLimit-Remaining', String(decision.remaining));
     if (!decision.allowed) {
@@ -288,8 +287,12 @@ async function writeDiskGoldCache(data: GoldFeedCacheFile): Promise<void> {
 async function startServer() {
   const app = express();
   const httpServer = http.createServer(app);
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(express.json({ limit: '12mb' }));
+
+  const supabaseAuthConfig = resolveSupabaseServerConfig(process.env);
+  const verifySupabaseJwt = createSupabaseJwtVerifier(supabaseAuthConfig);
 
   // Security headers (giữ tương thích AI Studio preview iframe trên HTML, gắn X-Frame-Options cho /api/*)
   app.use((req, res, next) => {
@@ -323,6 +326,7 @@ async function startServer() {
     res.json({
       ok: true,
       aiConfigured: hasKey,
+      aiAuthMode: supabaseAuthConfig.configured ? 'SUPABASE_JWT' : 'OFFLINE_SAME_ORIGIN',
       model: GEMINI_MODEL,
       appVersion: APP_VERSION,
       buildId: APP_BUILD_ID,
@@ -344,8 +348,8 @@ async function startServer() {
     res.setHeader('Expires', '0');
 
     const candidates = [
-      path.resolve(__dirname, 'public', 'version.json'),
-      path.resolve(__dirname, 'dist', 'version.json'),
+      path.resolve(PROJECT_ROOT, 'public', 'version.json'),
+      path.resolve(PROJECT_ROOT, 'dist', 'version.json'),
     ];
 
     for (const filePath of candidates) {
@@ -378,8 +382,25 @@ async function startServer() {
     next();
   });
 
-  // Áp dụng Rate Limiter chuyên biệt cho toàn bộ nhóm tuyến AI
+  // Áp dụng Rate Limiter theo req.ip đáng tin cậy + Lớp bảo vệ xác thực cho toàn bộ tuyến /api/ai/*
   app.use('/api/ai/', createRateLimitMiddleware(aiApiLimiter, 'ai'));
+  app.use('/api/ai/', async (req, res, next) => {
+    const decision = await evaluateAiRouteAccess(
+      req.headers,
+      supabaseAuthConfig,
+      verifySupabaseJwt
+    );
+    if (!decision.allowed) {
+      return res.status(decision.status || 401).json(
+        buildApiError(
+          decision.code || 'UNAUTHORIZED',
+          decision.message || 'Không có quyền truy cập tuyến AI.',
+          { fallbackAvailable: false }
+        )
+      );
+    }
+    return next();
+  });
 
   // 0. GET /api/gold/reference-prices — Giá vàng tham khảo VN (có hiệu chỉnh biên độ nội địa & cache bền vững)
   app.get(
@@ -1667,9 +1688,10 @@ Yêu cầu trích xuất JSON:
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = path.resolve(PROJECT_ROOT, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

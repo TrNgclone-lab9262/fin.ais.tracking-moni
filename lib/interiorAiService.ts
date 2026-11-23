@@ -5,6 +5,7 @@
  */
 
 import { InteriorBoqGroup } from '@/types/finance';
+import { postAiJson } from './aiFetch';
 
 export interface ScannedBoqQuoteItem {
   name: string;
@@ -48,15 +49,11 @@ export async function scanBoqQuoteWithGemini(
   }
 ): Promise<ScannedBoqQuoteResult> {
   const imageBase64 = await fileToBase64(file);
-  const res = await fetch('/api/ai/scan-boq-quote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      imageBase64,
-      mimeType: file.type || 'image/jpeg',
-      scenarioName: context.scenarioName,
-      existingItems: context.existingItems.slice(0, 100),
-    }),
+  const res = await postAiJson('/api/ai/scan-boq-quote', {
+    imageBase64,
+    mimeType: file.type || 'image/jpeg',
+    scenarioName: context.scenarioName,
+    existingItems: context.existingItems.slice(0, 100),
   });
 
   const data = (await res.json().catch(() => ({}))) as {

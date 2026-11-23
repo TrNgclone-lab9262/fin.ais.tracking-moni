@@ -5,6 +5,7 @@
 
 import { Account, Category, ExpenseScope, FamilyMember, TransactionType } from '@/types/finance';
 import { resolveCategorySlugToId } from './financeEngine';
+import { postAiJson } from './aiFetch';
 
 export interface ParsedReceiptItem {
   name: string;
@@ -99,14 +100,10 @@ export async function parseReceiptWithGemini(
 ): Promise<ParsedReceiptResult> {
   try {
     const base64Image = await fileToBase64(file);
-    const res = await fetch('/api/ai/scan-receipt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: base64Image,
-        mimeType: file.type || 'image/jpeg',
-        categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type })),
-      }),
+    const res = await postAiJson('/api/ai/scan-receipt', {
+      imageBase64: base64Image,
+      mimeType: file.type || 'image/jpeg',
+      categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type })),
     });
 
     if (res.ok) {
@@ -274,15 +271,11 @@ export async function parseNaturalLanguageTransactions(
   defaultMember: FamilyMember = 'HUSBAND'
 ): Promise<ParsedNaturalTransaction[]> {
   try {
-    const res = await fetch('/api/ai/parse-transaction', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        today: new Date().toISOString().slice(0, 10),
-        accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, owner: a.owner })),
-        categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type })),
-      }),
+    const res = await postAiJson('/api/ai/parse-transaction', {
+      text,
+      today: new Date().toISOString().slice(0, 10),
+      accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, owner: a.owner })),
+      categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type })),
     });
 
     if (res.ok) {
@@ -324,11 +317,7 @@ export async function generateMonthlyDigest(payload: {
   budgetOverruns: string[];
 }): Promise<MonthlyAIDigest> {
   try {
-    const res = await fetch('/api/ai/monthly-digest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const res = await postAiJson('/api/ai/monthly-digest', payload);
 
     if (res.ok) {
       const data = await res.json();
@@ -378,11 +367,7 @@ export async function generateMonthlyDigest(payload: {
 export async function analyzeFinancialInsights(
   payload: FinancialInsightsPayload
 ): Promise<FinancialInsightsResponse> {
-  const res = await fetch('/api/ai/financial-insights', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const res = await postAiJson('/api/ai/financial-insights', payload);
 
   const data = (await res.json().catch(() => ({}))) as {
     insights?: FinancialInsightsResponse;
@@ -450,11 +435,7 @@ export interface SpendingForecastAIResponse {
 export async function generateSpendingForecastInsights(
   payload: SpendingForecastAIPayload
 ): Promise<SpendingForecastAIResponse> {
-  const res = await fetch('/api/ai/spending-forecast', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const res = await postAiJson('/api/ai/spending-forecast', payload);
 
   const data = (await res.json().catch(() => ({}))) as {
     forecastInsights?: SpendingForecastAIResponse;

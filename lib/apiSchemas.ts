@@ -24,6 +24,8 @@ export const ALLOWED_DOCUMENT_MIME_TYPES = [
 ] as const;
 
 export type ApiErrorCode =
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
   | 'VALIDATION_ERROR'
   | 'RATE_LIMITED'
   | 'AI_NOT_CONFIGURED'

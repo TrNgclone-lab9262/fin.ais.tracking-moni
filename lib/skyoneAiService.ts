@@ -5,6 +5,8 @@
  * - POST /api/ai/skyone-strategy (Cố vấn chiến lược liên thông SKYONE × GOLD × FINANCE)
  */
 
+import { postAiJson } from './aiFetch';
+
 export type LoanStatementDocumentType = 'PAYMENT_RECEIPT' | 'RATE_ADJUSTMENT' | 'DISBURSEMENT';
 
 export interface ScannedLoanStatementResult {
@@ -77,15 +79,11 @@ export async function scanLoanStatementWithGemini(
   hints?: { currentPeriodHint?: number; currentBalanceVnd?: number }
 ): Promise<ScannedLoanStatementResult> {
   const imageBase64 = await fileToBase64(file);
-  const res = await fetch('/api/ai/scan-loan-statement', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      imageBase64,
-      mimeType: file.type || 'image/jpeg',
-      currentPeriodHint: hints?.currentPeriodHint,
-      currentBalanceVnd: hints?.currentBalanceVnd,
-    }),
+  const res = await postAiJson('/api/ai/scan-loan-statement', {
+    imageBase64,
+    mimeType: file.type || 'image/jpeg',
+    currentPeriodHint: hints?.currentPeriodHint,
+    currentBalanceVnd: hints?.currentBalanceVnd,
   });
 
   const data = (await res.json().catch(() => ({}))) as {
@@ -107,11 +105,7 @@ export async function scanLoanStatementWithGemini(
 export async function requestSkyOneStrategy(
   payload: SkyOneStrategyPayload
 ): Promise<SkyOneStrategyResponse> {
-  const res = await fetch('/api/ai/skyone-strategy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const res = await postAiJson('/api/ai/skyone-strategy', payload);
 
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;

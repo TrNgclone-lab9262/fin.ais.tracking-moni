@@ -70,6 +70,7 @@ import {
   TransactionSchema,
 } from "./validations";
 import { reconcileBidvSkyOneContract } from "./mortgageEngine";
+import { executeJsonbCasWrite } from "./jsonbCasSync";
 
 export interface CloudUser {
   id: string;
@@ -1141,6 +1142,7 @@ export const supabaseService = {
     mutation: CloudMutation
   ): Promise<MutationExecutionResult> {
     if (!isSupabaseConfigured || !supabase) return { ok: false };
+    const db = supabase;
 
     let res: { error: { message: string } | null } = { error: null };
 
@@ -1309,182 +1311,247 @@ export const supabaseService = {
       case "UPSERT_SKYONE_LOAN": {
         const docId = mutation.payload.id || "skyone_default";
         const key = revKey(householdId, "skyone_loans", docId);
-        const expectedRev = knownJsonbRevisions.get(key);
+        const outcome = await executeJsonbCasWrite<MortgageContract>({
+          table: "skyone_loans",
+          localDoc: mutation.payload,
+          knownRevision: knownJsonbRevisions.get(key),
+          maxConflictRounds: 2,
+          isMissingRelationError,
+          isMissingColumnError,
+          readRemote: async () => {
+            const r = await db
+              .from("skyone_loans")
+              .select("*")
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .maybeSingle<DbSkyOneLoan>();
+            if (r.error) return { row: null, error: r.error };
+            if (!r.data) return { row: null, error: null };
+            return {
+              row: {
+                doc: mapDbToSkyOneLoan(r.data),
+                revision: typeof r.data.revision === "number" ? r.data.revision : null,
+              },
+              error: null,
+            };
+          },
+          insertRow: async (doc) => {
+            const dbRow = mapSkyOneLoanToDb(doc, householdId);
+            const r = await db
+              .from("skyone_loans")
+              .insert(dbRow)
+              .select("id,revision")
+              .maybeSingle<{ id: string; revision?: number }>();
+            return {
+              revision: typeof r.data?.revision === "number" ? r.data.revision : null,
+              error: r.error,
+            };
+          },
+          updateRowWithRevision: async (doc, expectedRevision) => {
+            const dbRow = mapSkyOneLoanToDb(doc, householdId);
+            const r = await db
+              .from("skyone_loans")
+              .update({
+                contract_data: dbRow.contract_data,
+                updated_at: dbRow.updated_at,
+              })
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .eq("revision", expectedRevision)
+              .select("id,revision");
+            if (r.error) return { updated: false, revision: null, error: r.error };
+            const rows = (r.data || []) as Array<{ id: string; revision?: number }>;
+            if (rows.length === 0) return { updated: false, revision: null, error: null };
+            return {
+              updated: true,
+              revision: typeof rows[0]?.revision === "number" ? rows[0].revision : null,
+              error: null,
+            };
+          },
+          upsertLegacy: async (doc) => {
+            const dbRow = mapSkyOneLoanToDb(doc, householdId);
+            const r = await db
+              .from("skyone_loans")
+              .upsert(dbRow, { onConflict: "household_id,id" })
+              .select("id")
+              .maybeSingle<{ id: string }>();
+            return { revision: null, error: r.error };
+          },
+          mergeDocs: (remoteDoc, localDoc) =>
+            reconcileBidvSkyOneContract(mergeSkyOneContracts(remoteDoc, localDoc)).contract,
+        });
 
-        // Kiểm tra xung đột revision trước khi ghi đè JSONB
-        const remoteCheck = await supabase
-          .from("skyone_loans")
-          .select("*")
-          .eq("household_id", householdId)
-          .eq("id", docId)
-          .maybeSingle<DbSkyOneLoan>();
-
-        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
-          return { ok: true };
-        }
-
-        let payloadToWrite = mutation.payload;
-        let conflictResolved = false;
-
-        if (
-          !remoteCheck.error &&
-          remoteCheck.data &&
-          typeof remoteCheck.data.revision === "number" &&
-          expectedRev !== undefined &&
-          remoteCheck.data.revision > expectedRev
-        ) {
-          const remoteParsed = mapDbToSkyOneLoan(remoteCheck.data);
-          if (remoteParsed) {
-            payloadToWrite = reconcileBidvSkyOneContract(
-              mergeSkyOneContracts(remoteParsed, mutation.payload)
-            ).contract;
-            conflictResolved = true;
-          }
-        }
-
-        const dbRow = mapSkyOneLoanToDb(payloadToWrite, householdId);
-        let saved = await supabase
-          .from("skyone_loans")
-          .upsert(dbRow, { onConflict: "household_id,id" })
-          .select("id,revision")
-          .maybeSingle<{ id: string; revision?: number }>();
-        if (saved.error && isMissingColumnError(saved.error)) {
-          saved = await supabase
-            .from("skyone_loans")
-            .upsert(dbRow, { onConflict: "household_id,id" })
-            .select("id")
-            .maybeSingle<{ id: string; revision?: number }>();
-        }
-        if (saved.error) {
-          throw new Error(saved.error.message);
-        }
-        if (saved.data && typeof saved.data.revision === "number") {
-          knownJsonbRevisions.set(key, saved.data.revision);
+        if (typeof outcome.newRevision === "number") {
+          knownJsonbRevisions.set(key, outcome.newRevision);
         }
         return {
           ok: true,
-          conflictResolved,
-          ...(conflictResolved ? { mergedSkyOneLoan: payloadToWrite } : {}),
+          conflictResolved: outcome.conflictResolved,
+          ...(outcome.conflictResolved ? { mergedSkyOneLoan: outcome.finalDoc } : {}),
         };
       }
 
       case "UPSERT_GOLD_PORTFOLIO": {
         const docId = "gold_default";
         const key = revKey(householdId, "gold_portfolios", docId);
-        const expectedRev = knownJsonbRevisions.get(key);
+        const outcome = await executeJsonbCasWrite<GoldPortfolioState>({
+          table: "gold_portfolios",
+          localDoc: mutation.payload,
+          knownRevision: knownJsonbRevisions.get(key),
+          maxConflictRounds: 2,
+          isMissingRelationError,
+          isMissingColumnError,
+          readRemote: async () => {
+            const r = await db
+              .from("gold_portfolios")
+              .select("*")
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .maybeSingle<DbGoldPortfolio>();
+            if (r.error) return { row: null, error: r.error };
+            if (!r.data) return { row: null, error: null };
+            return {
+              row: {
+                doc: mapDbToGoldPortfolio(r.data),
+                revision: typeof r.data.revision === "number" ? r.data.revision : null,
+              },
+              error: null,
+            };
+          },
+          insertRow: async (doc) => {
+            const dbRow = mapGoldPortfolioToDb(doc, householdId);
+            const r = await db
+              .from("gold_portfolios")
+              .insert(dbRow)
+              .select("id,revision")
+              .maybeSingle<{ id: string; revision?: number }>();
+            return {
+              revision: typeof r.data?.revision === "number" ? r.data.revision : null,
+              error: r.error,
+            };
+          },
+          updateRowWithRevision: async (doc, expectedRevision) => {
+            const dbRow = mapGoldPortfolioToDb(doc, householdId);
+            const r = await db
+              .from("gold_portfolios")
+              .update({
+                portfolio_data: dbRow.portfolio_data,
+                updated_at: dbRow.updated_at,
+              })
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .eq("revision", expectedRevision)
+              .select("id,revision");
+            if (r.error) return { updated: false, revision: null, error: r.error };
+            const rows = (r.data || []) as Array<{ id: string; revision?: number }>;
+            if (rows.length === 0) return { updated: false, revision: null, error: null };
+            return {
+              updated: true,
+              revision: typeof rows[0]?.revision === "number" ? rows[0].revision : null,
+              error: null,
+            };
+          },
+          upsertLegacy: async (doc) => {
+            const dbRow = mapGoldPortfolioToDb(doc, householdId);
+            const r = await db
+              .from("gold_portfolios")
+              .upsert(dbRow, { onConflict: "household_id,id" })
+              .select("id")
+              .maybeSingle<{ id: string }>();
+            return { revision: null, error: r.error };
+          },
+          mergeDocs: (remoteDoc, localDoc) => mergeGoldPortfolios(remoteDoc, localDoc),
+        });
 
-        const remoteCheck = await supabase
-          .from("gold_portfolios")
-          .select("*")
-          .eq("household_id", householdId)
-          .eq("id", docId)
-          .maybeSingle<DbGoldPortfolio>();
-
-        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
-          return { ok: true };
-        }
-
-        let payloadToWrite = mutation.payload;
-        let conflictResolved = false;
-
-        if (
-          !remoteCheck.error &&
-          remoteCheck.data &&
-          typeof remoteCheck.data.revision === "number" &&
-          expectedRev !== undefined &&
-          remoteCheck.data.revision > expectedRev
-        ) {
-          const remoteParsed = mapDbToGoldPortfolio(remoteCheck.data);
-          if (remoteParsed) {
-            payloadToWrite = mergeGoldPortfolios(remoteParsed, mutation.payload);
-            conflictResolved = true;
-          }
-        }
-
-        const dbRow = mapGoldPortfolioToDb(payloadToWrite, householdId);
-        let saved = await supabase
-          .from("gold_portfolios")
-          .upsert(dbRow, { onConflict: "household_id,id" })
-          .select("id,revision")
-          .maybeSingle<{ id: string; revision?: number }>();
-        if (saved.error && isMissingColumnError(saved.error)) {
-          saved = await supabase
-            .from("gold_portfolios")
-            .upsert(dbRow, { onConflict: "household_id,id" })
-            .select("id")
-            .maybeSingle<{ id: string; revision?: number }>();
-        }
-        if (saved.error) {
-          if (isMissingRelationError(saved.error)) return { ok: true };
-          throw new Error(saved.error.message);
-        }
-        if (saved.data && typeof saved.data.revision === "number") {
-          knownJsonbRevisions.set(key, saved.data.revision);
+        if (typeof outcome.newRevision === "number") {
+          knownJsonbRevisions.set(key, outcome.newRevision);
         }
         return {
           ok: true,
-          conflictResolved,
-          ...(conflictResolved ? { mergedGoldPortfolio: payloadToWrite } : {}),
+          conflictResolved: outcome.conflictResolved,
+          ...(outcome.conflictResolved ? { mergedGoldPortfolio: outcome.finalDoc } : {}),
         };
       }
 
       case "UPSERT_INTERIOR_STUDIO": {
         const docId = "interior_a12a07";
         const key = revKey(householdId, "interior_studios", docId);
-        const expectedRev = knownJsonbRevisions.get(key);
+        const outcome = await executeJsonbCasWrite<InteriorStudioState>({
+          table: "interior_studios",
+          localDoc: mutation.payload,
+          knownRevision: knownJsonbRevisions.get(key),
+          maxConflictRounds: 2,
+          isMissingRelationError,
+          isMissingColumnError,
+          readRemote: async () => {
+            const r = await db
+              .from("interior_studios")
+              .select("*")
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .maybeSingle<DbInteriorStudio>();
+            if (r.error) return { row: null, error: r.error };
+            if (!r.data) return { row: null, error: null };
+            return {
+              row: {
+                doc: mapDbToInteriorStudio(r.data),
+                revision: typeof r.data.revision === "number" ? r.data.revision : null,
+              },
+              error: null,
+            };
+          },
+          insertRow: async (doc) => {
+            const dbRow = mapInteriorStudioToDb(doc, householdId);
+            const r = await db
+              .from("interior_studios")
+              .insert(dbRow)
+              .select("id,revision")
+              .maybeSingle<{ id: string; revision?: number }>();
+            return {
+              revision: typeof r.data?.revision === "number" ? r.data.revision : null,
+              error: r.error,
+            };
+          },
+          updateRowWithRevision: async (doc, expectedRevision) => {
+            const dbRow = mapInteriorStudioToDb(doc, householdId);
+            const r = await db
+              .from("interior_studios")
+              .update({
+                studio_data: dbRow.studio_data,
+                updated_at: dbRow.updated_at,
+              })
+              .eq("household_id", householdId)
+              .eq("id", docId)
+              .eq("revision", expectedRevision)
+              .select("id,revision");
+            if (r.error) return { updated: false, revision: null, error: r.error };
+            const rows = (r.data || []) as Array<{ id: string; revision?: number }>;
+            if (rows.length === 0) return { updated: false, revision: null, error: null };
+            return {
+              updated: true,
+              revision: typeof rows[0]?.revision === "number" ? rows[0].revision : null,
+              error: null,
+            };
+          },
+          upsertLegacy: async (doc) => {
+            const dbRow = mapInteriorStudioToDb(doc, householdId);
+            const r = await db
+              .from("interior_studios")
+              .upsert(dbRow, { onConflict: "household_id,id" })
+              .select("id")
+              .maybeSingle<{ id: string }>();
+            return { revision: null, error: r.error };
+          },
+          mergeDocs: (remoteDoc, localDoc) => mergeInteriorStudios(remoteDoc, localDoc),
+        });
 
-        const remoteCheck = await supabase
-          .from("interior_studios")
-          .select("*")
-          .eq("household_id", householdId)
-          .eq("id", docId)
-          .maybeSingle<DbInteriorStudio>();
-
-        if (remoteCheck.error && isMissingRelationError(remoteCheck.error)) {
-          return { ok: true };
-        }
-
-        let payloadToWrite = mutation.payload;
-        let conflictResolved = false;
-
-        if (
-          !remoteCheck.error &&
-          remoteCheck.data &&
-          typeof remoteCheck.data.revision === "number" &&
-          expectedRev !== undefined &&
-          remoteCheck.data.revision > expectedRev
-        ) {
-          const remoteParsed = mapDbToInteriorStudio(remoteCheck.data);
-          if (remoteParsed) {
-            payloadToWrite = mergeInteriorStudios(remoteParsed, mutation.payload);
-            conflictResolved = true;
-          }
-        }
-
-        const dbRow = mapInteriorStudioToDb(payloadToWrite, householdId);
-        let saved = await supabase
-          .from("interior_studios")
-          .upsert(dbRow, { onConflict: "household_id,id" })
-          .select("id,revision")
-          .maybeSingle<{ id: string; revision?: number }>();
-        if (saved.error && isMissingColumnError(saved.error)) {
-          saved = await supabase
-            .from("interior_studios")
-            .upsert(dbRow, { onConflict: "household_id,id" })
-            .select("id")
-            .maybeSingle<{ id: string; revision?: number }>();
-        }
-        if (saved.error) {
-          if (isMissingRelationError(saved.error)) return { ok: true };
-          throw new Error(saved.error.message);
-        }
-        if (saved.data && typeof saved.data.revision === "number") {
-          knownJsonbRevisions.set(key, saved.data.revision);
+        if (typeof outcome.newRevision === "number") {
+          knownJsonbRevisions.set(key, outcome.newRevision);
         }
         return {
           ok: true,
-          conflictResolved,
-          ...(conflictResolved ? { mergedInteriorStudio: payloadToWrite } : {}),
+          conflictResolved: outcome.conflictResolved,
+          ...(outcome.conflictResolved ? { mergedInteriorStudio: outcome.finalDoc } : {}),
         };
       }
 
